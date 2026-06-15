@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f172a;
+  --surface: rgba(255, 255, 255, 0.08);
+  --surface-border: rgba(255, 255, 255, 0.12);
+
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+
+  --accent: #f97316;
+
+  --sidebar-width: 280px;
+  --radius: 20px;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  background: var(--background);
+  color: var(--text-primary);
+}
