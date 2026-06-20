@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import ProjectModal from "../components/projects/ProjectModal";
 import ProjectEditModal from "../components/projects/ProjectEditModal";
@@ -111,12 +112,28 @@ export default function ProjectsPage() {
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">{project.name}</h2>
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="text-xl font-semibold hover:text-orange-400"
+                  >
+                    {project.name}
+                  </Link>
                   {project.description && (
                     <p className="mt-1 text-slate-400">{project.description}</p>
                   )}
                 </div>
-                {getStatusBadge(project.status)}
+                <div className="flex gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      project.geofenceEnabled
+                        ? "bg-green-500/20 text-green-400"
+                        : "bg-white/10 text-slate-400"
+                    }`}
+                  >
+                    {project.geofenceEnabled ? "Geofence Enabled" : "Geofence Disabled"}
+                  </span>
+                  {getStatusBadge(project.status)}
+                </div>
               </div>
 
               <p className="mt-2 text-slate-400">

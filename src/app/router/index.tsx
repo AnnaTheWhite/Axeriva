@@ -13,6 +13,7 @@ import AcceptInvitePage from "../../pages/AcceptInvitePage";
 import DashboardPage from "../../pages/DashboardPage";
 import EmployeesPage from "../../pages/EmployeesPage";
 import ProjectsPage from "../../pages/ProjectsPage";
+import ProjectDetailsPage from "../../pages/ProjectDetailsPage";
 import SchedulePage from "../../pages/SchedulePage";
 import CustomersPage from "../../pages/CustomersPage";
 import SubscriptionPage from "../../pages/SubscriptionPage";
@@ -77,6 +78,16 @@ export default function AppRouter() {
             <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.DEVELOPER]}>
               <DashboardLayout>
                 <ProjectsPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:id"
+          element={
+            <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.DEVELOPER]}>
+              <DashboardLayout>
+                <ProjectDetailsPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

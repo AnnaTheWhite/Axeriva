@@ -3,6 +3,7 @@ import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { companyScope } from "../utils/scope";
+import { validateGeofenceFields } from "../utils/validateGeofence";
 
 const router = Router();
 
@@ -32,10 +33,31 @@ router.post(
   "/",
   requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER),
   async (req, res) => {
-    const { name, description, status, deadline, customerId } = req.body;
+    const {
+      name,
+      description,
+      status,
+      deadline,
+      customerId,
+      address,
+      latitude,
+      longitude,
+      geofenceRadius,
+      geofenceEnabled,
+    } = req.body;
 
     if (!req.user!.companyId) {
       return res.status(400).json({ error: "companyId is required" });
+    }
+
+    const geofenceError = validateGeofenceFields({
+      latitude,
+      longitude,
+      geofenceRadius,
+    });
+
+    if (geofenceError) {
+      return res.status(400).json({ error: geofenceError });
     }
 
     const project = await prisma.project.create({
@@ -46,6 +68,14 @@ router.post(
         deadline: deadline ? new Date(deadline) : null,
         customerId: customerId ? Number(customerId) : null,
         companyId: req.user!.companyId,
+        address: address ?? null,
+        latitude: latitude !== undefined && latitude !== null ? Number(latitude) : null,
+        longitude: longitude !== undefined && longitude !== null ? Number(longitude) : null,
+        geofenceRadius:
+          geofenceRadius !== undefined && geofenceRadius !== null
+            ? Number(geofenceRadius)
+            : null,
+        geofenceEnabled: Boolean(geofenceEnabled),
       },
     });
 
@@ -58,9 +88,31 @@ router.put(
   "/:id",
   requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER),
   async (req, res) => {
+    const {
+      name,
+      description,
+      status,
+      deadline,
+      customerId,
+      address,
+      latitude,
+      longitude,
+      geofenceRadius,
+      geofenceEnabled,
+    } = req.body;
+
+    const geofenceError = validateGeofenceFields({
+      latitude,
+      longitude,
+      geofenceRadius,
+    });
+
+    if (geofenceError) {
+      return res.status(400).json({ error: geofenceError });
+    }
+
     try {
       const { id } = req.params;
-      const { name, description, status, deadline, customerId } = req.body;
 
       const updated = await prisma.project.update({
         where: { id: Number(id), ...companyScope(req) },
@@ -70,6 +122,14 @@ router.put(
           status,
           deadline: deadline ? new Date(deadline) : null,
           customerId: customerId ? Number(customerId) : null,
+          address: address ?? null,
+          latitude: latitude !== undefined && latitude !== null ? Number(latitude) : null,
+          longitude: longitude !== undefined && longitude !== null ? Number(longitude) : null,
+          geofenceRadius:
+            geofenceRadius !== undefined && geofenceRadius !== null
+              ? Number(geofenceRadius)
+              : null,
+          geofenceEnabled: Boolean(geofenceEnabled),
         },
       });
 

@@ -13,13 +13,21 @@ export async function getProjects(): Promise<Project[]> {
   return response.json();
 }
 
+export type GeofenceFields = {
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofenceRadius?: number | null;
+  geofenceEnabled?: boolean;
+};
+
 export async function createProject(data: {
   name: string;
   description?: string;
   status?: string;
   deadline?: string;
   customerId?: number;
-}) {
+} & GeofenceFields) {
   const response = await fetch(`${API_URL}/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -41,7 +49,7 @@ export async function updateProject(
     status: string;
     deadline?: string;
     customerId?: number;
-  }
+  } & GeofenceFields
 ) {
   const response = await fetch(`${API_URL}/projects/${id}`, {
     method: "PUT",

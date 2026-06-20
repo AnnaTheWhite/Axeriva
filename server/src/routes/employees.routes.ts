@@ -68,11 +68,47 @@ router.put("/:id/status", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
+  const employeeId = Number(req.params.id);
 
-  await prisma.employee.delete({
-    where: { id: Number(id), ...companyScope(req) },
+  const employee = await prisma.employee.findFirst({
+    where: { id: employeeId, ...companyScope(req) },
+    include: {
+      user: true,
+      _count: { select: { Shift: true } },
+    },
   });
+
+  if (!employee) {
+    return res.status(404).json({ error: "Employee not found" });
+  }
+
+  // Shifts are historical time-tracking records — refuse to silently delete
+  // them along with the employee. The owner can deactivate the employee
+  // instead of permanently losing that history.
+  if (employee._count.Shift > 0) {
+    return res.status(409).json({
+      error:
+        "This employee has shift history and can't be deleted. Set their status instead of removing them.",
+    });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Project assignments are just links, not records worth keeping on
+      // their own — safe to clear before removing the employee.
+      await tx.projectAssignment.deleteMany({ where: { employeeId } });
+
+      // An EMPLOYEE-role login only makes sense tied to this worker record;
+      // remove it together with the employee instead of leaving an orphan.
+      if (employee.user) {
+        await tx.user.delete({ where: { id: employee.user.id } });
+      }
+
+      await tx.employee.delete({ where: { id: employeeId } });
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to delete employee" });
+  }
 
   return res.status(204).send();
 });

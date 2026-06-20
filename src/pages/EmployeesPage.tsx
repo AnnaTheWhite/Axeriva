@@ -104,6 +104,14 @@ export default function EmployeesPage() {
       await loadEmployees();
     } catch (error) {
       console.error(error);
+
+      triggerToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete employee"
+      );
+
+      setEmployeeToDelete(null);
     }
   };
 

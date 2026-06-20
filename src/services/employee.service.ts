@@ -68,10 +68,9 @@ export async function deleteEmployee(id: number) {
   );
 
   if (!response.ok) {
-    throw new Error("Failed to delete employee");
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || "Failed to delete employee");
   }
-
-  return response.json();
 }
 
 export async function updateEmployee(

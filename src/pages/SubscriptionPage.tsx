@@ -1,16 +1,23 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import Button from "../components/ui/Button";
 import {
   getSubscriptionStatus,
   startCheckout,
+  startPortal,
   type SubscriptionStatus,
 } from "../services/subscription.service";
 
+const ACTIVE_STATUSES = ["active", "trialing"];
+
 export default function SubscriptionPage() {
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+
+  const checkoutResult = searchParams.get("checkout");
 
   useEffect(() => {
     getSubscriptionStatus()
@@ -18,17 +25,42 @@ export default function SubscriptionPage() {
       .catch(() => setStatus(null));
   }, []);
 
+  useEffect(() => {
+    if (checkoutResult === "success") {
+      setMessage("Subscription activated. It may take a few seconds to show below.");
+    } else if (checkoutResult === "cancelled") {
+      setMessage("Checkout was cancelled — you have not been charged.");
+    }
+  }, [checkoutResult]);
+
+  const isActive = status ? ACTIVE_STATUSES.includes(status.subscriptionStatus) : false;
+
   async function handleSubscribe() {
     setMessage(null);
     setIsStarting(true);
 
     try {
-      await startCheckout();
+      const url = await startCheckout();
+      window.location.href = url;
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Failed to start checkout"
       );
-    } finally {
+      setIsStarting(false);
+    }
+  }
+
+  async function handleManage() {
+    setMessage(null);
+    setIsStarting(true);
+
+    try {
+      const url = await startPortal();
+      window.location.href = url;
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Failed to open billing portal"
+      );
       setIsStarting(false);
     }
   }
@@ -51,6 +83,13 @@ export default function SubscriptionPage() {
           <p className="mt-1 capitalize text-white">
             {status?.subscriptionStatus ?? "—"}
           </p>
+
+          <p className="mt-4 text-sm text-slate-400">Next billing date</p>
+          <p className="mt-1 text-white">
+            {status?.subscriptionEndsAt
+              ? new Date(status.subscriptionEndsAt).toLocaleDateString()
+              : "—"}
+          </p>
         </div>
 
         <div className="rounded-3xl border border-orange-500/30 bg-white/5 p-8 backdrop-blur-xl">
@@ -70,9 +109,15 @@ export default function SubscriptionPage() {
           )}
 
           <div className="mt-6">
-            <Button onClick={handleSubscribe}>
-              {isStarting ? "Starting checkout..." : "Subscribe"}
-            </Button>
+            {isActive ? (
+              <Button onClick={handleManage}>
+                {isStarting ? "Opening billing portal..." : "Manage Subscription"}
+              </Button>
+            ) : (
+              <Button onClick={handleSubscribe}>
+                {isStarting ? "Starting checkout..." : "Subscribe"}
+              </Button>
+            )}
           </div>
         </div>
       </div>

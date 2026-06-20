@@ -5,6 +5,11 @@ export type Project = {
   status: string;
   deadline?: string;
   customerId?: number | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofenceRadius?: number | null;
+  geofenceEnabled?: boolean;
   customer?: {
     id: number;
     name: string;

@@ -10,6 +10,7 @@ import customersRoutes from "./routes/customers.routes";
 import companiesRoutes from "./routes/companies.routes";
 import shiftsRoutes from "./routes/shifts.routes";
 import subscriptionRoutes from "./routes/subscription.routes";
+import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
 import adminRoutes from "./routes/admin.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
@@ -19,6 +20,12 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
+
+// Stripe needs the raw request body to verify the webhook signature, so this
+// route must be registered with express.raw() before the global
+// express.json() below would otherwise consume the body first.
+app.use("/subscription/webhook", express.raw({ type: "application/json" }), stripeWebhookRoutes);
+
 app.use(express.json());
 
 app.get("/", (_req, res) => {

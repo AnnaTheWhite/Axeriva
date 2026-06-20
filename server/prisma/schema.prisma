@@ -12,10 +12,12 @@ model Company {
 
   name String
 
-  // Subscription / billing — populated by the future Stripe integration.
-  plan               String  @default("free")
-  subscriptionStatus String  @default("inactive")
-  stripeCustomerId   String?
+  // Subscription / billing — Stripe Checkout + webhook keep these in sync.
+  plan                 String    @default("free")
+  subscriptionStatus   String    @default("inactive")
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  subscriptionEndsAt   DateTime?
 
   employees   Employee[]
   customers   Customer[]
@@ -75,6 +77,14 @@ model Project {
   description String?
   status      String    @default("Planned")
   deadline    DateTime?
+
+  // Geofence foundation (V1) — location data only, no automatic clock
+  // in/out is wired up to this yet.
+  address          String?
+  latitude         Float?
+  longitude        Float?
+  geofenceRadius   Float?
+  geofenceEnabled  Boolean @default(false)
 
   customerId Int?
 
