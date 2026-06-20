@@ -43,3 +43,18 @@ export async function startCheckout(): Promise<string> {
 export async function startPortal(): Promise<string> {
   return startStripeFlow("/subscription/portal");
 }
+
+// Reconciles the subscription status right after returning from Checkout,
+// without waiting for the webhook (which may be delayed, or — on a local
+// dev machine without `stripe listen` running — may never arrive at all).
+export async function syncCheckoutSession(sessionId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/subscription/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to sync subscription status");
+  }
+}

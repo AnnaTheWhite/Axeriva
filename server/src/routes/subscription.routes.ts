@@ -3,6 +3,7 @@ import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { stripe } from "../services/stripe/stripeClient";
+import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
 
 const router = Router();
 
@@ -74,7 +75,7 @@ router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => 
     mode: "subscription",
     customer: stripeCustomerId,
     line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
-    success_url: `${appUrl()}/subscription?checkout=success`,
+    success_url: `${appUrl()}/subscription?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl()}/subscription?checkout=cancelled`,
     subscription_data: {
       metadata: { companyId: String(company.id) },
@@ -83,6 +84,51 @@ router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => 
   });
 
   return res.json({ url: session.url });
+});
+
+// Reconciles the company's subscription state right after returning from
+// Checkout, using the session ID from the success_url.
+//
+// This is a deliberate second path to the same data the webhook writes
+// (see services/stripe/syncSubscription.ts) — not a replacement for it. The
+// webhook is the source of truth for ongoing changes (renewals,
+// cancellations, payment failures), but it requires Stripe to be able to
+// reach this server (a registered Dashboard endpoint, or `stripe listen`
+// locally). Without that, a successful payment leaves the UI showing
+// "Free/Inactive" indefinitely even though Stripe already charged the
+// customer — exactly what this route fixes for the immediate post-checkout
+// case.
+router.post("/sync", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
+  const { sessionId } = req.body;
+
+  if (!sessionId) {
+    return res.status(400).json({ error: "sessionId is required" });
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+  if (session.metadata?.companyId !== String(req.user!.companyId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  if (!session.subscription) {
+    return res.status(400).json({ error: "Checkout session has no subscription" });
+  }
+
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription.id;
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  await applySubscriptionUpdate(
+    req.user!.companyId!,
+    subscription,
+    typeof session.customer === "string" ? session.customer : undefined
+  );
+
+  return res.json({ synced: true });
 });
 
 // Opens the Stripe Billing Portal so the owner can manage/cancel the

@@ -6,6 +6,7 @@ import {
   getSubscriptionStatus,
   startCheckout,
   startPortal,
+  syncCheckoutSession,
   type SubscriptionStatus,
 } from "../services/subscription.service";
 
@@ -18,20 +19,37 @@ export default function SubscriptionPage() {
   const [isStarting, setIsStarting] = useState(false);
 
   const checkoutResult = searchParams.get("checkout");
+  const sessionId = searchParams.get("session_id");
 
-  useEffect(() => {
+  const loadStatus = () => {
     getSubscriptionStatus()
       .then(setStatus)
       .catch(() => setStatus(null));
+  };
+
+  useEffect(() => {
+    loadStatus();
   }, []);
 
   useEffect(() => {
-    if (checkoutResult === "success") {
-      setMessage("Subscription activated. It may take a few seconds to show below.");
+    if (checkoutResult === "success" && sessionId) {
+      // Don't rely solely on the webhook having already landed — reconcile
+      // directly from the Checkout Session we just returned from, then
+      // refresh what's shown on screen.
+      syncCheckoutSession(sessionId)
+        .then(() => {
+          setMessage("Subscription activated.");
+          loadStatus();
+        })
+        .catch(() =>
+          setMessage(
+            "Payment succeeded, but we couldn't confirm it yet — refresh in a moment."
+          )
+        );
     } else if (checkoutResult === "cancelled") {
       setMessage("Checkout was cancelled — you have not been charged.");
     }
-  }, [checkoutResult]);
+  }, [checkoutResult, sessionId]);
 
   const isActive = status ? ACTIVE_STATUSES.includes(status.subscriptionStatus) : false;
 

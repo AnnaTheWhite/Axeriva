@@ -2,6 +2,10 @@ import { Router } from "express";
 import Stripe from "stripe";
 import prisma from "../database/prisma";
 import { stripe } from "../services/stripe/stripeClient";
+import {
+  applySubscriptionUpdate,
+  markSubscriptionCanceled,
+} from "../services/stripe/syncSubscription";
 
 const router = Router();
 
@@ -22,18 +26,6 @@ async function resolveCompanyId(
   });
 
   return company?.id ?? null;
-}
-
-function planForStatus(status: string): string {
-  return status === "active" || status === "trialing" ? "pro" : "free";
-}
-
-// The current API version moved `current_period_end` from the subscription
-// itself onto its line items (subscriptions can now have multiple items
-// with different billing periods). CrewFlow Pro is always a single item.
-function currentPeriodEnd(subscription: Stripe.Subscription): Date | null {
-  const item = subscription.items.data[0];
-  return item ? new Date(item.current_period_end * 1000) : null;
 }
 
 router.post("/", async (req, res) => {
@@ -71,17 +63,11 @@ router.post("/", async (req, res) => {
 
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
-        await prisma.company.update({
-          where: { id: companyId },
-          data: {
-            stripeCustomerId:
-              typeof session.customer === "string" ? session.customer : undefined,
-            stripeSubscriptionId: subscription.id,
-            subscriptionStatus: subscription.status,
-            plan: planForStatus(subscription.status),
-            subscriptionEndsAt: currentPeriodEnd(subscription),
-          },
-        });
+        await applySubscriptionUpdate(
+          companyId,
+          subscription,
+          typeof session.customer === "string" ? session.customer : undefined
+        );
       }
 
       break;
@@ -95,15 +81,7 @@ router.post("/", async (req, res) => {
       );
 
       if (companyId) {
-        await prisma.company.update({
-          where: { id: companyId },
-          data: {
-            stripeSubscriptionId: subscription.id,
-            subscriptionStatus: subscription.status,
-            plan: planForStatus(subscription.status),
-            subscriptionEndsAt: currentPeriodEnd(subscription),
-          },
-        });
+        await applySubscriptionUpdate(companyId, subscription);
       }
 
       break;
@@ -117,14 +95,7 @@ router.post("/", async (req, res) => {
       );
 
       if (companyId) {
-        await prisma.company.update({
-          where: { id: companyId },
-          data: {
-            subscriptionStatus: "canceled",
-            plan: "free",
-            subscriptionEndsAt: currentPeriodEnd(subscription),
-          },
-        });
+        await markSubscriptionCanceled(companyId, subscription);
       }
 
       break;
@@ -135,6 +106,15 @@ router.post("/", async (req, res) => {
   }
 
   return res.json({ received: true });
+});
+
+// Stripe only ever sends POST here. Without this, a GET (e.g. someone
+// opening the URL in a browser) falls through this router unmatched and
+// hits the authenticated /subscription router mounted further down in
+// index.ts, returning a confusing "Missing or invalid token" 401 instead of
+// a clear 404 for this public endpoint.
+router.all("/", (_req, res) => {
+  res.status(404).json({ error: "Not found" });
 });
 
 export default router;
