@@ -23,7 +23,7 @@ export default function PricingSection() {
         </div>
 
         <div className="mx-auto mt-12 max-w-md rounded-3xl border border-orange-500/30 bg-white/5 p-10 text-center backdrop-blur-xl">
-          <h3 className="text-xl font-semibold text-white">CrewFlow Pro</h3>
+          <h3 className="text-xl font-semibold text-white">Axeriva Pro</h3>
 
           <p className="mt-4">
             <span className="text-5xl font-bold text-white">€30</span>

@@ -5,10 +5,10 @@ export type WelcomeEmailData = {
 };
 
 export function welcomeEmailTemplate({ companyName }: WelcomeEmailData) {
-  const subject = "Welcome to CrewFlow";
+  const subject = "Welcome to Axeriva";
 
   const html = emailLayout(`
-    <p style="margin:0 0 16px;">Welcome to CrewFlow!</p>
+    <p style="margin:0 0 16px;">Welcome to Axeriva!</p>
     <p style="margin:0 0 16px;">
       Your account for <strong>${companyName}</strong> is ready. You can now
       add employees, create projects, and start scheduling shifts.
@@ -18,7 +18,7 @@ export function welcomeEmailTemplate({ companyName }: WelcomeEmailData) {
     </p>
   `);
 
-  const text = `Welcome to CrewFlow!\n\nYour account for ${companyName} is ready. You can now add employees, create projects, and start scheduling shifts.`;
+  const text = `Welcome to Axeriva!\n\nYour account for ${companyName} is ready. You can now add employees, create projects, and start scheduling shifts.`;
 
   return { subject, html, text };
 }

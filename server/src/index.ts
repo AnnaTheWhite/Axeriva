@@ -1,4 +1,3 @@
-import path from "path";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -19,12 +18,17 @@ import companyRoutes from "./routes/company.routes";
 import projectActivityRoutes from "./routes/projectActivity.routes";
 import attachmentsRoutes from "./routes/attachments.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
+import { UPLOAD_ROOT } from "./middleware/upload.middleware";
 
 dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// Restricted to the configured frontend origin once APP_URL is set to a
+// real domain in production; falls back to allow-all locally (APP_URL
+// defaults to the Vite dev server, but if it's unset entirely, don't lock
+// out local tooling that doesn't set it).
+app.use(cors({ origin: process.env.APP_URL || true }));
 
 // Stripe needs the raw request body to verify the webhook signature, so this
 // route must be registered with express.raw() before the global
@@ -39,11 +43,11 @@ app.use(express.json({ limit: "5mb" }));
 // not as base64 in the DB. Filenames are randomized UUIDs, not the
 // uploaded names, so this can stay a plain static mount without leaking
 // anything by browsing it.
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/uploads", express.static(UPLOAD_ROOT));
 
 app.get("/", (_req, res) => {
 res.json({
-name: "CrewFlow API",
+name: "Axeriva API",
 version: "1.0.0",
 status: "running",
 });
@@ -69,6 +73,6 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
 console.log(
-`CrewFlow API running on port ${PORT}`
+`Axeriva API running on port ${PORT}`
 );
 });

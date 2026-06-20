@@ -24,7 +24,7 @@ export default function HeroSection() {
         </span>
 
         <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
-          CrewFlow — Workforce Management
+          Axeriva — Workforce Management
           <br />
           for Field Service Businesses
         </h1>

@@ -1,4 +1,4 @@
-// Shared wrapper so every CrewFlow email looks consistent. Email clients
+// Shared wrapper so every Axeriva email looks consistent. Email clients
 // need inline styles and table-safe markup — no external CSS, no flexbox.
 export function emailLayout(bodyHtml: string): string {
   return `<!doctype html>
@@ -10,7 +10,7 @@ export function emailLayout(bodyHtml: string): string {
           <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
             <tr>
               <td style="background-color:#0f172a;padding:24px 32px;">
-                <span style="font-size:20px;font-weight:bold;color:#ffffff;">Crew<span style="color:#f97316;">Flow</span></span>
+                <span style="font-size:20px;font-weight:bold;color:#ffffff;">Axeriva</span>
               </td>
             </tr>
             <tr>
@@ -20,7 +20,7 @@ export function emailLayout(bodyHtml: string): string {
             </tr>
             <tr>
               <td style="padding:20px 32px;background-color:#f8fafc;color:#94a3b8;font-size:12px;">
-                CrewFlow — Workforce Management for Field Service Businesses
+                Axeriva — Workforce Management for Field Service Businesses
               </td>
             </tr>
           </table>

@@ -3,11 +3,11 @@ import { stripe } from "../services/stripe/stripeClient";
 
 dotenv.config();
 
-const PRODUCT_NAME = "CrewFlow Pro";
+const PRODUCT_NAME = "Axeriva Pro";
 const UNIT_AMOUNT = 3000; // 30.00 EUR, in cents
 const CURRENCY = "eur";
 
-// Idempotent: finds the existing "CrewFlow Pro" product/price (30 EUR/month)
+// Idempotent: finds the existing "Axeriva Pro" product/price (30 EUR/month)
 // in the connected Stripe test account, or creates them if missing. Prints
 // the price ID to paste into server/.env as STRIPE_PRICE_ID.
 async function main() {

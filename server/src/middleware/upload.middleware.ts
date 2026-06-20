@@ -8,7 +8,13 @@ import multer from "multer";
 // original name) so a leaked/guessed URL alone doesn't reveal what the
 // file is; access to the *link* still flows through the authenticated
 // GET /projects/:id/attachments response.
-export const UPLOADS_DIR = path.join(process.cwd(), "uploads", "projects");
+//
+// UPLOAD_ROOT lets production point this at a mounted persistent disk
+// (e.g. Render's disk is typically mounted outside the app's working
+// directory) — without it, uploaded files would be wiped on every deploy.
+// Defaults to ./uploads under the project root for local development.
+export const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(process.cwd(), "uploads");
+export const UPLOADS_DIR = path.join(UPLOAD_ROOT, "projects");
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 

@@ -32,7 +32,7 @@ A `STRIPE_WEBHOOK_SECRET` jelenlegi értéke (`whsec_test_local_dev_secret`) egy
 4. Kattints **"Add endpoint"**.
 5. **Endpoint URL**: a backended publikusan elérhető címe + `/subscription/webhook`.
    - Helyi gépen ez **nem működik közvetlenül** (a Stripe nem tud `localhost`-ra küldeni) — erre a 4. pont (Stripe CLI) ad megoldást.
-   - Élesben (lásd 6. pont) valami ilyesmi lesz: `https://api.crewflow.com/subscription/webhook`.
+   - Élesben (lásd 6. pont) valami ilyesmi lesz: `https://api.axeriva.com/subscription/webhook`.
 6. **"Select events"** — válaszd ki pontosan azt a 3 eseményt, amit a kód kezel:
    - `checkout.session.completed`
    - `customer.subscription.updated`
@@ -155,7 +155,7 @@ Ne keverd össze ezekkel a már meglévő, helyesen beállított változókkal:
 
 ### 6.1 Webhook endpoint élesben
 
-1. Hozz létre egy **második, külön Webhook endpoint-ot** a Stripe Dashboardban, de most **Live mode**-ban (a bal felső kapcsolóval válts át), ugyanazokkal a 3 eseménnyel (2. pont), az URL pedig a tényleges production API domain + `/subscription/webhook` (pl. `https://api.crewflow.com/subscription/webhook`).
+1. Hozz létre egy **második, külön Webhook endpoint-ot** a Stripe Dashboardban, de most **Live mode**-ban (a bal felső kapcsolóval válts át), ugyanazokkal a 3 eseménnyel (2. pont), az URL pedig a tényleges production API domain + `/subscription/webhook` (pl. `https://api.axeriva.com/subscription/webhook`).
 2. Ez egy **másik** `whsec_...` secret-et fog adni, mint a test mode endpoint — ezt kell betenni a **production environment** változói közé (nem a helyi `.env`-be — abba a hosting platform saját env var kezelőjébe: pl. Vercel/Render/Railway/Fly.io "Environment Variables" panelje, vagy a szerver gépén egy production `.env`, amit **nem** verziókezelünk).
 3. Ugyanide kell a live `STRIPE_SECRET_KEY` (`sk_live_...`) és egy live módban létrehozott `STRIPE_PRICE_ID` (a `stripe:setup` script live kulccsal futtatva újra létrehozza a Product+Price-t live módban is).
 4. Az `APP_URL` env var-t is a production frontend URL-jére kell állítani (ez adja a Checkout `success_url`/`cancel_url` és a Billing Portal `return_url` alapját — lásd [server/src/routes/subscription.routes.ts:11-13](server/src/routes/subscription.routes.ts)).

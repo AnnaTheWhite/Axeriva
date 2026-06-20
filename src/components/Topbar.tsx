@@ -24,7 +24,7 @@ export default function Topbar() {
     >
       <div>
         <h2 className="text-lg font-semibold">
-          CrewFlow
+          Axeriva
         </h2>
       </div>
 

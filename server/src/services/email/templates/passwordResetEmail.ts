@@ -6,10 +6,10 @@ export type PasswordResetEmailData = {
 
 // Foundation only — no route generates resetLink yet (see EmailService.ts).
 export function passwordResetEmailTemplate({ resetLink }: PasswordResetEmailData) {
-  const subject = "Reset your CrewFlow password";
+  const subject = "Reset your Axeriva password";
 
   const html = emailLayout(`
-    <p style="margin:0 0 16px;">We received a request to reset your CrewFlow password.</p>
+    <p style="margin:0 0 16px;">We received a request to reset your Axeriva password.</p>
     ${ctaButton("Reset password", resetLink)}
     <p style="margin:16px 0 0;color:#64748b;font-size:13px;">
       If you didn't request this, you can safely ignore this email — your
@@ -17,7 +17,7 @@ export function passwordResetEmailTemplate({ resetLink }: PasswordResetEmailData
     </p>
   `);
 
-  const text = `We received a request to reset your CrewFlow password.\n\nReset it here: ${resetLink}\n\nIf you didn't request this, you can ignore this email.`;
+  const text = `We received a request to reset your Axeriva password.\n\nReset it here: ${resetLink}\n\nIf you didn't request this, you can ignore this email.`;
 
   return { subject, html, text };
 }

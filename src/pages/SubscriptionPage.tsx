@@ -87,7 +87,7 @@ export default function SubscriptionPage() {
     <div className="p-8">
       <PageHeader
         title="Subscription"
-        subtitle="Manage your CrewFlow billing plan."
+        subtitle="Manage your Axeriva billing plan."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -111,7 +111,7 @@ export default function SubscriptionPage() {
         </div>
 
         <div className="rounded-3xl border border-orange-500/30 bg-white/5 p-8 backdrop-blur-xl">
-          <h3 className="text-xl font-semibold text-white">CrewFlow Pro</h3>
+          <h3 className="text-xl font-semibold text-white">Axeriva Pro</h3>
           <p className="mt-2 text-3xl font-bold text-white">
             €30 <span className="text-base font-normal text-slate-400">/ month</span>
           </p>

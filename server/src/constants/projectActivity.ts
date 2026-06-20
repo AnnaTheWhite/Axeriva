@@ -4,7 +4,7 @@ export const PROJECT_ACTIVITY_TYPES = {
   PHOTO_UPLOADED: "PHOTO_UPLOADED",
   CLOCK_IN: "CLOCK_IN",
   CLOCK_OUT: "CLOCK_OUT",
-  // No task system exists yet in CrewFlow — reserved for when one does.
+  // No task system exists yet in Axeriva — reserved for when one does.
   TASK_COMPLETED: "TASK_COMPLETED",
 } as const;
 

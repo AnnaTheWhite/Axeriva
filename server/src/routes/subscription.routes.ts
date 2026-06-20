@@ -32,7 +32,7 @@ router.get("/", async (req, res) => {
   return res.json(company);
 });
 
-// Starts a Stripe Checkout session for the CrewFlow Pro plan (30 EUR/month).
+// Starts a Stripe Checkout session for the Axeriva Pro plan (30 EUR/month).
 // Only the BUSINESS_OWNER who owns the company can subscribe — not
 // DEVELOPER (platform operator) and not EMPLOYEE.
 router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "seed:developer": "ts-node --transpile-only src/scripts/seedDeveloper.ts",
-    "stripe:setup": "ts-node --transpile-only src/scripts/stripeSetup.ts"
+    "stripe:setup": "ts-node --transpile-only src/scripts/stripeSetup.ts",
+    "build": "prisma generate && tsc",
+    "start": "prisma migrate deploy && node dist/index.js"
   },
   "keywords": [],
   "author": "",

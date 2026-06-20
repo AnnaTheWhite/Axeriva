@@ -6,12 +6,12 @@ export type InvitationEmailData = {
 };
 
 export function invitationEmailTemplate({ companyName, inviteLink }: InvitationEmailData) {
-  const subject = `You've been invited to join ${companyName} on CrewFlow`;
+  const subject = `You've been invited to join ${companyName} on Axeriva`;
 
   const html = emailLayout(`
     <p style="margin:0 0 16px;">Hi,</p>
     <p style="margin:0 0 16px;">
-      You've been invited to join <strong>${companyName}</strong> on CrewFlow.
+      You've been invited to join <strong>${companyName}</strong> on Axeriva.
       Click below to set your password and activate your account.
     </p>
     ${ctaButton("Accept invitation", inviteLink)}
@@ -21,7 +21,7 @@ export function invitationEmailTemplate({ companyName, inviteLink }: InvitationE
     </p>
   `);
 
-  const text = `You've been invited to join ${companyName} on CrewFlow.\n\nAccept your invitation: ${inviteLink}\n\nThis link expires in 7 days.`;
+  const text = `You've been invited to join ${companyName} on Axeriva.\n\nAccept your invitation: ${inviteLink}\n\nThis link expires in 7 days.`;
 
   return { subject, html, text };
 }

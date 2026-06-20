@@ -14,7 +14,7 @@ export default function BenefitsSection() {
       <div className="mx-auto max-w-6xl">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-bold text-white sm:text-4xl">
-            Why CrewFlow?
+            Why Axeriva?
           </h2>
           <p className="mt-3 text-slate-400">
             Everything you need to run a field service business, without the

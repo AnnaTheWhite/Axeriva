@@ -34,7 +34,7 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-white/5 p-8"
       >
         <h1 className="text-xl font-semibold text-white">
-          Log in to CrewFlow
+          Log in to Axeriva
         </h1>
 
         {error && (

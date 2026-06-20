@@ -49,7 +49,7 @@ export default function VerifyEmailPage() {
               to="/"
               className="inline-block rounded-xl bg-orange-500 px-5 py-2 font-medium text-white hover:bg-orange-600"
             >
-              Continue to CrewFlow
+              Continue to Axeriva
             </Link>
           </>
         )}

@@ -7,7 +7,7 @@ function planForStatus(status: string): string {
 
 // The current API version moved `current_period_end` from the subscription
 // itself onto its line items (subscriptions can now have multiple items
-// with different billing periods). CrewFlow Pro is always a single item.
+// with different billing periods). Axeriva Pro is always a single item.
 function currentPeriodEnd(subscription: Stripe.Subscription): Date | null {
   const item = subscription.items.data[0];
   return item ? new Date(item.current_period_end * 1000) : null;

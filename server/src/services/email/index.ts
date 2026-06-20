@@ -7,7 +7,7 @@ dotenv.config();
 export type { EmailService } from "./EmailService";
 
 const apiKey = process.env.RESEND_API_KEY;
-const fromAddress = process.env.RESEND_FROM_EMAIL || "CrewFlow <onboarding@resend.dev>";
+const fromAddress = process.env.RESEND_FROM_EMAIL || "Axeriva <onboarding@resend.dev>";
 
 // Falls back to the console-logging mock whenever RESEND_API_KEY isn't set
 // — keeps local development working without real email credentials, while
