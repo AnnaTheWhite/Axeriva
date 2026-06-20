@@ -1,9 +1,9 @@
-import { API_URL } from "./api";
+import { API_URL, authHeaders } from "./api";
 
 export async function getEmployees() {
-  const response = await fetch(
-    `${API_URL}/employees`
-  );
+  const response = await fetch(`${API_URL}/employees`, {
+    headers: { ...authHeaders() },
+  });
 
   if (!response.ok) {
     throw new Error("Failed to load employees");
@@ -17,20 +17,87 @@ export async function createEmployee(data: {
   lastName: string;
   phone?: string;
   email?: string;
+  status?: string;
 }) {
+  const response = await fetch(`${API_URL}/employees`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create employee");
+  }
+
+  return response.json();
+}
+
+export async function updateEmployeeStatus(
+  id: number,
+  status: string
+) {
   const response = await fetch(
-    `${API_URL}/employees`,
+    `${API_URL}/employees/${id}/status`,
     {
-      method: "POST",
+      method: "PUT",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ status }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to update employee status");
+  }
+
+  return response.json();
+}
+
+export async function deleteEmployee(id: number) {
+  const response = await fetch(
+    `${API_URL}/employees/${id}`,
+    {
+      method: "DELETE",
+      headers: { ...authHeaders() },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to delete employee");
+  }
+
+  return response.json();
+}
+
+export async function updateEmployee(
+  id: number,
+  data: {
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    email?: string;
+    status: string;
+  }
+) {
+  const response = await fetch(
+    `${API_URL}/employees/${id}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
       },
       body: JSON.stringify(data),
     }
   );
 
   if (!response.ok) {
-    throw new Error("Failed to create employee");
+    throw new Error("Failed to update employee");
   }
 
   return response.json();

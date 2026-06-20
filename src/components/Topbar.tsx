@@ -1,4 +1,15 @@
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
 export default function Topbar() {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   return (
     <header
       className="
@@ -17,19 +28,43 @@ export default function Topbar() {
         </h2>
       </div>
 
-      <div
-        className="
-          flex
-          h-10
-          w-10
-          items-center
-          justify-center
-          rounded-full
-          bg-orange-500
-          font-bold
-        "
-      >
-        A
+      <div className="flex items-center gap-4">
+        {user && (
+          <span className="text-sm text-white/60">{user.email}</span>
+        )}
+
+        <button
+          onClick={handleLogout}
+          className="
+            rounded-xl
+            border
+            border-white/10
+            bg-white/5
+            px-3
+            py-1.5
+            text-sm
+            text-white
+            transition
+            hover:bg-white/10
+          "
+        >
+          Log out
+        </button>
+
+        <div
+          className="
+            flex
+            h-10
+            w-10
+            items-center
+            justify-center
+            rounded-full
+            bg-orange-500
+            font-bold
+          "
+        >
+          {user?.email?.[0]?.toUpperCase() ?? "A"}
+        </div>
       </div>
     </header>
   );

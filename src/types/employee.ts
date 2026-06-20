@@ -4,5 +4,8 @@ export type Employee = {
   lastName: string;
   phone?: string;
   email?: string;
-  active: boolean;
+  status: string;
+
+  createdAt?: string;
+  updatedAt?: string;
 };

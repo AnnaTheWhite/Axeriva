@@ -7,14 +7,153 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Company {
+  id Int @id @default(autoincrement())
+
+  name String
+
+  // Subscription / billing — populated by the future Stripe integration.
+  plan               String  @default("free")
+  subscriptionStatus String  @default("inactive")
+  stripeCustomerId   String?
+
+  employees   Employee[]
+  customers   Customer[]
+  projects    Project[]
+  users       User[]
+  invitations Invitation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id Int @id @default(autoincrement())
+
+  email    String @unique
+  password String
+  role     String @default("BUSINESS_OWNER")
+
+  // Optional: a DEVELOPER (platform operator) belongs to no company.
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  // Set only for EMPLOYEE-role users — links the login to the worker record
+  // that owns their shifts/projects.
+  employeeId Int?     @unique
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Employee {
-  id        Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
+
   firstName String
   lastName  String
   phone     String?
   email     String?
-  active    Boolean  @default(true)
+
+  status String @default("Active")
+
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  assignments ProjectAssignment[]
+  user        User?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  Shift     Shift[]
+}
+
+model Project {
+  id Int @id @default(autoincrement())
+
+  name        String
+  description String?
+  status      String    @default("Planned")
+  deadline    DateTime?
+
+  customerId Int?
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  assignments ProjectAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Shift     Shift[]
+}
+
+model ProjectAssignment {
+  id Int @id @default(autoincrement())
+
+  employeeId Int
+  projectId  Int
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([employeeId, projectId])
+}
+
+model Customer {
+  id Int @id @default(autoincrement())
+
+  name    String
+  email   String?
+  phone   String?
+  address String?
+
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Shift {
+  id Int @id @default(autoincrement())
+
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  start DateTime
+  end   DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Invitation {
+  id Int @id @default(autoincrement())
+
+  email String
+  token String @unique
+  role  String @default("EMPLOYEE")
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  invitedByUserId Int
+
+  expiresAt  DateTime
+  acceptedAt DateTime?
+
+  createdAt DateTime @default(now())
 }
