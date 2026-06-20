@@ -19,11 +19,18 @@ model Company {
   stripeSubscriptionId String?
   subscriptionEndsAt   DateTime?
 
+  // Soft-delete — set together when the owning BUSINESS_OWNER deletes their
+  // account. Existing rows/relations are kept for history, nothing is
+  // physically removed.
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+
   employees   Employee[]
   customers   Customer[]
   projects    Project[]
   users       User[]
   invitations Invitation[]
+  auditLogs   AuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -35,6 +42,15 @@ model User {
   email    String @unique
   password String
   role     String @default("BUSINESS_OWNER")
+
+  emailVerified               Boolean   @default(false)
+  emailVerificationToken      String?   @unique
+  emailVerificationExpiresAt  DateTime?
+
+  // Soft-delete — login is rejected once `active` is false. Set by
+  // POST /account/delete; nothing is physically removed.
+  active    Boolean   @default(true)
+  deletedAt DateTime?
 
   // Optional: a DEVELOPER (platform operator) belongs to no company.
   companyId Int?
@@ -148,6 +164,22 @@ model Shift {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id Int @id @default(autoincrement())
+
+  action String
+
+  userId    Int?
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  // Free-form JSON string — kept simple (no separate key/value table) since
+  // this is a fixed-shape audit trail, not a queryable analytics store.
+  metadata String?
+
+  createdAt DateTime @default(now())
 }
 
 model Invitation {
