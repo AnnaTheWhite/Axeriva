@@ -10,6 +10,7 @@ import PricingPage from "../../pages/PricingPage";
 import LoginPage from "../../pages/LoginPage";
 import RegisterPage from "../../pages/RegisterPage";
 import AcceptInvitePage from "../../pages/AcceptInvitePage";
+import VerifyEmailPage from "../../pages/VerifyEmailPage";
 import DashboardPage from "../../pages/DashboardPage";
 import EmployeesPage from "../../pages/EmployeesPage";
 import ProjectsPage from "../../pages/ProjectsPage";
@@ -60,6 +61,7 @@ export default function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/invite/:token" element={<AcceptInvitePage />} />
+        <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
 
         {/* BUSINESS_OWNER */}
         <Route

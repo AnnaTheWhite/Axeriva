@@ -32,6 +32,9 @@ async function main() {
       password: hashedPassword,
       role: ROLES.DEVELOPER,
       companyId: null,
+      // Seeded directly by an operator, not via public registration — no
+      // email loop to close.
+      emailVerified: true,
     },
   });
 

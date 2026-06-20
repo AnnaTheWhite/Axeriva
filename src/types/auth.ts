@@ -12,6 +12,7 @@ export type AuthUser = {
   role: Role;
   companyId: number | null;
   employeeId: number | null;
+  emailVerified: boolean;
 };
 
 export type AuthResponse = {

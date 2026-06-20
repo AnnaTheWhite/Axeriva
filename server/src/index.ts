@@ -13,6 +13,7 @@ import subscriptionRoutes from "./routes/subscription.routes";
 import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
 import adminRoutes from "./routes/admin.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import accountRoutes from "./routes/account.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
 
 dotenv.config();
@@ -47,6 +48,7 @@ app.use("/shifts", authMiddleware, shiftsRoutes);
 app.use("/subscription", authMiddleware, subscriptionRoutes);
 app.use("/admin", authMiddleware, adminRoutes);
 app.use("/dashboard", authMiddleware, dashboardRoutes);
+app.use("/account", authMiddleware, accountRoutes);
 
 const PORT = process.env.PORT || 5000;
 

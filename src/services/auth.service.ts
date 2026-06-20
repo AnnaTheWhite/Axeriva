@@ -1,4 +1,4 @@
-import { API_URL } from "./api";
+import { API_URL, authHeaders } from "./api";
 import type { AuthResponse } from "../types/auth";
 
 export async function login(
@@ -34,4 +34,25 @@ export async function register(
   }
 
   return response.json();
+}
+
+export async function verifyEmail(token: string): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/verify-email/${token}`);
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Invalid or expired verification link");
+  }
+}
+
+export async function resendVerificationEmail(): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/resend-verification`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to resend verification email");
+  }
 }
