@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import Button from "../components/ui/Button";
 import DangerZoneSection from "../components/account/DangerZoneSection";
+import CompanyProfileSection from "../components/company/CompanyProfileSection";
+import BrandingSection from "../components/company/BrandingSection";
 import { useAuth } from "../context/AuthContext";
 import { getMyCompany, updateMyCompany } from "../services/company.service";
 import { getSubscriptionStatus } from "../services/subscription.service";
@@ -67,6 +69,9 @@ export default function SettingsPage() {
           <Button onClick={handleSave}>Save</Button>
         </div>
       </div>
+
+      <CompanyProfileSection />
+      <BrandingSection />
 
       <DangerZoneSection
         warning={

@@ -4,6 +4,9 @@ import PageHeader from "../components/PageHeader";
 import EmptyState from "../components/ui/EmptyState";
 import { getProjects } from "../services/project.service";
 import type { Project } from "../types/project";
+import NotesSection from "../components/project-activity/NotesSection";
+import AttachmentsSection from "../components/project-activity/AttachmentsSection";
+import ActivityTimeline from "../components/project-activity/ActivityTimeline";
 
 export default function ProjectDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -91,6 +94,15 @@ export default function ProjectDetailsPage() {
             {project.geofenceRadius != null ? `${project.geofenceRadius} m` : "Not set"}
           </p>
         </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <NotesSection projectId={project.id} />
+        <ActivityTimeline projectId={project.id} />
+      </div>
+
+      <div className="mt-6">
+        <AttachmentsSection projectId={project.id} canDelete />
       </div>
     </div>
   );

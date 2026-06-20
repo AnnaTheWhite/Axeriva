@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import EmptyState from "../components/ui/EmptyState";
 import { getProjects } from "../services/project.service";
@@ -24,9 +25,10 @@ export default function MyProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <div
+            <Link
               key={project.id}
-              className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl"
+              to={`/my-projects/${project.id}`}
+              className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition hover:border-white/20"
             >
               <h3 className="font-semibold text-white">{project.name}</h3>
               <p className="mt-1 text-sm text-slate-400">{project.status}</p>
@@ -35,7 +37,7 @@ export default function MyProjectsPage() {
                   Customer: {project.customer.name}
                 </p>
               )}
-            </div>
+            </Link>
           ))}
         </div>
       )}

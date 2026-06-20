@@ -10,10 +10,16 @@ import { authMiddleware } from "../middleware/auth.middleware";
 const router = Router();
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 function buildVerifyLink(token: string) {
   const appUrl = process.env.APP_URL || "http://localhost:5173";
   return `${appUrl}/verify-email/${token}`;
+}
+
+function buildResetLink(token: string) {
+  const appUrl = process.env.APP_URL || "http://localhost:5173";
+  return `${appUrl}/reset-password/${token}`;
 }
 
 router.post("/register", async (req, res) => {
@@ -200,6 +206,80 @@ router.post("/resend-verification", authMiddleware, async (req, res) => {
   }
 
   return res.json({ sent: true });
+});
+
+// Always returns a generic success message, regardless of whether the
+// email matches an account — this can't be used to probe which emails are
+// registered.
+router.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "email is required" });
+  }
+
+  const genericResponse = {
+    message: "If an account with that email exists, a reset link has been sent.",
+  };
+
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user || !user.active) {
+    return res.json(genericResponse);
+  }
+
+  const resetToken = crypto.randomBytes(32).toString("hex");
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetToken: resetToken,
+      passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+    },
+  });
+
+  emailService
+    .sendPasswordResetEmail(user.email, buildResetLink(resetToken))
+    .catch((error) => {
+      console.error("[auth] password reset email failed", error);
+    });
+
+  return res.json(genericResponse);
+});
+
+// Public — the link sent in the password reset email points here.
+router.post("/reset-password/:token", async (req, res) => {
+  const { token } = req.params;
+  const { password } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ error: "password is required" });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { passwordResetToken: token },
+  });
+
+  if (
+    !user ||
+    !user.passwordResetExpiresAt ||
+    user.passwordResetExpiresAt < new Date()
+  ) {
+    return res.status(400).json({ error: "Invalid or expired reset link" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      passwordResetToken: null,
+      passwordResetExpiresAt: null,
+    },
+  });
+
+  return res.json({ reset: true });
 });
 
 export default router;

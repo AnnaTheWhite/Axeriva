@@ -4,6 +4,8 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { companyScope } from "../utils/scope";
 import { getHoursByProject } from "../utils/projectHours";
+import { logProjectActivity } from "../services/activity/logProjectActivity";
+import { PROJECT_ACTIVITY_TYPES } from "../constants/projectActivity";
 
 const router = Router();
 
@@ -81,6 +83,14 @@ router.post("/clock-in", requireRole(ROLES.EMPLOYEE), async (req, res) => {
     include: { project: true },
   });
 
+  if (shift.projectId) {
+    await logProjectActivity({
+      projectId: shift.projectId,
+      userId: req.user!.userId,
+      type: PROJECT_ACTIVITY_TYPES.CLOCK_IN,
+    });
+  }
+
   return res.status(201).json(shift);
 });
 
@@ -99,6 +109,14 @@ router.post("/clock-out", requireRole(ROLES.EMPLOYEE), async (req, res) => {
     data: { end: new Date() },
     include: { project: true },
   });
+
+  if (shift.projectId) {
+    await logProjectActivity({
+      projectId: shift.projectId,
+      userId: req.user!.userId,
+      type: PROJECT_ACTIVITY_TYPES.CLOCK_OUT,
+    });
+  }
 
   return res.json(shift);
 });

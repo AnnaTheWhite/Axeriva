@@ -11,6 +11,8 @@ import LoginPage from "../../pages/LoginPage";
 import RegisterPage from "../../pages/RegisterPage";
 import AcceptInvitePage from "../../pages/AcceptInvitePage";
 import VerifyEmailPage from "../../pages/VerifyEmailPage";
+import ForgotPasswordPage from "../../pages/ForgotPasswordPage";
+import ResetPasswordPage from "../../pages/ResetPasswordPage";
 import DashboardPage from "../../pages/DashboardPage";
 import EmployeesPage from "../../pages/EmployeesPage";
 import ProjectsPage from "../../pages/ProjectsPage";
@@ -23,6 +25,7 @@ import SettingsPage from "../../pages/SettingsPage";
 import MySchedulePage from "../../pages/MySchedulePage";
 import MyTimePage from "../../pages/MyTimePage";
 import MyProjectsPage from "../../pages/MyProjectsPage";
+import MyProjectDetailsPage from "../../pages/MyProjectDetailsPage";
 import ProfilePage from "../../pages/ProfilePage";
 import PlatformDashboardPage from "../../pages/admin/PlatformDashboardPage";
 import AdminCompaniesPage from "../../pages/admin/AdminCompaniesPage";
@@ -62,6 +65,8 @@ export default function AppRouter() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/invite/:token" element={<AcceptInvitePage />} />
         <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
         {/* BUSINESS_OWNER */}
         <Route
@@ -172,6 +177,16 @@ export default function AppRouter() {
             <ProtectedRoute roles={[ROLES.EMPLOYEE]}>
               <DashboardLayout>
                 <MyProjectsPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-projects/:id"
+          element={
+            <ProtectedRoute roles={[ROLES.EMPLOYEE]}>
+              <DashboardLayout>
+                <MyProjectDetailsPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

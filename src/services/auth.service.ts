@@ -56,3 +56,34 @@ export async function resendVerificationEmail(): Promise<void> {
     throw new Error(data.error || "Failed to resend verification email");
   }
 }
+
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  const response = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to request password reset");
+  }
+
+  return response.json();
+}
+
+export async function resetPassword(
+  token: string,
+  password: string
+): Promise<void> {
+  const response = await fetch(`${API_URL}/auth/reset-password/${token}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Invalid or expired reset link");
+  }
+}
