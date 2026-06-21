@@ -36,9 +36,13 @@ const storage = multer.diskStorage({
   },
 });
 
-export const uploadProjectFile = multer({
+// Up to 20 files per request — a deliberate sanity cap, not a product
+// "storage limit" (that's explicitly out of scope for this sprint).
+const MAX_FILES_PER_UPLOAD = 20;
+
+export const uploadProjectFiles = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024, files: MAX_FILES_PER_UPLOAD },
   fileFilter: (_req, file, callback) => {
     if (!ALLOWED_MIME_TYPES[file.mimetype]) {
       callback(new Error("Unsupported file type. Allowed: JPG, PNG, PDF, DOCX, XLSX."));
@@ -47,7 +51,7 @@ export const uploadProjectFile = multer({
 
     callback(null, true);
   },
-}).single("file");
+}).array("files", MAX_FILES_PER_UPLOAD);
 
 export function isImageMimeType(mimeType: string): boolean {
   return mimeType === "image/jpeg" || mimeType === "image/png";

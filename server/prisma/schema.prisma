@@ -165,6 +165,12 @@ model ProjectAttachment {
   fileSize Int
   fileUrl  String
 
+  // Free-form on purpose (not a Prisma enum) so adding a category later is
+  // a data change, not a migration. Validated against a fixed list at the
+  // API layer (see constants/attachmentCategories.ts) — defaults to
+  // "Other" for both new uploads without a category and existing rows.
+  category String @default("Other")
+
   createdAt DateTime @default(now())
 }
 

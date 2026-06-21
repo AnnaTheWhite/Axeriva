@@ -4,7 +4,8 @@ import { findAccessibleProject } from "../utils/projectAccess";
 import { userDisplayName } from "../utils/userDisplayName";
 import { logProjectActivity } from "../services/activity/logProjectActivity";
 import { PROJECT_ACTIVITY_TYPES } from "../constants/projectActivity";
-import { uploadProjectFile, isImageMimeType } from "../middleware/upload.middleware";
+import { uploadProjectFiles, isImageMimeType } from "../middleware/upload.middleware";
+import { normalizeCategory } from "../constants/attachmentCategories";
 
 const router = Router();
 
@@ -13,6 +14,35 @@ const USER_SELECT = {
   email: true,
   employee: { select: { firstName: true, lastName: true } },
 } as const;
+
+type AttachmentWithUser = {
+  id: number;
+  projectId: number;
+  userId: number;
+  user: Parameters<typeof userDisplayName>[0];
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  fileUrl: string;
+  category: string;
+  createdAt: Date;
+};
+
+function serializeAttachment(attachment: AttachmentWithUser) {
+  return {
+    id: attachment.id,
+    projectId: attachment.projectId,
+    userId: attachment.userId,
+    userName: userDisplayName(attachment.user),
+    fileName: attachment.fileName,
+    fileType: attachment.fileType,
+    fileSize: attachment.fileSize,
+    fileUrl: attachment.fileUrl,
+    category: attachment.category,
+    isImage: isImageMimeType(attachment.fileType),
+    createdAt: attachment.createdAt,
+  };
+}
 
 // --- Notes ---------------------------------------------------------------
 
@@ -98,23 +128,13 @@ router.get("/:id/attachments", async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
-  return res.json(
-    attachments.map((attachment) => ({
-      id: attachment.id,
-      projectId: attachment.projectId,
-      userId: attachment.userId,
-      userName: userDisplayName(attachment.user),
-      fileName: attachment.fileName,
-      fileType: attachment.fileType,
-      fileSize: attachment.fileSize,
-      fileUrl: attachment.fileUrl,
-      isImage: isImageMimeType(attachment.fileType),
-      createdAt: attachment.createdAt,
-    }))
-  );
+  return res.json(attachments.map(serializeAttachment));
 });
 
-// Any role with project access can upload — EMPLOYEE included.
+// Any role with project access can upload — EMPLOYEE included. Accepts one
+// or many files in a single request (field name "files"); every file
+// becomes its own ProjectAttachment row and its own activity entry, same
+// as if they'd been uploaded one at a time.
 router.post("/:id/attachments", async (req, res) => {
   const projectId = Number(req.params.id);
 
@@ -123,50 +143,50 @@ router.post("/:id/attachments", async (req, res) => {
     return res.status(404).json({ error: "Project not found" });
   }
 
-  uploadProjectFile(req, res, async (err) => {
+  uploadProjectFiles(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: "file is required" });
+    const files = req.files as Express.Multer.File[] | undefined;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: "At least one file is required" });
     }
 
-    const attachment = await prisma.projectAttachment.create({
-      data: {
+    const category = normalizeCategory(req.body.category);
+
+    const created = [];
+
+    for (const file of files) {
+      const attachment = await prisma.projectAttachment.create({
+        data: {
+          projectId,
+          userId: req.user!.userId,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          fileUrl: `/uploads/projects/${file.filename}`,
+          category,
+        },
+        include: { user: { select: USER_SELECT } },
+      });
+
+      const isImage = isImageMimeType(attachment.fileType);
+
+      await logProjectActivity({
         projectId,
         userId: req.user!.userId,
-        fileName: req.file.originalname,
-        fileType: req.file.mimetype,
-        fileSize: req.file.size,
-        fileUrl: `/uploads/projects/${req.file.filename}`,
-      },
-      include: { user: { select: USER_SELECT } },
-    });
+        type: isImage
+          ? PROJECT_ACTIVITY_TYPES.PHOTO_UPLOADED
+          : PROJECT_ACTIVITY_TYPES.FILE_UPLOADED,
+        metadata: { fileName: attachment.fileName, category },
+      });
 
-    const isImage = isImageMimeType(attachment.fileType);
+      created.push(serializeAttachment(attachment));
+    }
 
-    await logProjectActivity({
-      projectId,
-      userId: req.user!.userId,
-      type: isImage
-        ? PROJECT_ACTIVITY_TYPES.PHOTO_UPLOADED
-        : PROJECT_ACTIVITY_TYPES.FILE_UPLOADED,
-      metadata: { fileName: attachment.fileName },
-    });
-
-    return res.status(201).json({
-      id: attachment.id,
-      projectId: attachment.projectId,
-      userId: attachment.userId,
-      userName: userDisplayName(attachment.user),
-      fileName: attachment.fileName,
-      fileType: attachment.fileType,
-      fileSize: attachment.fileSize,
-      fileUrl: attachment.fileUrl,
-      isImage,
-      createdAt: attachment.createdAt,
-    });
+    return res.status(201).json(created);
   });
 });
 

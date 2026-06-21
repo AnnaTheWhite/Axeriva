@@ -52,12 +52,14 @@ export async function getProjectAttachments(
   return response.json();
 }
 
-export async function uploadProjectAttachment(
+export async function uploadProjectAttachments(
   projectId: number,
-  file: File
-): Promise<ProjectAttachment> {
+  files: File[],
+  category?: string
+): Promise<ProjectAttachment[]> {
   const formData = new FormData();
-  formData.append("file", file);
+  files.forEach((file) => formData.append("files", file));
+  if (category) formData.append("category", category);
 
   const response = await fetch(`${API_URL}/projects/${projectId}/attachments`, {
     method: "POST",
@@ -69,7 +71,7 @@ export async function uploadProjectAttachment(
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || "Failed to upload file");
+    throw new Error(data.error || "Failed to upload files");
   }
 
   return response.json();

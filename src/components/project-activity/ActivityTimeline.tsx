@@ -9,14 +9,16 @@ type ActivityTimelineProps = {
 function describeActivity(entry: ProjectActivityEntry): string {
   const fileName = (entry.metadata?.fileName as string | undefined) ?? "a file";
   const preview = entry.metadata?.preview as string | undefined;
+  const category = entry.metadata?.category as string | undefined;
+  const categorySuffix = category && category !== "Other" ? ` (${category})` : "";
 
   switch (entry.type) {
     case "NOTE_CREATED":
       return preview ? `added a note: "${preview}"` : "added a note";
     case "FILE_UPLOADED":
-      return `uploaded ${fileName}`;
+      return `uploaded ${fileName}${categorySuffix}`;
     case "PHOTO_UPLOADED":
-      return `uploaded ${fileName}`;
+      return `uploaded ${fileName}${categorySuffix}`;
     case "CLOCK_IN":
       return "clocked in";
     case "CLOCK_OUT":

@@ -7,6 +7,17 @@ export type ProjectNote = {
   createdAt: string;
 };
 
+export const ATTACHMENT_CATEGORIES = [
+  "Before",
+  "During",
+  "After",
+  "Issue",
+  "Material",
+  "Other",
+] as const;
+
+export type AttachmentCategory = (typeof ATTACHMENT_CATEGORIES)[number];
+
 export type ProjectAttachment = {
   id: number;
   projectId: number;
@@ -16,6 +27,7 @@ export type ProjectAttachment = {
   fileType: string;
   fileSize: number;
   fileUrl: string;
+  category: AttachmentCategory;
   isImage: boolean;
   createdAt: string;
 };
