@@ -50,7 +50,9 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
       onSuccess();
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to create project");
+      triggerToast(
+        error instanceof Error ? error.message : "Failed to create project"
+      );
     }
   };
 

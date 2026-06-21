@@ -7,6 +7,7 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { emailService } from "../services/email";
+import { isEmployeeLimitReached } from "../utils/planLimits";
 
 const router = Router();
 
@@ -35,6 +36,12 @@ router.post(
 
     if (!company) {
       return res.status(404).json({ error: "Company not found" });
+    }
+
+    if (await isEmployeeLimitReached(company.id)) {
+      return res.status(403).json({
+        error: "Free plan limit reached. Upgrade to Axeriva Pro to invite more employees.",
+      });
     }
 
     const token = crypto.randomBytes(24).toString("hex");

@@ -20,7 +20,8 @@ export async function createInvite(email: string): Promise<Invitation> {
   });
 
   if (!response.ok) {
-    throw new Error("Failed to create invite");
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to create invite");
   }
 
   return response.json();

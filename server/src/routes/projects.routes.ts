@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { companyScope } from "../utils/scope";
 import { validateGeofenceFields } from "../utils/validateGeofence";
+import { isProjectLimitReached } from "../utils/planLimits";
 
 const router = Router();
 
@@ -48,6 +49,12 @@ router.post(
 
     if (!req.user!.companyId) {
       return res.status(400).json({ error: "companyId is required" });
+    }
+
+    if (await isProjectLimitReached(req.user!.companyId)) {
+      return res.status(403).json({
+        error: "Free plan limit reached. Upgrade to Axeriva Pro to create more projects.",
+      });
     }
 
     const geofenceError = validateGeofenceFields({

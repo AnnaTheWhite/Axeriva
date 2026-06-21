@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
+import Toast from "../ui/Toast";
+import { useToast } from "../../hooks/useToast";
 import { createInvite } from "../../services/invites.service";
 
 type InviteModalProps = {
@@ -16,20 +18,22 @@ export default function InviteModal({
 }: InviteModalProps) {
   const [email, setEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { show, message, triggerToast } = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setIsSubmitting(true);
 
     try {
       const invite = await createInvite(email);
       setInviteLink(invite.inviteLink ?? null);
       onSuccess();
-    } catch {
-      setError("Failed to create invite.");
+    } catch (error) {
+      triggerToast(
+        error instanceof Error ? error.message : "Failed to create invite."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -38,7 +42,6 @@ export default function InviteModal({
   function handleClose() {
     setEmail("");
     setInviteLink(null);
-    setError(null);
     onClose();
   }
 
@@ -60,12 +63,6 @@ export default function InviteModal({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
-
           <div>
             <label className="block text-sm text-white/70">Email</label>
             <input
@@ -82,6 +79,8 @@ export default function InviteModal({
           </Button>
         </form>
       )}
+
+      <Toast show={show} message={message} />
     </Modal>
   );
 }
