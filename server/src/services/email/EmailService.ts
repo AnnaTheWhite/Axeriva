@@ -13,4 +13,10 @@ export interface EmailService {
   // generates the reset token/link doesn't exist yet, only the ability to
   // send the email once it does.
   sendPasswordResetEmail(to: string, resetLink: string): Promise<void>;
+
+  sendSubscriptionConfirmedEmail(
+    to: string,
+    companyName: string,
+    planName: string
+  ): Promise<void>;
 }

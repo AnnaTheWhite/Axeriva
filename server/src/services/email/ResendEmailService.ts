@@ -4,6 +4,7 @@ import { invitationEmailTemplate } from "./templates/invitationEmail";
 import { welcomeEmailTemplate } from "./templates/welcomeEmail";
 import { passwordResetEmailTemplate } from "./templates/passwordResetEmail";
 import { verificationEmailTemplate } from "./templates/verificationEmail";
+import { subscriptionConfirmedEmailTemplate } from "./templates/subscriptionConfirmedEmail";
 
 export class ResendEmailService implements EmailService {
   private resend: Resend;
@@ -35,6 +36,18 @@ export class ResendEmailService implements EmailService {
 
   async sendVerificationEmail(to: string, verifyLink: string): Promise<void> {
     const { subject, html, text } = verificationEmailTemplate({ verifyLink });
+    await this.send(to, subject, html, text);
+  }
+
+  async sendSubscriptionConfirmedEmail(
+    to: string,
+    companyName: string,
+    planName: string
+  ): Promise<void> {
+    const { subject, html, text } = subscriptionConfirmedEmailTemplate({
+      companyName,
+      planName,
+    });
     await this.send(to, subject, html, text);
   }
 

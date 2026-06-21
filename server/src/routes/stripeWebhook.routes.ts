@@ -6,6 +6,8 @@ import {
   applySubscriptionUpdate,
   markSubscriptionCanceled,
 } from "../services/stripe/syncSubscription";
+import { emailService } from "../services/email";
+import { ROLES } from "../constants/roles";
 
 const router = Router();
 
@@ -68,6 +70,27 @@ router.post("/", async (req, res) => {
           subscription,
           typeof session.customer === "string" ? session.customer : undefined
         );
+
+        // First-time activation only — customer.subscription.updated also
+        // fires on renewals/plan changes, which shouldn't re-send this.
+        const company = await prisma.company.findUnique({
+          where: { id: companyId },
+        });
+        const owner = await prisma.user.findFirst({
+          where: { companyId, role: ROLES.BUSINESS_OWNER },
+        });
+
+        if (company && owner) {
+          emailService
+            .sendSubscriptionConfirmedEmail(
+              owner.email,
+              company.name,
+              company.plan === "pro" ? "Axeriva Pro" : company.plan
+            )
+            .catch((error) => {
+              console.error("[stripe webhook] subscription confirmation email failed", error);
+            });
+        }
       }
 
       break;

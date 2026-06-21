@@ -25,4 +25,14 @@ export class MockEmailService implements EmailService {
   async sendVerificationEmail(to: string, verifyLink: string): Promise<void> {
     console.log(`[MockEmailService] Verification email for ${to}: ${verifyLink}`);
   }
+
+  async sendSubscriptionConfirmedEmail(
+    to: string,
+    companyName: string,
+    planName: string
+  ): Promise<void> {
+    console.log(
+      `[MockEmailService] Subscription confirmed for ${to} ("${companyName}", ${planName})`
+    );
+  }
 }
