@@ -12,28 +12,9 @@ export async function getEmployees() {
   return response.json();
 }
 
-export async function createEmployee(data: {
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  email?: string;
-  status?: string;
-}) {
-  const response = await fetch(`${API_URL}/employees`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to create employee");
-  }
-
-  return response.json();
-}
+// No createEmployee here by design — employees may only enter the system
+// through the invitation flow (see invites.service.ts createInvite). This
+// is a permanent product rule; do not reintroduce manual creation.
 
 export async function updateEmployeeStatus(
   id: number,

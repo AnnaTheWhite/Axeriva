@@ -17,26 +17,9 @@ router.get("/", async (req, res) => {
   return res.json(employees);
 });
 
-router.post("/", async (req, res) => {
-  const { firstName, lastName, phone, email, status } = req.body;
-
-  if (!req.user!.companyId) {
-    return res.status(400).json({ error: "companyId is required" });
-  }
-
-  const employee = await prisma.employee.create({
-    data: {
-      firstName,
-      lastName,
-      phone,
-      email,
-      status: status || "Active",
-      companyId: req.user!.companyId,
-    },
-  });
-
-  return res.status(201).json(employee);
-});
+// No POST "/" here by design — employees may only enter the system through
+// the invitation flow (see invites.routes.ts POST "/:token/accept"). Do not
+// add a manual-creation endpoint here; this is a permanent product rule.
 
 // Full update (edit modal)
 router.put("/:id", async (req, res) => {

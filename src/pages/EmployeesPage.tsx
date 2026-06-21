@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-import EmployeeModal from "../components/employees/EmployeeModal";
 import EmployeeEditModal from "../components/employees/EmployeeEditModal";
 import InviteModal from "../components/employees/InviteModal";
 import ConfirmModal from "../components/ui/ConfirmModal";
@@ -24,9 +23,6 @@ export default function EmployeesPage() {
 
   const [loading, setLoading] =
     useState(true);
-
-  const [isModalOpen, setIsModalOpen] =
-    useState(false);
 
   const [search, setSearch] =
     useState("");
@@ -172,16 +168,9 @@ export default function EmployeesPage() {
         <div className="flex gap-3">
           <button
             onClick={() => setIsInviteModalOpen(true)}
-            className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 font-medium text-white hover:bg-white/10"
-          >
-            Invite employee
-          </button>
-
-          <button
-            onClick={() => setIsModalOpen(true)}
             className="rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600"
           >
-            Add Employee
+            Invite employee
           </button>
         </div>
       </div>
@@ -290,12 +279,6 @@ export default function EmployeesPage() {
           </table>
         </div>
       )}
-
-      <EmployeeModal
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={loadEmployees}
-      />
 
       <InviteModal
         open={isInviteModalOpen}
