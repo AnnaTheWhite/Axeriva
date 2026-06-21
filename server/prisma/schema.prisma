@@ -100,6 +100,7 @@ model Employee {
 
   assignments ProjectAssignment[]
   user        User?
+  ownerNotes  OwnerNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -273,6 +274,12 @@ model OwnerNote {
 
   customerId Int?
   customer   Customer? @relation(fields: [customerId], references: [id])
+
+  // Phase 2 — owner can also link the note to the employee it's about
+  // (e.g. "Peter should go on Friday"). Detection only ever suggests this;
+  // linking always requires an explicit owner action.
+  employeeId Int?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

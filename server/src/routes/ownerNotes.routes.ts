@@ -4,11 +4,18 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { companyScope } from "../utils/scope";
 import { normalizeOwnerNoteStatus, OWNER_NOTE_STATUSES } from "../constants/ownerNoteStatuses";
+import { detectEntities } from "../utils/entityDetection";
 
 const router = Router();
 
 // Owner Command Center — BUSINESS_OWNER and DEVELOPER only, never EMPLOYEE.
 router.use(requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER));
+
+const NOTE_INCLUDE = {
+  project: { select: { id: true, name: true } },
+  customer: { select: { id: true, name: true } },
+  employee: { select: { id: true, firstName: true, lastName: true } },
+} as const;
 
 // BUSINESS_OWNER is always scoped to their own company (companyScope
 // enforces this from the JWT, ignoring anything in the query string).
@@ -55,15 +62,70 @@ router.get("/", async (req, res) => {
 
   const notes = await prisma.ownerNote.findMany({
     where,
-    include: {
-      project: { select: { id: true, name: true } },
-      customer: { select: { id: true, name: true } },
-    },
+    include: NOTE_INCLUDE,
     orderBy: { createdAt: "desc" },
   });
 
   return res.json(notes);
 });
+
+// Suggestions only — detects mentions of existing customers/projects/
+// employees in free-text. Never creates or links anything itself; the
+// owner reviews the suggestions and explicitly applies one via POST/PUT.
+router.post("/detect", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  if (!companyId) {
+    return res.status(400).json({ error: "companyId is required" });
+  }
+
+  const { text } = req.body;
+
+  if (typeof text !== "string" || !text.trim()) {
+    return res.json({ customers: [], projects: [], employees: [] });
+  }
+
+  const [customers, projects, employees] = await Promise.all([
+    prisma.customer.findMany({ where: { companyId }, select: { id: true, name: true } }),
+    prisma.project.findMany({ where: { companyId }, select: { id: true, name: true } }),
+    prisma.employee.findMany({
+      where: { companyId },
+      select: { id: true, firstName: true, lastName: true },
+    }),
+  ]);
+
+  return res.json(detectEntities(text, customers, projects, employees));
+});
+
+// Verifies a project/customer/employee id belongs to the same company
+// before a note is allowed to link to it — cross-tenant linking would let
+// a note leak which other company owns a given id.
+async function assertSameCompanyOrThrow(
+  companyId: number,
+  { projectId, customerId, employeeId }: Record<string, unknown>
+): Promise<string | null> {
+  if (projectId) {
+    const project = await prisma.project.findFirst({
+      where: { id: Number(projectId), companyId },
+    });
+    if (!project) return "Project not found";
+  }
+
+  if (customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: Number(customerId), companyId },
+    });
+    if (!customer) return "Customer not found";
+  }
+
+  if (employeeId) {
+    const employee = await prisma.employee.findFirst({
+      where: { id: Number(employeeId), companyId },
+    });
+    if (!employee) return "Employee not found";
+  }
+
+  return null;
+}
 
 router.post("/", async (req, res) => {
   const companyId = resolveCompanyId(req);
@@ -71,7 +133,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "companyId is required" });
   }
 
-  const { title, content, projectId, customerId } = req.body;
+  const { title, content, projectId, customerId, employeeId } = req.body;
 
   if (!title || typeof title !== "string" || !title.trim()) {
     return res.status(400).json({ error: "title is required" });
@@ -81,25 +143,9 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "content is required" });
   }
 
-  // Cross-tenant linking would let a note leak which other company owns a
-  // given project/customer id — verify both belong to the same company
-  // before attaching them.
-  if (projectId) {
-    const project = await prisma.project.findFirst({
-      where: { id: Number(projectId), companyId },
-    });
-    if (!project) {
-      return res.status(400).json({ error: "Project not found" });
-    }
-  }
-
-  if (customerId) {
-    const customer = await prisma.customer.findFirst({
-      where: { id: Number(customerId), companyId },
-    });
-    if (!customer) {
-      return res.status(400).json({ error: "Customer not found" });
-    }
+  const linkError = await assertSameCompanyOrThrow(companyId, { projectId, customerId, employeeId });
+  if (linkError) {
+    return res.status(400).json({ error: linkError });
   }
 
   const note = await prisma.ownerNote.create({
@@ -110,11 +156,9 @@ router.post("/", async (req, res) => {
       userId: req.user!.userId,
       projectId: projectId ? Number(projectId) : null,
       customerId: customerId ? Number(customerId) : null,
+      employeeId: employeeId ? Number(employeeId) : null,
     },
-    include: {
-      project: { select: { id: true, name: true } },
-      customer: { select: { id: true, name: true } },
-    },
+    include: NOTE_INCLUDE,
   });
 
   return res.status(201).json(note);
@@ -132,24 +176,11 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ error: "Note not found" });
   }
 
-  const { title, content, status, projectId, customerId } = req.body;
+  const { title, content, status, projectId, customerId, employeeId } = req.body;
 
-  if (projectId) {
-    const project = await prisma.project.findFirst({
-      where: { id: Number(projectId), companyId },
-    });
-    if (!project) {
-      return res.status(400).json({ error: "Project not found" });
-    }
-  }
-
-  if (customerId) {
-    const customer = await prisma.customer.findFirst({
-      where: { id: Number(customerId), companyId },
-    });
-    if (!customer) {
-      return res.status(400).json({ error: "Customer not found" });
-    }
+  const linkError = await assertSameCompanyOrThrow(companyId, { projectId, customerId, employeeId });
+  if (linkError) {
+    return res.status(400).json({ error: linkError });
   }
 
   const note = await prisma.ownerNote.update({
@@ -160,11 +191,9 @@ router.put("/:id", async (req, res) => {
       status: status !== undefined ? normalizeOwnerNoteStatus(status) : undefined,
       projectId: projectId !== undefined ? (projectId ? Number(projectId) : null) : undefined,
       customerId: customerId !== undefined ? (customerId ? Number(customerId) : null) : undefined,
+      employeeId: employeeId !== undefined ? (employeeId ? Number(employeeId) : null) : undefined,
     },
-    include: {
-      project: { select: { id: true, name: true } },
-      customer: { select: { id: true, name: true } },
-    },
+    include: NOTE_INCLUDE,
   });
 
   return res.json(note);

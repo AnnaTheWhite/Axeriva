@@ -1,5 +1,5 @@
 import { API_URL, authHeaders } from "./api";
-import type { OwnerNote, OwnerNoteStatus } from "../types/ownerNote";
+import type { DetectedEntities, OwnerNote, OwnerNoteStatus } from "../types/ownerNote";
 
 export type OwnerNoteFilters = {
   status?: OwnerNoteStatus;
@@ -32,11 +32,28 @@ export async function getOwnerNotes(
   return response.json();
 }
 
+export async function detectOwnerNoteEntities(
+  text: string
+): Promise<DetectedEntities> {
+  const response = await fetch(`${API_URL}/owner-notes/detect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to detect entities");
+  }
+
+  return response.json();
+}
+
 export async function createOwnerNote(data: {
   title: string;
   content: string;
   projectId?: number | null;
   customerId?: number | null;
+  employeeId?: number | null;
 }): Promise<OwnerNote> {
   const response = await fetch(`${API_URL}/owner-notes`, {
     method: "POST",
@@ -60,6 +77,7 @@ export async function updateOwnerNote(
     status?: OwnerNoteStatus;
     projectId?: number | null;
     customerId?: number | null;
+    employeeId?: number | null;
   }
 ): Promise<OwnerNote> {
   const response = await fetch(`${API_URL}/owner-notes/${id}`, {

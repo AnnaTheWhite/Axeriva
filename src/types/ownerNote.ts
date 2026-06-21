@@ -11,8 +11,16 @@ export type OwnerNote = {
   userId: number;
   projectId: number | null;
   customerId: number | null;
+  employeeId: number | null;
   project?: { id: number; name: string } | null;
   customer?: { id: number; name: string } | null;
+  employee?: { id: number; firstName: string; lastName: string } | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type DetectedEntities = {
+  customers: { id: number; name: string }[];
+  projects: { id: number; name: string }[];
+  employees: { id: number; firstName: string; lastName: string }[];
 };
