@@ -9,6 +9,7 @@ const menusByRole: Record<Role, { label: string; path: string }[]> = {
     { label: "Users", path: "/admin/users" },
     { label: "Billing", path: "/admin/billing" },
     { label: "Logs", path: "/admin/logs" },
+    { label: "Command Center", path: "/command-center" },
   ],
   [ROLES.BUSINESS_OWNER]: [
     { label: "Dashboard", path: "/" },
@@ -17,6 +18,7 @@ const menusByRole: Record<Role, { label: string; path: string }[]> = {
     { label: "Customers", path: "/customers" },
     { label: "Schedule", path: "/schedule" },
     { label: "Time Tracking", path: "/time-tracking" },
+    { label: "Command Center", path: "/command-center" },
     { label: "Subscription", path: "/subscription" },
     { label: "Settings", path: "/settings" },
   ],

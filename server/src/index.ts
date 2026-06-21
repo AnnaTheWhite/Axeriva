@@ -17,6 +17,7 @@ import accountRoutes from "./routes/account.routes";
 import companyRoutes from "./routes/company.routes";
 import projectActivityRoutes from "./routes/projectActivity.routes";
 import attachmentsRoutes from "./routes/attachments.routes";
+import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { UPLOAD_ROOT } from "./middleware/upload.middleware";
 
@@ -68,6 +69,7 @@ app.use("/account", authMiddleware, accountRoutes);
 app.use("/company", authMiddleware, companyRoutes);
 app.use("/projects", authMiddleware, projectActivityRoutes);
 app.use("/attachments", authMiddleware, attachmentsRoutes);
+app.use("/owner-notes", authMiddleware, ownerNotesRoutes);
 
 const PORT = process.env.PORT || 5000;
 

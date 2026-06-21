@@ -22,6 +22,7 @@ import CustomersPage from "../../pages/CustomersPage";
 import SubscriptionPage from "../../pages/SubscriptionPage";
 import TimeTrackingPage from "../../pages/TimeTrackingPage";
 import SettingsPage from "../../pages/SettingsPage";
+import OwnerCommandCenterPage from "../../pages/OwnerCommandCenterPage";
 import MySchedulePage from "../../pages/MySchedulePage";
 import MyTimePage from "../../pages/MyTimePage";
 import MyProjectsPage from "../../pages/MyProjectsPage";
@@ -135,6 +136,16 @@ export default function AppRouter() {
             <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.DEVELOPER]}>
               <DashboardLayout>
                 <SubscriptionPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/command-center"
+          element={
+            <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.DEVELOPER]}>
+              <DashboardLayout>
+                <OwnerCommandCenterPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

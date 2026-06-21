@@ -42,6 +42,7 @@ model Company {
   users       User[]
   invitations Invitation[]
   auditLogs   AuditLog[]
+  ownerNotes  OwnerNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -78,6 +79,7 @@ model User {
   projectNotes       ProjectNote[]
   projectAttachments ProjectAttachment[]
   projectActivities  ProjectActivity[]
+  ownerNotes         OwnerNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -131,6 +133,7 @@ model Project {
   notes       ProjectNote[]
   attachments ProjectAttachment[]
   activities  ProjectActivity[]
+  ownerNotes  OwnerNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -220,7 +223,8 @@ model Customer {
   companyId Int?
   company   Company? @relation(fields: [companyId], references: [id])
 
-  projects Project[]
+  projects   Project[]
+  ownerNotes OwnerNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -239,6 +243,36 @@ model Shift {
   end   DateTime?
 
   notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Owner Command Center — a private, owner-only scratchpad for quick notes
+// and reminders, optionally linked to a Project/Customer for context.
+// Deliberately separate from ProjectNote (which is project-scoped and
+// visible to assigned employees too); these are owner/developer-only.
+model OwnerNote {
+  id Int @id @default(autoincrement())
+
+  title   String
+  content String
+
+  // "Inbox" | "Reviewed" | "Archived" — see constants/ownerNoteStatuses.ts.
+  // Free-form on purpose, same rationale as ProjectAttachment.category.
+  status String @default("Inbox")
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  customerId Int?
+  customer   Customer? @relation(fields: [customerId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
