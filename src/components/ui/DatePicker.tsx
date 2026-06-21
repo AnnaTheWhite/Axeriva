@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 
 type DatePickerProps = {
   value: string; // "YYYY-MM-DD"
@@ -7,18 +8,30 @@ type DatePickerProps = {
   required?: boolean;
 };
 
-const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const MONTHS = [
+const DAYS_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const DAYS_HU = ["V", "H", "K", "Sze", "Cs", "P", "Szo"];
+
+const MONTHS_EN = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
+];
+const MONTHS_HU = [
+  "Január", "Február", "Március", "Április", "Május", "Június",
+  "Július", "Augusztus", "Szeptember", "Október", "November", "December",
 ];
 
 export default function DatePicker({
   value,
   onChange,
-  placeholder = "Select date",
+  placeholder,
   required,
 }: DatePickerProps) {
+  const { t, language } = useTranslation();
+  const DAYS = language === "hu" ? DAYS_HU : DAYS_EN;
+  const MONTHS = language === "hu" ? MONTHS_HU : MONTHS_EN;
+  const dateLocale = language === "hu" ? "hu-HU" : "en-US";
+  const resolvedPlaceholder = placeholder ?? t("common.selectDate");
+
   const today = new Date();
   const parsed = value ? new Date(value + "T00:00:00") : null;
 
@@ -63,7 +76,7 @@ export default function DatePicker({
   };
 
   const displayValue = parsed
-    ? parsed.toLocaleDateString("hu-HU")
+    ? parsed.toLocaleDateString(dateLocale)
     : "";
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
@@ -95,7 +108,7 @@ export default function DatePicker({
         className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition hover:border-white/20 focus:border-orange-500 focus:outline-none"
       >
         <span className={displayValue ? "text-white" : "text-slate-500"}>
-          {displayValue || placeholder}
+          {displayValue || resolvedPlaceholder}
         </span>
         <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -179,7 +192,7 @@ export default function DatePicker({
               onClick={() => { onChange(""); setOpen(false); }}
               className="mt-3 w-full rounded-lg py-1 text-sm text-slate-400 hover:bg-white/5 hover:text-white"
             >
-              Clear
+              {t("common.clear")}
             </button>
           )}
         </div>

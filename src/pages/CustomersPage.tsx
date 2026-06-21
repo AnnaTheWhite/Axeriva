@@ -13,17 +13,20 @@ import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 import { useToast } from "../hooks/useToast";
+import { useTranslation } from "../i18n";
 
 import type { Customer } from "../types/customer";
 
-const COMMUNICATION_TYPE_LABEL: Record<CustomerCommunicationLog["type"], string> = {
-  PhoneCall: "📞 Phone Call",
-  Email: "✉️ Email",
-  Meeting: "🤝 Meeting",
-  Other: "📝 Other",
-};
-
 export default function CustomersPage() {
+  const { t } = useTranslation();
+
+  const COMMUNICATION_TYPE_LABEL: Record<CustomerCommunicationLog["type"], string> = {
+    PhoneCall: t("customers.commType.PhoneCall"),
+    Email: t("customers.commType.Email"),
+    Meeting: t("customers.commType.Meeting"),
+    Other: t("customers.commType.Other"),
+  };
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -80,13 +83,13 @@ export default function CustomersPage() {
     e.preventDefault();
     try {
       await createCustomer({ name, email, phone, address });
-      triggerToast("Customer added");
+      triggerToast(t("customers.added"));
       resetForm();
       setIsAddModalOpen(false);
       await loadCustomers();
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to add customer");
+      triggerToast(t("customers.addFailed"));
     }
   };
 
@@ -95,13 +98,13 @@ export default function CustomersPage() {
     if (!customerToEdit) return;
     try {
       await updateCustomer(customerToEdit.id, { name, email, phone, address });
-      triggerToast("Customer updated");
+      triggerToast(t("customers.updated"));
       setCustomerToEdit(null);
       resetForm();
       await loadCustomers();
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to update customer");
+      triggerToast(t("customers.updateFailed"));
     }
   };
 
@@ -110,11 +113,11 @@ export default function CustomersPage() {
     try {
       await deleteCustomer(customerToDelete.id);
       setCustomerToDelete(null);
-      triggerToast("Customer deleted");
+      triggerToast(t("customers.deleted"));
       await loadCustomers();
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to delete customer");
+      triggerToast(t("customers.deleteFailed"));
     }
   };
 
@@ -126,7 +129,7 @@ export default function CustomersPage() {
       setCommunications(data);
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to load communication history");
+      triggerToast(t("customers.loadHistoryFailed"));
     } finally {
       setIsHistoryLoading(false);
     }
@@ -141,27 +144,27 @@ export default function CustomersPage() {
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Name *"
+        placeholder={t("customers.namePlaceholder")}
         required
         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
       />
       <input
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
+        placeholder={t("table.email")}
         type="email"
         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
       />
       <input
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
-        placeholder="Phone"
+        placeholder={t("table.phone")}
         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
       />
       <input
         value={address}
         onChange={(e) => setAddress(e.target.value)}
-        placeholder="Address"
+        placeholder={t("projects.address")}
         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
       />
     </div>
@@ -171,9 +174,9 @@ export default function CustomersPage() {
     <div className="p-4 sm:p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold sm:text-4xl">Customers</h1>
+          <h1 className="text-2xl font-bold sm:text-4xl">{t("customers.title")}</h1>
           <p className="mt-2 text-slate-400">
-            Total Customers: {customers.length}
+            {t("customers.totalCustomers", { count: customers.length })}
           </p>
         </div>
 
@@ -184,7 +187,7 @@ export default function CustomersPage() {
           }}
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 sm:w-auto"
         >
-          Add Customer
+          {t("customers.addCustomer")}
         </button>
       </div>
 
@@ -193,13 +196,13 @@ export default function CustomersPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search customers..."
+          placeholder={t("customers.searchPlaceholder")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
         />
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <p>{t("common.loading")}</p>
       ) : (
         <div className="space-y-4">
           {filteredCustomers.map((customer) => (
@@ -224,21 +227,21 @@ export default function CustomersPage() {
                   onClick={() => openHistory(customer)}
                   className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:bg-white/10"
                 >
-                  🕘 History
+                  🕘 {t("customers.history")}
                 </button>
 
                 <button
                   onClick={() => setCustomerToEdit(customer)}
                   className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 hover:bg-blue-500/20"
                 >
-                  ✏ Edit
+                  ✏ {t("common.edit")}
                 </button>
 
                 <button
                   onClick={() => setCustomerToDelete(customer)}
                   className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                 >
-                  🗑 Delete
+                  🗑 {t("common.delete")}
                 </button>
               </div>
             </div>
@@ -247,14 +250,14 @@ export default function CustomersPage() {
       )}
 
       {/* Add Modal */}
-      <Modal open={isAddModalOpen} title="Add Customer" onClose={() => setIsAddModalOpen(false)}>
+      <Modal open={isAddModalOpen} title={t("customers.addModalTitle")} onClose={() => setIsAddModalOpen(false)}>
         <form onSubmit={handleAdd} className="space-y-4">
           {formFields}
           <button
             type="submit"
             className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600"
           >
-            Add Customer
+            {t("customers.addCustomer")}
           </button>
         </form>
       </Modal>
@@ -262,7 +265,7 @@ export default function CustomersPage() {
       {/* Edit Modal */}
       <Modal
         open={customerToEdit !== null}
-        title="Edit Customer"
+        title={t("customers.editModalTitle")}
         onClose={() => {
           setCustomerToEdit(null);
           resetForm();
@@ -274,7 +277,7 @@ export default function CustomersPage() {
             type="submit"
             className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600"
           >
-            Save Changes
+            {t("common.saveChanges")}
           </button>
         </form>
       </Modal>
@@ -284,13 +287,13 @@ export default function CustomersPage() {
           the only place they can be reviewed afterward. */}
       <Modal
         open={historyCustomer !== null}
-        title={`Communication History — ${historyCustomer?.name ?? ""}`}
+        title={`${t("customers.communicationHistory")} — ${historyCustomer?.name ?? ""}`}
         onClose={() => setHistoryCustomer(null)}
       >
         {isHistoryLoading ? (
-          <p className="text-slate-400">Loading...</p>
+          <p className="text-slate-400">{t("common.loading")}</p>
         ) : communications.length === 0 ? (
-          <p className="text-slate-400">No communication logged for this customer yet.</p>
+          <p className="text-slate-400">{t("customers.noCommunication")}</p>
         ) : (
           <div className="space-y-3">
             {communications.map((log) => (
@@ -312,10 +315,8 @@ export default function CustomersPage() {
 
       <ConfirmModal
         open={customerToDelete !== null}
-        title="Delete Customer"
-        message={`Are you sure you want to delete ${customerToDelete?.name ?? ""}?`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title={t("customers.deleteTitle")}
+        message={t("customers.deleteMessage", { name: customerToDelete?.name ?? "" })}
         onConfirm={confirmDelete}
         onClose={() => setCustomerToDelete(null)}
       />

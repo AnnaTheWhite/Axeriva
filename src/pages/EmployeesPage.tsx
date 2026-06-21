@@ -6,6 +6,7 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 
 import { useToast } from "../hooks/useToast";
+import { useTranslation } from "../i18n";
 
 import {
   getEmployees,
@@ -18,6 +19,8 @@ import type { Employee } from "../types/employee";
 import type { Invitation } from "../services/invites.service";
 
 export default function EmployeesPage() {
+  const { t } = useTranslation();
+
   const [employees, setEmployees] =
     useState<Employee[]>([]);
 
@@ -77,7 +80,7 @@ export default function EmployeesPage() {
         status
       );
 
-      triggerToast("Status updated");
+      triggerToast(t("employees.statusUpdated"));
 
       await loadEmployees();
     } catch (error) {
@@ -93,7 +96,7 @@ export default function EmployeesPage() {
         employeeToDelete.id
       );
 
-      triggerToast("Employee deleted");
+      triggerToast(t("employees.deleted"));
 
       setEmployeeToDelete(null);
 
@@ -104,7 +107,7 @@ export default function EmployeesPage() {
       triggerToast(
         error instanceof Error
           ? error.message
-          : "Failed to delete employee"
+          : t("employees.deleteFailed")
       );
 
       setEmployeeToDelete(null);
@@ -129,21 +132,21 @@ export default function EmployeesPage() {
       case "Active":
         return (
           <span className="rounded-full bg-green-500/20 px-3 py-1 text-xs font-medium text-green-400">
-            Active
+            {t("employees.statusActive")}
           </span>
         );
 
       case "Sick":
         return (
           <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
-            Sick
+            {t("employees.statusSick")}
           </span>
         );
 
       case "Vacation":
         return (
           <span className="rounded-full bg-yellow-500/20 px-3 py-1 text-xs font-medium text-yellow-400">
-            Vacation
+            {t("employees.statusVacation")}
           </span>
         );
 
@@ -157,11 +160,11 @@ export default function EmployeesPage() {
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold sm:text-4xl">
-            Employees
+            {t("employees.title")}
           </h1>
 
           <p className="mt-2 text-slate-400">
-            Total Employees: {employees.length}
+            {t("employees.totalEmployees", { count: employees.length })}
           </p>
         </div>
 
@@ -170,7 +173,7 @@ export default function EmployeesPage() {
             onClick={() => setIsInviteModalOpen(true)}
             className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 sm:w-auto"
           >
-            Invite employee
+            {t("employees.inviteEmployee")}
           </button>
         </div>
       </div>
@@ -178,12 +181,12 @@ export default function EmployeesPage() {
       {invites.length > 0 && (
         <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="mb-2 text-sm font-medium text-slate-300">
-            Pending invites
+            {t("employees.pendingInvites")}
           </p>
           <ul className="space-y-1">
             {invites.map((invite) => (
               <li key={invite.id} className="text-sm text-slate-400">
-                {invite.email} — expires{" "}
+                {invite.email} — {t("employees.expires")}{" "}
                 {new Date(invite.expiresAt).toLocaleDateString()}
               </li>
             ))}
@@ -194,7 +197,7 @@ export default function EmployeesPage() {
       <div className="mb-6">
         <input
           type="text"
-          placeholder="Search employees..."
+          placeholder={t("employees.searchPlaceholder")}
           value={search}
           onChange={(e) =>
             setSearch(e.target.value)
@@ -204,7 +207,7 @@ export default function EmployeesPage() {
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <p>{t("common.loading")}</p>
       ) : (
         <>
           {/* Mobile: cards (no horizontal scroll). Desktop: table. */}
@@ -234,9 +237,9 @@ export default function EmployeesPage() {
                   onChange={(e) => handleStatusChange(employee.id, e.target.value)}
                   className="mt-4 w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2"
                 >
-                  <option value="Active">Active</option>
-                  <option value="Sick">Sick</option>
-                  <option value="Vacation">Vacation</option>
+                  <option value="Active">{t("employees.statusActive")}</option>
+                  <option value="Sick">{t("employees.statusSick")}</option>
+                  <option value="Vacation">{t("employees.statusVacation")}</option>
                 </select>
 
                 <div className="mt-3 flex gap-2">
@@ -244,14 +247,14 @@ export default function EmployeesPage() {
                     onClick={() => setEmployeeToEdit(employee)}
                     className="flex-1 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 hover:bg-blue-500/20"
                   >
-                    ✏ Edit
+                    ✏ {t("common.edit")}
                   </button>
 
                   <button
                     onClick={() => setEmployeeToDelete(employee)}
                     className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                   >
-                    🗑 Delete
+                    🗑 {t("common.delete")}
                   </button>
                 </div>
               </div>
@@ -263,14 +266,14 @@ export default function EmployeesPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/10 text-left">
-                    <th className="p-4">ID</th>
-                    <th className="p-4">First Name</th>
-                    <th className="p-4">Last Name</th>
-                    <th className="p-4">Phone</th>
-                    <th className="p-4">Email</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4">Change</th>
-                    <th className="p-4">Actions</th>
+                    <th className="p-4">{t("table.id")}</th>
+                    <th className="p-4">{t("table.firstName")}</th>
+                    <th className="p-4">{t("table.lastName")}</th>
+                    <th className="p-4">{t("table.phone")}</th>
+                    <th className="p-4">{t("table.email")}</th>
+                    <th className="p-4">{t("table.status")}</th>
+                    <th className="p-4">{t("table.change")}</th>
+                    <th className="p-4">{t("table.actions")}</th>
                   </tr>
                 </thead>
 
@@ -301,9 +304,9 @@ export default function EmployeesPage() {
                           }
                           className="rounded-xl border border-white/10 bg-slate-800 px-3 py-2"
                         >
-                          <option value="Active">Active</option>
-                          <option value="Sick">Sick</option>
-                          <option value="Vacation">Vacation</option>
+                          <option value="Active">{t("employees.statusActive")}</option>
+                          <option value="Sick">{t("employees.statusSick")}</option>
+                          <option value="Vacation">{t("employees.statusVacation")}</option>
                         </select>
                       </td>
 
@@ -314,7 +317,7 @@ export default function EmployeesPage() {
                           }
                           className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 hover:bg-blue-500/20"
                         >
-                          ✏ Edit
+                          ✏ {t("common.edit")}
                         </button>
 
                         <button
@@ -323,7 +326,7 @@ export default function EmployeesPage() {
                           }
                           className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                         >
-                          🗑 Delete
+                          🗑 {t("common.delete")}
                         </button>
                       </td>
                     </tr>
@@ -350,10 +353,10 @@ export default function EmployeesPage() {
 
       <ConfirmModal
         open={employeeToDelete !== null}
-        title="Delete Employee"
-        message={`Are you sure you want to delete ${employeeToDelete?.firstName ?? ""} ${employeeToDelete?.lastName ?? ""}?`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title={t("employees.deleteTitle")}
+        message={t("employees.deleteMessage", {
+          name: `${employeeToDelete?.firstName ?? ""} ${employeeToDelete?.lastName ?? ""}`,
+        })}
         onConfirm={confirmDelete}
         onClose={() => setEmployeeToDelete(null)}
       />

@@ -1,11 +1,14 @@
 import AppRouter from "./app/router";
 import { AuthProvider } from "./context/AuthContext";
+import { LanguageProvider } from "./i18n";
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRouter />
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <AppRouter />
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
 

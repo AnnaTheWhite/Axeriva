@@ -8,11 +8,14 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 
 import { useToast } from "../hooks/useToast";
+import { useTranslation } from "../i18n";
 import { getProjects, deleteProject } from "../services/project.service";
 
 import type { Project } from "../types/project";
 
 export default function ProjectsPage() {
+  const { t } = useTranslation();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -44,11 +47,11 @@ export default function ProjectsPage() {
     try {
       await deleteProject(projectToDelete.id);
       setProjectToDelete(null);
-      triggerToast("Project deleted");
+      triggerToast(t("projects.deleted"));
       await loadProjects();
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to delete project");
+      triggerToast(t("projects.deleteFailed"));
     }
   };
 
@@ -64,7 +67,7 @@ export default function ProjectsPage() {
           styles[status] ?? "bg-white/10 text-white"
         }`}
       >
-        {status}
+        {t(`projects.status.${status}`) || status}
       </span>
     );
   };
@@ -77,9 +80,9 @@ export default function ProjectsPage() {
     <div className="p-4 sm:p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold sm:text-4xl">Projects</h1>
+          <h1 className="text-2xl font-bold sm:text-4xl">{t("projects.title")}</h1>
           <p className="mt-2 text-slate-400">
-            Total Projects: {projects.length}
+            {t("projects.totalProjects", { count: projects.length })}
           </p>
         </div>
 
@@ -87,14 +90,14 @@ export default function ProjectsPage() {
           onClick={() => setIsAddModalOpen(true)}
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 sm:w-auto"
         >
-          Add Project
+          {t("projects.addProject")}
         </button>
       </div>
 
       <div className="mb-6">
         <input
           type="text"
-          placeholder="Search projects..."
+          placeholder={t("projects.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"
@@ -102,7 +105,7 @@ export default function ProjectsPage() {
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <p>{t("common.loading")}</p>
       ) : (
         <div className="space-y-4">
           {filteredProjects.map((project) => (
@@ -130,28 +133,30 @@ export default function ProjectsPage() {
                         : "bg-white/10 text-slate-400"
                     }`}
                   >
-                    {project.geofenceEnabled ? "Geofence Enabled" : "Geofence Disabled"}
+                    {project.geofenceEnabled
+                      ? t("projects.geofenceEnabled")
+                      : t("projects.geofenceDisabled")}
                   </span>
                   {getStatusBadge(project.status)}
                 </div>
               </div>
 
               <p className="mt-2 text-slate-400">
-                Deadline:{" "}
+                {t("projects.deadline")}:{" "}
                 {project.deadline
                   ? new Date(project.deadline).toLocaleDateString()
-                  : "No deadline"}
+                  : t("projects.noDeadline")}
               </p>
 
               {project.customer && (
                 <p className="text-slate-400">
-                  Customer: {project.customer.name}
+                  {t("projects.customer")}: {project.customer.name}
                 </p>
               )}
 
               {project.assignments && project.assignments.length > 0 && (
                 <p className="mt-1 text-slate-400">
-                  Team:{" "}
+                  {t("projects.team")}:{" "}
                   {project.assignments
                     .map(
                       (a) => `${a.employee.firstName} ${a.employee.lastName}`
@@ -165,21 +170,21 @@ export default function ProjectsPage() {
                   onClick={() => setProjectToEdit(project)}
                   className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 hover:bg-blue-500/20"
                 >
-                  ✏ Edit
+                  ✏ {t("common.edit")}
                 </button>
 
                 <button
                   onClick={() => setProjectToAssign(project)}
                   className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-sm text-purple-400 hover:bg-purple-500/20"
                 >
-                  👤 Assign
+                  👤 {t("projects.assign")}
                 </button>
 
                 <button
                   onClick={() => setProjectToDelete(project)}
                   className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                 >
-                  🗑 Delete
+                  🗑 {t("common.delete")}
                 </button>
               </div>
             </div>
@@ -192,7 +197,7 @@ export default function ProjectsPage() {
         open={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={() => {
-          triggerToast("Project created");
+          triggerToast(t("projects.created"));
           loadProjects();
         }}
       />
@@ -203,7 +208,7 @@ export default function ProjectsPage() {
         project={projectToEdit}
         onClose={() => setProjectToEdit(null)}
         onSuccess={() => {
-          triggerToast("Project updated");
+          triggerToast(t("projects.updated"));
           loadProjects();
         }}
       />
@@ -219,10 +224,8 @@ export default function ProjectsPage() {
       {/* Delete Confirm */}
       <ConfirmModal
         open={projectToDelete !== null}
-        title="Delete Project"
-        message={`Are you sure you want to delete ${projectToDelete?.name ?? ""}?`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title={t("projects.deleteTitle")}
+        message={t("projects.deleteMessage", { name: projectToDelete?.name ?? "" })}
         onConfirm={confirmDelete}
         onClose={() => setProjectToDelete(null)}
       />

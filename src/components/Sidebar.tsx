@@ -1,32 +1,35 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { ROLES, type Role } from "../types/auth";
+import { useTranslation } from "../i18n";
 
-const menusByRole: Record<Role, { label: string; path: string }[]> = {
+// Labels are translation keys, not literal strings — resolved via t()
+// below so this menu definition stays language-agnostic.
+const menusByRole: Record<Role, { labelKey: string; path: string }[]> = {
   [ROLES.DEVELOPER]: [
-    { label: "Platform Dashboard", path: "/admin" },
-    { label: "Companies", path: "/admin/companies" },
-    { label: "Users", path: "/admin/users" },
-    { label: "Billing", path: "/admin/billing" },
-    { label: "Logs", path: "/admin/logs" },
-    { label: "Command Center", path: "/command-center" },
+    { labelKey: "nav.platformDashboard", path: "/admin" },
+    { labelKey: "nav.companies", path: "/admin/companies" },
+    { labelKey: "nav.users", path: "/admin/users" },
+    { labelKey: "nav.billing", path: "/admin/billing" },
+    { labelKey: "nav.logs", path: "/admin/logs" },
+    { labelKey: "nav.commandCenter", path: "/command-center" },
   ],
   [ROLES.BUSINESS_OWNER]: [
-    { label: "Dashboard", path: "/" },
-    { label: "Employees", path: "/employees" },
-    { label: "Projects", path: "/projects" },
-    { label: "Customers", path: "/customers" },
-    { label: "Schedule", path: "/schedule" },
-    { label: "Time Tracking", path: "/time-tracking" },
-    { label: "Command Center", path: "/command-center" },
-    { label: "Subscription", path: "/subscription" },
-    { label: "Settings", path: "/settings" },
+    { labelKey: "nav.dashboard", path: "/" },
+    { labelKey: "nav.employees", path: "/employees" },
+    { labelKey: "nav.projects", path: "/projects" },
+    { labelKey: "nav.customers", path: "/customers" },
+    { labelKey: "nav.schedule", path: "/schedule" },
+    { labelKey: "nav.timeTracking", path: "/time-tracking" },
+    { labelKey: "nav.commandCenter", path: "/command-center" },
+    { labelKey: "nav.subscription", path: "/subscription" },
+    { labelKey: "nav.settings", path: "/settings" },
   ],
   [ROLES.EMPLOYEE]: [
-    { label: "My Schedule", path: "/my-schedule" },
-    { label: "My Time", path: "/my-time" },
-    { label: "My Projects", path: "/my-projects" },
-    { label: "Profile", path: "/profile" },
+    { labelKey: "nav.mySchedule", path: "/my-schedule" },
+    { labelKey: "nav.myTime", path: "/my-time" },
+    { labelKey: "nav.myProjects", path: "/my-projects" },
+    { labelKey: "nav.profile", path: "/profile" },
   ],
 };
 
@@ -37,6 +40,7 @@ type SidebarProps = {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const menuItems = user ? menusByRole[user.role] : [];
 
   return (
@@ -57,13 +61,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       >
         <div className="flex items-center justify-between p-6">
           <div>
-            <h1 className="text-2xl font-bold text-white">Axeriva</h1>
-            <p className="mt-1 text-sm text-slate-400">Workforce Management</p>
+            <h1 className="text-2xl font-bold text-white">{t("common.appName")}</h1>
+            <p className="mt-1 text-sm text-slate-400">{t("common.tagline")}</p>
           </div>
 
           <button
             onClick={onClose}
-            aria-label="Close menu"
+            aria-label={t("common.closeMenu")}
             className="rounded-lg p-2 text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-6 w-6">
@@ -88,7 +92,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     }`
                   }
                 >
-                  {item.label}
+                  {t(item.labelKey)}
                 </NavLink>
               </li>
             ))}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import EmptyState from "../components/ui/EmptyState";
 import { getMyShifts } from "../services/shift.service";
+import { useTranslation } from "../i18n";
 
 type MyShift = {
   id: number;
@@ -23,6 +24,7 @@ function workAddress(project: MyShift["project"]): string | null {
 }
 
 export default function MySchedulePage() {
+  const { t } = useTranslation();
   const [shifts, setShifts] = useState<MyShift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,10 +37,10 @@ export default function MySchedulePage() {
 
   return (
     <div className="p-4 sm:p-8">
-      <PageHeader title="My Schedule" subtitle="Your upcoming and past shifts." />
+      <PageHeader title={t("mySchedule.title")} subtitle={t("mySchedule.subtitle")} />
 
       {isLoading ? null : shifts.length === 0 ? (
-        <EmptyState title="No shifts yet" description="Your shifts will show up here." />
+        <EmptyState title={t("mySchedule.noShifts")} description={t("mySchedule.noShiftsDesc")} />
       ) : (
         <>
           {/* Mobile: cards (no horizontal scroll). Desktop: table. */}
@@ -46,26 +48,26 @@ export default function MySchedulePage() {
             {shifts.map((shift) => (
               <div key={shift.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Start</span>
+                  <span className="text-slate-400">{t("table.start")}</span>
                   <span className="text-white">{new Date(shift.start).toLocaleString()}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-slate-400">End</span>
+                  <span className="text-slate-400">{t("table.end")}</span>
                   <span className="text-white">
-                    {shift.end ? new Date(shift.end).toLocaleString() : "In progress"}
+                    {shift.end ? new Date(shift.end).toLocaleString() : t("schedule.inProgress")}
                   </span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Project</span>
+                  <span className="text-slate-400">{t("table.project")}</span>
                   <span className="text-white">{shift.project?.name ?? "—"}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Location</span>
+                  <span className="text-slate-400">{t("table.location")}</span>
                   <span className="text-right text-white">{workAddress(shift.project) ?? "—"}</span>
                 </div>
                 {shift.notes && (
                   <div className="mt-2 flex items-center justify-between text-sm">
-                    <span className="text-slate-400">Notes</span>
+                    <span className="text-slate-400">{t("table.notes")}</span>
                     <span className="text-right text-white">{shift.notes}</span>
                   </div>
                 )}
@@ -78,11 +80,11 @@ export default function MySchedulePage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/10 text-left">
-                    <th className="p-4">Start</th>
-                    <th className="p-4">End</th>
-                    <th className="p-4">Project</th>
-                    <th className="p-4">Location</th>
-                    <th className="p-4">Notes</th>
+                    <th className="p-4">{t("table.start")}</th>
+                    <th className="p-4">{t("table.end")}</th>
+                    <th className="p-4">{t("table.project")}</th>
+                    <th className="p-4">{t("table.location")}</th>
+                    <th className="p-4">{t("table.notes")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -90,7 +92,7 @@ export default function MySchedulePage() {
                     <tr key={shift.id} className="border-b border-white/5">
                       <td className="p-4">{new Date(shift.start).toLocaleString()}</td>
                       <td className="p-4">
-                        {shift.end ? new Date(shift.end).toLocaleString() : "In progress"}
+                        {shift.end ? new Date(shift.end).toLocaleString() : t("schedule.inProgress")}
                       </td>
                       <td className="p-4">{shift.project?.name ?? "—"}</td>
                       <td className="p-4">{workAddress(shift.project) ?? "—"}</td>

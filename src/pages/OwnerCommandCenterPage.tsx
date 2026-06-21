@@ -6,6 +6,8 @@ import Toast from "../components/ui/Toast";
 import DatePicker from "../components/ui/DatePicker";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { useToast } from "../hooks/useToast";
+import { useTranslation } from "../i18n";
+import { translateOwnerNoteStatus, translatePriority } from "../i18n/labels";
 import {
   getOwnerNotes,
   createOwnerNote,
@@ -47,6 +49,8 @@ const PRIORITY_STYLES: Record<Priority, string> = {
 };
 
 export default function OwnerCommandCenterPage() {
+  const { t } = useTranslation();
+
   const [notes, setNotes] = useState<OwnerNote[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -166,11 +170,11 @@ export default function OwnerCommandCenterPage() {
       setCaptureEmployeeId("");
       setCapturePriority("Medium");
       setSuggestions(null);
-      triggerToast("Note captured");
+      triggerToast(t("commandCenter.noteCaptured"));
       await loadNotes();
       loadDashboard();
     } catch (error) {
-      triggerToast(error instanceof Error ? error.message : "Failed to capture note");
+      triggerToast(error instanceof Error ? error.message : t("commandCenter.captureFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -182,7 +186,7 @@ export default function OwnerCommandCenterPage() {
       setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
       loadDashboard();
     } catch {
-      triggerToast("Failed to update status");
+      triggerToast(t("commandCenter.statusUpdateFailed"));
     }
   }
 
@@ -192,7 +196,7 @@ export default function OwnerCommandCenterPage() {
       setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
       loadDashboard();
     } catch {
-      triggerToast("Failed to update priority");
+      triggerToast(t("commandCenter.priorityUpdateFailed"));
     }
   }
 
@@ -205,7 +209,7 @@ export default function OwnerCommandCenterPage() {
       });
       loadDashboard();
     } catch {
-      triggerToast("Failed to update pin");
+      triggerToast(t("commandCenter.pinUpdateFailed"));
     }
   }
 
@@ -230,9 +234,9 @@ export default function OwnerCommandCenterPage() {
       });
       setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
       setEditingNoteId(null);
-      triggerToast("Note updated");
+      triggerToast(t("commandCenter.noteUpdated"));
     } catch (error) {
-      triggerToast(error instanceof Error ? error.message : "Failed to update note");
+      triggerToast(error instanceof Error ? error.message : t("commandCenter.noteUpdateFailed"));
     } finally {
       setIsEditSaving(false);
     }
@@ -244,29 +248,29 @@ export default function OwnerCommandCenterPage() {
       await deleteOwnerNote(noteToDelete.id);
       setNotes((prev) => prev.filter((n) => n.id !== noteToDelete.id));
       setNoteToDelete(null);
-      triggerToast("Note deleted");
+      triggerToast(t("commandCenter.noteDeleted"));
       loadDashboard();
     } catch {
-      triggerToast("Failed to delete note");
+      triggerToast(t("commandCenter.noteDeleteFailed"));
     }
   }
 
   return (
     <div className="p-4 sm:p-8">
       <PageHeader
-        title="Owner Command Center"
-        subtitle="Quick capture for thoughts, reminders, and project notes."
+        title={t("commandCenter.title")}
+        subtitle={t("commandCenter.subtitle")}
       />
 
       {dashboard && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {[
-            { label: "Total Notes", value: dashboard.total },
-            { label: "Inbox", value: dashboard.inbox },
-            { label: "Reviewed", value: dashboard.reviewed },
-            { label: "Archived", value: dashboard.archived },
-            { label: "Urgent", value: dashboard.urgent },
-            { label: "Pinned", value: dashboard.pinned },
+            { label: t("commandCenter.totalNotes"), value: dashboard.total },
+            { label: t("commandCenter.status.Inbox"), value: dashboard.inbox },
+            { label: t("commandCenter.status.Reviewed"), value: dashboard.reviewed },
+            { label: t("commandCenter.status.Archived"), value: dashboard.archived },
+            { label: t("commandCenter.urgent"), value: dashboard.urgent },
+            { label: t("commandCenter.pinned"), value: dashboard.pinned },
           ].map((card) => (
             <div key={card.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="text-xs text-slate-400">{card.label}</p>
@@ -277,13 +281,13 @@ export default function OwnerCommandCenterPage() {
       )}
 
       <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl sm:p-8">
-        <h3 className="text-lg font-semibold text-white">Quick Capture</h3>
+        <h3 className="text-lg font-semibold text-white">{t("commandCenter.quickCapture")}</h3>
 
         <form onSubmit={handleCapture} className="mt-4 space-y-4">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Title"
+            placeholder={t("commandCenter.titlePlaceholder")}
             required
             className={inputClass}
           />
@@ -291,7 +295,7 @@ export default function OwnerCommandCenterPage() {
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Need to order more cable for Kovács project. Peter should visit on Friday."
+            placeholder={t("commandCenter.contentPlaceholder")}
             required
             rows={3}
             className={inputClass}
@@ -303,7 +307,7 @@ export default function OwnerCommandCenterPage() {
               onChange={(e) => setCaptureProjectId(e.target.value)}
               className={inputClass}
             >
-              <option value="">Link to project (optional)</option>
+              <option value="">{t("commandCenter.linkProject")}</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
@@ -316,7 +320,7 @@ export default function OwnerCommandCenterPage() {
               onChange={(e) => setCaptureCustomerId(e.target.value)}
               className={inputClass}
             >
-              <option value="">Link to customer (optional)</option>
+              <option value="">{t("commandCenter.linkCustomer")}</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.name}
@@ -329,7 +333,7 @@ export default function OwnerCommandCenterPage() {
               onChange={(e) => setCaptureEmployeeId(e.target.value)}
               className={inputClass}
             >
-              <option value="">Link to employee (optional)</option>
+              <option value="">{t("commandCenter.linkEmployee")}</option>
               {employees.map((employee) => (
                 <option key={employee.id} value={employee.id}>
                   {employee.firstName} {employee.lastName}
@@ -344,7 +348,7 @@ export default function OwnerCommandCenterPage() {
             >
               {PRIORITIES.map((priority) => (
                 <option key={priority} value={priority}>
-                  Priority: {priority}
+                  {t("commandCenter.priorityLabel", { priority: translatePriority(t, priority) })}
                 </option>
               ))}
             </select>
@@ -356,7 +360,7 @@ export default function OwnerCommandCenterPage() {
               suggestions.employees.length > 0) && (
               <div className="rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4">
                 <p className="mb-3 text-sm font-medium text-orange-400">
-                  Detected in this note — link if relevant, or ignore:
+                  {t("commandCenter.detected")}
                 </p>
 
                 <div className="flex flex-wrap gap-2">
@@ -371,7 +375,7 @@ export default function OwnerCommandCenterPage() {
                           : "bg-white/10 text-slate-200 hover:bg-white/20"
                       }`}
                     >
-                      👤 Link Customer: {customer.name}
+                      👤 {t("commandCenter.linkCustomerAction", { name: customer.name })}
                     </button>
                   ))}
 
@@ -386,7 +390,7 @@ export default function OwnerCommandCenterPage() {
                           : "bg-white/10 text-slate-200 hover:bg-white/20"
                       }`}
                     >
-                      📁 Link Project: {project.name}
+                      📁 {t("commandCenter.linkProjectAction", { name: project.name })}
                     </button>
                   ))}
 
@@ -401,7 +405,10 @@ export default function OwnerCommandCenterPage() {
                           : "bg-white/10 text-slate-200 hover:bg-white/20"
                       }`}
                     >
-                      🧑‍🔧 Link Employee: {employee.firstName} {employee.lastName}
+                      🧑‍🔧{" "}
+                      {t("commandCenter.linkEmployeeAction", {
+                        name: `${employee.firstName} ${employee.lastName}`,
+                      })}
                     </button>
                   ))}
 
@@ -410,13 +417,13 @@ export default function OwnerCommandCenterPage() {
                     onClick={() => setSuggestions(null)}
                     className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/10"
                   >
-                    Save note only
+                    {t("commandCenter.saveNoteOnly")}
                   </button>
                 </div>
               </div>
             )}
 
-          <Button type="submit">{isSaving ? "Saving..." : "Capture note"}</Button>
+          <Button type="submit">{isSaving ? t("common.saving") : t("commandCenter.captureNote")}</Button>
         </form>
       </div>
 
@@ -432,7 +439,7 @@ export default function OwnerCommandCenterPage() {
                   : "bg-white/5 text-slate-400 hover:bg-white/10"
               }`}
             >
-              {option}
+              {option === "All" ? t("common.all") : translateOwnerNoteStatus(t, option)}
             </button>
           ))}
         </div>
@@ -442,7 +449,7 @@ export default function OwnerCommandCenterPage() {
           onChange={(e) => setProjectFilter(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-orange-500 sm:w-auto"
         >
-          <option value="">All projects</option>
+          <option value="">{t("commandCenter.allProjects")}</option>
           {projects.map((project) => (
             <option key={project.id} value={project.id}>
               {project.name}
@@ -455,7 +462,7 @@ export default function OwnerCommandCenterPage() {
           onChange={(e) => setCustomerFilter(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-orange-500 sm:w-auto"
         >
-          <option value="">All customers</option>
+          <option value="">{t("commandCenter.allCustomers")}</option>
           {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
               {customer.name}
@@ -464,7 +471,7 @@ export default function OwnerCommandCenterPage() {
         </select>
 
         <div className="w-full sm:w-48">
-          <DatePicker value={dateFilter} onChange={setDateFilter} placeholder="Filter by date" />
+          <DatePicker value={dateFilter} onChange={setDateFilter} placeholder={t("commandCenter.filterByDate")} />
         </div>
 
         <select
@@ -472,10 +479,10 @@ export default function OwnerCommandCenterPage() {
           onChange={(e) => setPriorityFilter(e.target.value as Priority | "All")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-orange-500 sm:w-auto"
         >
-          <option value="All">All priorities</option>
+          <option value="All">{t("commandCenter.allPriorities")}</option>
           {PRIORITIES.map((priority) => (
             <option key={priority} value={priority}>
-              {priority}
+              {translatePriority(t, priority)}
             </option>
           ))}
         </select>
@@ -486,7 +493,7 @@ export default function OwnerCommandCenterPage() {
             pinnedFilter ? "bg-orange-500 text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"
           }`}
         >
-          📌 Pinned only
+          📌 {t("commandCenter.pinnedOnly")}
         </button>
 
         {(statusFilter !== "All" || projectFilter || customerFilter || dateFilter || priorityFilter !== "All" || pinnedFilter) && (
@@ -501,7 +508,7 @@ export default function OwnerCommandCenterPage() {
             }}
             className="text-xs text-orange-500 hover:underline"
           >
-            Clear filters
+            {t("common.clearFilters")}
           </button>
         )}
       </div>
@@ -509,8 +516,8 @@ export default function OwnerCommandCenterPage() {
       <div className="mt-6 space-y-4">
         {isLoading ? null : notes.length === 0 ? (
           <EmptyState
-            title="No notes yet"
-            description="Capture a quick thought above to get started."
+            title={t("commandCenter.noNotesYet")}
+            description={t("commandCenter.noNotesYetDesc")}
           />
         ) : (
           notes.map((note) => (
@@ -526,7 +533,7 @@ export default function OwnerCommandCenterPage() {
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     className={inputClass}
-                    placeholder="Title"
+                    placeholder={t("commandCenter.titlePlaceholder")}
                   />
                   <textarea
                     value={editContent}
@@ -536,7 +543,7 @@ export default function OwnerCommandCenterPage() {
                   />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} className={inputClass}>
-                      <option value="">No project</option>
+                      <option value="">{t("commandCenter.noProjectOption")}</option>
                       {projects.map((project) => (
                         <option key={project.id} value={project.id}>
                           {project.name}
@@ -544,7 +551,7 @@ export default function OwnerCommandCenterPage() {
                       ))}
                     </select>
                     <select value={editCustomerId} onChange={(e) => setEditCustomerId(e.target.value)} className={inputClass}>
-                      <option value="">No customer</option>
+                      <option value="">{t("commandCenter.noCustomerOption")}</option>
                       {customers.map((customer) => (
                         <option key={customer.id} value={customer.id}>
                           {customer.name}
@@ -552,7 +559,7 @@ export default function OwnerCommandCenterPage() {
                       ))}
                     </select>
                     <select value={editEmployeeId} onChange={(e) => setEditEmployeeId(e.target.value)} className={inputClass}>
-                      <option value="">No employee</option>
+                      <option value="">{t("commandCenter.noEmployeeOption")}</option>
                       {employees.map((employee) => (
                         <option key={employee.id} value={employee.id}>
                           {employee.firstName} {employee.lastName}
@@ -561,12 +568,14 @@ export default function OwnerCommandCenterPage() {
                     </select>
                   </div>
                   <div className="flex gap-2">
-                    <Button onClick={() => handleEditSave(note)}>{isEditSaving ? "Saving..." : "Save changes"}</Button>
+                    <Button onClick={() => handleEditSave(note)}>
+                      {isEditSaving ? t("common.saving") : t("common.saveChanges")}
+                    </Button>
                     <button
                       onClick={() => setEditingNoteId(null)}
                       className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </div>
                 </div>
@@ -584,12 +593,12 @@ export default function OwnerCommandCenterPage() {
 
                   <div className="flex items-center gap-2">
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${PRIORITY_STYLES[note.priority]}`}>
-                      {note.priority}
+                      {translatePriority(t, note.priority)}
                     </span>
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[note.status]}`}
                     >
-                      {note.status}
+                      {translateOwnerNoteStatus(t, note.status)}
                     </span>
                   </div>
                 </div>
@@ -613,7 +622,7 @@ export default function OwnerCommandCenterPage() {
                 )}
                 {note.conversions && note.conversions.length > 0 && (
                   <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-emerald-400">
-                    ✓ Converted ({note.conversions.length})
+                    ✓ {t("commandCenter.converted", { count: note.conversions.length })}
                   </span>
                 )}
                 <span>{new Date(note.createdAt).toLocaleDateString()}</span>
@@ -626,7 +635,7 @@ export default function OwnerCommandCenterPage() {
                     onClick={() => handleStatusChange(note, status)}
                     className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
                   >
-                    Move to {status}
+                    {t("commandCenter.moveTo", { status: translateOwnerNoteStatus(t, status) })}
                   </button>
                 ))}
 
@@ -634,7 +643,7 @@ export default function OwnerCommandCenterPage() {
                   onClick={() => handlePinToggle(note)}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
                 >
-                  {note.pinned ? "Unpin" : "Pin"}
+                  {note.pinned ? t("commandCenter.unpin") : t("commandCenter.pin")}
                 </button>
 
                 <select
@@ -644,7 +653,7 @@ export default function OwnerCommandCenterPage() {
                 >
                   {PRIORITIES.map((priority) => (
                     <option key={priority} value={priority}>
-                      {priority}
+                      {translatePriority(t, priority)}
                     </option>
                   ))}
                 </select>
@@ -653,14 +662,14 @@ export default function OwnerCommandCenterPage() {
                   onClick={() => startEdit(note)}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
                 >
-                  Edit
+                  {t("common.edit")}
                 </button>
 
                 <button
                   onClick={() => setNoteToDelete(note)}
                   className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
                 >
-                  Delete
+                  {t("common.delete")}
                 </button>
               </div>
             </div>
@@ -670,10 +679,8 @@ export default function OwnerCommandCenterPage() {
 
       <ConfirmModal
         open={noteToDelete !== null}
-        title="Delete Note"
-        message={`Are you sure you want to permanently delete "${noteToDelete?.title ?? ""}"? This cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title={t("commandCenter.deleteTitle")}
+        message={t("commandCenter.deleteMessage", { title: noteToDelete?.title ?? "" })}
         onConfirm={handleDeleteConfirm}
         onClose={() => setNoteToDelete(null)}
       />

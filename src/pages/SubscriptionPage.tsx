@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import Button from "../components/ui/Button";
+import { useTranslation } from "../i18n";
 import {
   getSubscriptionStatus,
   startCheckout,
@@ -13,6 +14,7 @@ import {
 const ACTIVE_STATUSES = ["active", "trialing"];
 
 export default function SubscriptionPage() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -86,8 +88,8 @@ export default function SubscriptionPage() {
   return (
     <div className="p-4 sm:p-8">
       <PageHeader
-        title="Subscription"
-        subtitle="Manage your Axeriva billing plan."
+        title={t("subscription.title")}
+        subtitle={t("subscription.subtitle")}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

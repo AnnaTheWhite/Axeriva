@@ -3,8 +3,10 @@ import PageHeader from "../components/PageHeader";
 import EmptyState from "../components/ui/EmptyState";
 import { getHoursByProject } from "../services/shift.service";
 import type { ProjectHours } from "../services/shift.service";
+import { useTranslation } from "../i18n";
 
 export default function TimeTrackingPage() {
+  const { t } = useTranslation();
   const [hours, setHours] = useState<ProjectHours[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -20,14 +22,14 @@ export default function TimeTrackingPage() {
   return (
     <div className="p-4 sm:p-8">
       <PageHeader
-        title="Time Tracking"
-        subtitle="Worked hours per project, based on completed shifts."
+        title={t("timeTracking.title")}
+        subtitle={t("timeTracking.subtitle")}
       />
 
       {isLoading ? null : hours.length === 0 ? (
         <EmptyState
-          title="No tracked hours yet"
-          description="Hours will show up here once employees clock in and out on a project."
+          title={t("timeTracking.noHours")}
+          description={t("timeTracking.noHoursDesc")}
         />
       ) : (
         <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
@@ -35,8 +37,8 @@ export default function TimeTrackingPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10 text-left">
-                <th className="p-4">Project</th>
-                <th className="p-4">Hours</th>
+                <th className="p-4">{t("table.project")}</th>
+                <th className="p-4">{t("table.hours")}</th>
               </tr>
             </thead>
             <tbody>
@@ -47,7 +49,7 @@ export default function TimeTrackingPage() {
                 </tr>
               ))}
               <tr>
-                <td className="p-4 font-semibold text-white">Total</td>
+                <td className="p-4 font-semibold text-white">{t("table.total")}</td>
                 <td className="p-4 font-semibold text-white">
                   {totalHours.toFixed(1)}
                 </td>

@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTranslation } from "../i18n";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 type TopbarProps = {
   onMenuClick: () => void;
@@ -8,6 +10,7 @@ type TopbarProps = {
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
 
   function handleLogout() {
     logout();
@@ -31,7 +34,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       <div className="flex min-w-0 items-center gap-3">
         <button
           onClick={onMenuClick}
-          aria-label="Open menu"
+          aria-label={t("common.openMenu")}
           className="
             -ml-2
             shrink-0
@@ -49,7 +52,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         </button>
 
         <h2 className="truncate text-lg font-semibold">
-          Axeriva
+          {t("common.appName")}
         </h2>
       </div>
 
@@ -59,6 +62,8 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             {user.email}
           </span>
         )}
+
+        <LanguageSwitcher />
 
         <button
           onClick={handleLogout}
@@ -75,7 +80,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             hover:bg-white/10
           "
         >
-          Log out
+          {t("common.logout")}
         </button>
 
         <div

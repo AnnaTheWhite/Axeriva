@@ -4,11 +4,13 @@ import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import Loading from "../components/Loading";
 import EmptyState from "../components/ui/EmptyState";
+import { useTranslation } from "../i18n";
 
 import { getDashboard } from "../services/dashboard.service";
 import type { DashboardData } from "../services/dashboard.service";
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -22,7 +24,7 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="p-4 sm:p-8">
-        <PageHeader title="Dashboard" subtitle="Your company at a glance." />
+        <PageHeader title={t("dashboard.title")} subtitle={t("dashboard.subtitle")} />
         <Loading />
       </div>
     );
@@ -31,10 +33,10 @@ export default function DashboardPage() {
   if (!data) {
     return (
       <div className="p-4 sm:p-8">
-        <PageHeader title="Dashboard" subtitle="Your company at a glance." />
+        <PageHeader title={t("dashboard.title")} subtitle={t("dashboard.subtitle")} />
         <EmptyState
-          title="Couldn't load the dashboard"
-          description="Please try refreshing the page."
+          title={t("dashboard.couldNotLoad")}
+          description={t("dashboard.couldNotLoadDesc")}
         />
       </div>
     );
@@ -44,25 +46,25 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-8">
-      <PageHeader title="Dashboard" subtitle="Your company at a glance." />
+      <PageHeader title={t("dashboard.title")} subtitle={t("dashboard.subtitle")} />
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Active employees" value={kpis.activeEmployees} />
-        <StatCard title="Active projects" value={kpis.activeProjects} />
-        <StatCard title="Total customers" value={kpis.totalCustomers} />
-        <StatCard title="Today's hours" value={kpis.todaysHours.toFixed(1)} />
+        <StatCard title={t("dashboard.activeEmployees")} value={kpis.activeEmployees} />
+        <StatCard title={t("dashboard.activeProjects")} value={kpis.activeProjects} />
+        <StatCard title={t("dashboard.totalCustomers")} value={kpis.totalCustomers} />
+        <StatCard title={t("dashboard.todaysHours")} value={kpis.todaysHours.toFixed(1)} />
       </div>
 
       <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Today's activity */}
         <section>
-          <h2 className="mb-4 text-xl font-semibold">Today's activity</h2>
+          <h2 className="mb-4 text-xl font-semibold">{t("dashboard.todaysActivity")}</h2>
 
           {activeNow.length === 0 ? (
             <EmptyState
-              title="Nobody is clocked in"
-              description="Employees who clock in will show up here."
+              title={t("dashboard.nobodyClockedIn")}
+              description={t("dashboard.nobodyClockedInDesc")}
             />
           ) : (
             <div className="space-y-3">
@@ -73,10 +75,10 @@ export default function DashboardPage() {
                 >
                   <p className="font-semibold text-white">{entry.employeeName}</p>
                   <p className="text-sm text-slate-400">
-                    {entry.projectName ?? "No project"}
+                    {entry.projectName ?? t("dashboard.noProject")}
                   </p>
                   <p className="mt-1 text-sm text-orange-400">
-                    Started{" "}
+                    {t("dashboard.started")}{" "}
                     {new Date(entry.start).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -90,12 +92,12 @@ export default function DashboardPage() {
 
         {/* Hours by project */}
         <section>
-          <h2 className="mb-4 text-xl font-semibold">Top projects by hours</h2>
+          <h2 className="mb-4 text-xl font-semibold">{t("dashboard.topProjectsByHours")}</h2>
 
           {hoursByProject.length === 0 ? (
             <EmptyState
-              title="No tracked hours yet"
-              description="Hours will show up here once employees clock in and out."
+              title={t("dashboard.noTrackedHours")}
+              description={t("dashboard.noTrackedHoursDesc")}
             />
           ) : (
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
@@ -103,8 +105,8 @@ export default function DashboardPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-white/10 text-left">
-                      <th className="p-4">Project</th>
-                      <th className="p-4">Hours</th>
+                      <th className="p-4">{t("table.project")}</th>
+                      <th className="p-4">{t("table.hours")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -124,12 +126,12 @@ export default function DashboardPage() {
 
       {/* Upcoming shifts */}
       <section className="mt-10">
-        <h2 className="mb-4 text-xl font-semibold">Upcoming shifts (next 7 days)</h2>
+        <h2 className="mb-4 text-xl font-semibold">{t("dashboard.upcomingShifts")}</h2>
 
         {upcomingShifts.length === 0 ? (
           <EmptyState
-            title="No upcoming shifts"
-            description="Shifts scheduled in the next 7 days will show up here."
+            title={t("dashboard.noUpcomingShifts")}
+            description={t("dashboard.noUpcomingShiftsDesc")}
           />
         ) : (
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
@@ -137,9 +139,9 @@ export default function DashboardPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/10 text-left">
-                    <th className="p-4">Employee</th>
-                    <th className="p-4">Project</th>
-                    <th className="p-4">Date</th>
+                    <th className="p-4">{t("table.employee")}</th>
+                    <th className="p-4">{t("table.project")}</th>
+                    <th className="p-4">{t("table.date")}</th>
                   </tr>
                 </thead>
                 <tbody>

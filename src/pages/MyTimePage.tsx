@@ -4,6 +4,7 @@ import Button from "../components/ui/Button";
 import { clockIn, clockOut, getMyShifts } from "../services/shift.service";
 import { getProjects } from "../services/project.service";
 import type { Project } from "../types/project";
+import { useTranslation } from "../i18n";
 
 type MyShift = {
   id: number;
@@ -29,6 +30,7 @@ function workAddress(project: {
 }
 
 export default function MyTimePage() {
+  const { t } = useTranslation();
   const [shifts, setShifts] = useState<MyShift[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -56,7 +58,7 @@ export default function MyTimePage() {
 
   async function handleClockIn() {
     if (!selectedProjectId) {
-      setError("Please select a project before clocking in.");
+      setError(t("myTime.selectProjectError"));
       return;
     }
 
@@ -67,7 +69,7 @@ export default function MyTimePage() {
       setSelectedProjectId("");
       await load();
     } catch {
-      setError("Failed to clock in.");
+      setError(t("myTime.clockInFailed"));
     }
   }
 
@@ -77,7 +79,7 @@ export default function MyTimePage() {
       await clockOut();
       await load();
     } catch {
-      setError("Failed to clock out.");
+      setError(t("myTime.clockOutFailed"));
     }
   }
 
@@ -87,23 +89,23 @@ export default function MyTimePage() {
 
   return (
     <div className="p-4 sm:p-8">
-      <PageHeader title="My Time" subtitle="Track your worked hours." />
+      <PageHeader title={t("myTime.title")} subtitle={t("myTime.subtitle")} />
 
       <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-8">
-        <p className="text-sm text-slate-400">Current status</p>
+        <p className="text-sm text-slate-400">{t("myTime.currentStatus")}</p>
         <p className="mt-2 text-2xl font-bold text-white">
-          {openShift ? "Clocked in" : "Clocked out"}
+          {openShift ? t("myTime.clockedIn") : t("myTime.clockedOut")}
         </p>
 
         {openShift && (
           <>
             <p className="mt-1 text-slate-400">
-              Project: <span className="text-white">{openShift.project?.name ?? "—"}</span>
+              {t("table.project")}: <span className="text-white">{openShift.project?.name ?? "—"}</span>
             </p>
             <p className="mt-1 text-slate-400">
-              Where:{" "}
+              {t("myTime.where")}:{" "}
               <span className="text-white">
-                {workAddress(openShift.project) ?? "No address set"}
+                {workAddress(openShift.project) ?? t("myTime.noAddressSet")}
               </span>
             </p>
           </>
@@ -118,7 +120,7 @@ export default function MyTimePage() {
         <div className="mt-6">
           {openShift ? (
             <Button variant="danger" size="lg" onClick={handleClockOut}>
-              Clock out
+              {t("myTime.clockOut")}
             </Button>
           ) : (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -127,7 +129,7 @@ export default function MyTimePage() {
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white sm:min-w-[220px] sm:flex-1"
               >
-                <option value="">Select a project...</option>
+                <option value="">{t("myTime.selectProject")}</option>
                 {projects.map((project) => {
                   const address = workAddress(project);
                   return (
@@ -140,7 +142,7 @@ export default function MyTimePage() {
               </select>
 
               <Button size="lg" onClick={handleClockIn}>
-                Clock in
+                {t("myTime.clockIn")}
               </Button>
             </div>
           )}
@@ -152,21 +154,21 @@ export default function MyTimePage() {
         {shifts.map((shift) => (
           <div key={shift.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-400">Start</span>
+              <span className="text-slate-400">{t("table.start")}</span>
               <span className="text-white">{new Date(shift.start).toLocaleString()}</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-slate-400">End</span>
+              <span className="text-slate-400">{t("table.end")}</span>
               <span className="text-white">
-                {shift.end ? new Date(shift.end).toLocaleString() : "In progress"}
+                {shift.end ? new Date(shift.end).toLocaleString() : t("schedule.inProgress")}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-slate-400">Project</span>
+              <span className="text-slate-400">{t("table.project")}</span>
               <span className="text-white">{shift.project?.name ?? "—"}</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-slate-400">Location</span>
+              <span className="text-slate-400">{t("table.location")}</span>
               <span className="text-right text-white">{workAddress(shift.project) ?? "—"}</span>
             </div>
           </div>
@@ -178,10 +180,10 @@ export default function MyTimePage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10 text-left">
-                <th className="p-4">Start</th>
-                <th className="p-4">End</th>
-                <th className="p-4">Project</th>
-                <th className="p-4">Location</th>
+                <th className="p-4">{t("table.start")}</th>
+                <th className="p-4">{t("table.end")}</th>
+                <th className="p-4">{t("table.project")}</th>
+                <th className="p-4">{t("table.location")}</th>
               </tr>
             </thead>
             <tbody>
@@ -189,7 +191,7 @@ export default function MyTimePage() {
                 <tr key={shift.id} className="border-b border-white/5">
                   <td className="p-4">{new Date(shift.start).toLocaleString()}</td>
                   <td className="p-4">
-                    {shift.end ? new Date(shift.end).toLocaleString() : "In progress"}
+                    {shift.end ? new Date(shift.end).toLocaleString() : t("schedule.inProgress")}
                   </td>
                   <td className="p-4">{shift.project?.name ?? "—"}</td>
                   <td className="p-4">{workAddress(shift.project) ?? "—"}</td>

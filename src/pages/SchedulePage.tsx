@@ -5,11 +5,15 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 
 import { useToast } from "../hooks/useToast";
+import { useTranslation } from "../i18n";
 import { getShifts, deleteShift } from "../services/shift.service";
 
 import type { Shift } from "../types/shifts";
 
 export default function SchedulePage() {
+  const { t, language } = useTranslation();
+  const dateLocale = language === "hu" ? "hu-HU" : "en-US";
+
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,11 +44,11 @@ export default function SchedulePage() {
     try {
       await deleteShift(shiftToDelete.id);
       setShiftToDelete(null);
-      triggerToast("Shift deleted");
+      triggerToast(t("schedule.deleted"));
       await loadShifts();
     } catch (error) {
       console.error(error);
-      triggerToast("Failed to delete shift");
+      triggerToast(t("schedule.deleteFailed"));
     }
   };
 
@@ -52,20 +56,22 @@ export default function SchedulePage() {
     <div className="p-4 sm:p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold sm:text-4xl">Schedule</h1>
-          <p className="mt-2 text-slate-400">Total Shifts: {shifts.length}</p>
+          <h1 className="text-2xl font-bold sm:text-4xl">{t("schedule.title")}</h1>
+          <p className="mt-2 text-slate-400">
+            {t("schedule.totalShifts", { count: shifts.length })}
+          </p>
         </div>
 
         <button
           onClick={() => setIsModalOpen(true)}
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600 sm:w-auto"
         >
-          Add Shift
+          {t("schedule.addShift")}
         </button>
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <p>{t("common.loading")}</p>
       ) : (
         <>
           {/* Mobile: cards (no horizontal scroll). Desktop: table. */}
@@ -80,16 +86,16 @@ export default function SchedulePage() {
                 <p className="mt-1 text-sm text-slate-400">{shift.project?.name ?? "-"}</p>
 
                 <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Start</span>
-                  <span className="text-white">{new Date(shift.start).toLocaleString("hu-HU")}</span>
+                  <span className="text-slate-400">{t("table.start")}</span>
+                  <span className="text-white">{new Date(shift.start).toLocaleString(dateLocale)}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-slate-400">End</span>
-                  <span className="text-white">{new Date(shift.end).toLocaleString("hu-HU")}</span>
+                  <span className="text-slate-400">{t("table.end")}</span>
+                  <span className="text-white">{new Date(shift.end).toLocaleString(dateLocale)}</span>
                 </div>
                 {shift.notes && (
                   <div className="mt-2 flex items-center justify-between text-sm">
-                    <span className="text-slate-400">Notes</span>
+                    <span className="text-slate-400">{t("table.notes")}</span>
                     <span className="text-right text-white">{shift.notes}</span>
                   </div>
                 )}
@@ -99,14 +105,14 @@ export default function SchedulePage() {
                     onClick={() => setShiftToEdit(shift)}
                     className="flex-1 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 hover:bg-blue-500/20"
                   >
-                    ✏ Edit
+                    ✏ {t("common.edit")}
                   </button>
 
                   <button
                     onClick={() => setShiftToDelete(shift)}
                     className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                   >
-                    🗑 Delete
+                    🗑 {t("common.delete")}
                   </button>
                 </div>
               </div>
@@ -118,12 +124,12 @@ export default function SchedulePage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/10 text-left">
-                    <th className="p-4">Employee</th>
-                    <th className="p-4">Project</th>
-                    <th className="p-4">Start</th>
-                    <th className="p-4">End</th>
-                    <th className="p-4">Notes</th>
-                    <th className="p-4">Actions</th>
+                    <th className="p-4">{t("table.employee")}</th>
+                    <th className="p-4">{t("table.project")}</th>
+                    <th className="p-4">{t("table.start")}</th>
+                    <th className="p-4">{t("table.end")}</th>
+                    <th className="p-4">{t("table.notes")}</th>
+                    <th className="p-4">{t("table.actions")}</th>
                   </tr>
                 </thead>
 
@@ -139,11 +145,11 @@ export default function SchedulePage() {
                       <td className="p-4">{shift.project?.name ?? "-"}</td>
 
                       <td className="p-4">
-                        {new Date(shift.start).toLocaleString("hu-HU")}
+                        {new Date(shift.start).toLocaleString(dateLocale)}
                       </td>
 
                       <td className="p-4">
-                        {new Date(shift.end).toLocaleString("hu-HU")}
+                        {new Date(shift.end).toLocaleString(dateLocale)}
                       </td>
 
                       <td className="p-4">{shift.notes || "-"}</td>
@@ -153,14 +159,14 @@ export default function SchedulePage() {
                           onClick={() => setShiftToEdit(shift)}
                           className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 hover:bg-blue-500/20"
                         >
-                          ✏ Edit
+                          ✏ {t("common.edit")}
                         </button>
 
                         <button
                           onClick={() => setShiftToDelete(shift)}
                           className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
                         >
-                          🗑 Delete
+                          🗑 {t("common.delete")}
                         </button>
                       </td>
                     </tr>
@@ -177,7 +183,7 @@ export default function SchedulePage() {
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={() => {
-          triggerToast("Shift created");
+          triggerToast(t("schedule.created"));
           loadShifts();
         }}
       />
@@ -188,7 +194,7 @@ export default function SchedulePage() {
         shift={shiftToEdit}
         onClose={() => setShiftToEdit(null)}
         onSuccess={() => {
-          triggerToast("Shift updated");
+          triggerToast(t("schedule.updated"));
           setShiftToEdit(null);
           loadShifts();
         }}
@@ -196,10 +202,8 @@ export default function SchedulePage() {
 
       <ConfirmModal
         open={shiftToDelete !== null}
-        title="Delete Shift"
-        message="Are you sure you want to delete this shift?"
-        confirmText="Delete"
-        cancelText="Cancel"
+        title={t("schedule.deleteTitle")}
+        message={t("schedule.deleteMessage")}
         onConfirm={confirmDelete}
         onClose={() => setShiftToDelete(null)}
       />

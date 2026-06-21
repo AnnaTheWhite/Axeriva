@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
+import { useTranslation } from "../i18n";
 import Button from "../components/ui/Button";
 import DangerZoneSection from "../components/account/DangerZoneSection";
 import CompanyProfileSection from "../components/company/CompanyProfileSection";
@@ -11,6 +12,7 @@ import { getSubscriptionStatus } from "../services/subscription.service";
 const ACTIVE_STATUSES = ["active", "trialing", "past_due"];
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [name, setName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -50,7 +52,7 @@ export default function SettingsPage() {
 
   return (
     <div className="p-4 sm:p-8">
-      <PageHeader title="Settings" subtitle="Manage your company profile." />
+      <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
 
       <div className="max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
         <label className="block text-sm text-white/70">Company name</label>

@@ -1,4 +1,5 @@
 import Modal from "./Modal";
+import { useTranslation } from "../../i18n";
 
 type ConfirmModalProps = {
   open: boolean;
@@ -14,11 +15,15 @@ export default function ConfirmModal({
   open,
   title,
   message,
-  confirmText = "Delete",
-  cancelText = "Cancel",
+  confirmText,
+  cancelText,
   onConfirm,
   onClose,
 }: ConfirmModalProps) {
+  const { t } = useTranslation();
+  const resolvedConfirmText = confirmText ?? t("common.delete");
+  const resolvedCancelText = cancelText ?? t("common.cancel");
+
   return (
     <Modal
       open={open}
@@ -45,7 +50,7 @@ export default function ConfirmModal({
               hover:bg-white/10
             "
           >
-            {cancelText}
+            {resolvedCancelText}
           </button>
 
           <button
@@ -63,7 +68,7 @@ export default function ConfirmModal({
               hover:bg-red-500/20
             "
           >
-            {confirmText}
+            {resolvedConfirmText}
           </button>
         </div>
       </div>
