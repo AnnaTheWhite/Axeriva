@@ -24,6 +24,7 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
   const [longitude, setLongitude] = useState("");
   const [geofenceRadius, setGeofenceRadius] = useState("");
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { triggerToast } = useToast();
 
@@ -41,6 +42,9 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
         project.geofenceRadius != null ? String(project.geofenceRadius) : ""
       );
       setGeofenceEnabled(Boolean(project.geofenceEnabled));
+      setShowAdvanced(
+        Boolean(project.geofenceEnabled || project.latitude || project.longitude)
+      );
     }
   }, [project]);
 
@@ -123,56 +127,74 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-2 block text-sm text-slate-400">Latitude</label>
-              <input
-                type="number"
-                step="any"
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-                placeholder="47.531245"
-                className={inputClass}
-              />
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="mt-4 flex w-full items-center justify-between text-sm text-slate-400 hover:text-slate-300"
+          >
+            <span>Advanced (geofence — coming soon)</span>
+            <span>{showAdvanced ? "▾" : "▸"}</span>
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-3 space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs text-slate-500">
+                These fields are stored for a future automatic clock-in/out
+                feature, which isn't active yet — safe to leave blank.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-2 block text-sm text-slate-400">Latitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                    placeholder="47.531245"
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm text-slate-400">Longitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                    placeholder="19.070834"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-slate-400">
+                  Geofence radius (meters)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={geofenceRadius}
+                  onChange={(e) => setGeofenceRadius(e.target.value)}
+                  placeholder="100"
+                  className={inputClass}
+                />
+              </div>
+
+              <label className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+                <span className="text-sm text-slate-300">Enable GPS tracking</span>
+                <input
+                  type="checkbox"
+                  checked={geofenceEnabled}
+                  onChange={(e) => setGeofenceEnabled(e.target.checked)}
+                  className="h-5 w-5 accent-orange-500"
+                />
+              </label>
             </div>
-
-            <div>
-              <label className="mb-2 block text-sm text-slate-400">Longitude</label>
-              <input
-                type="number"
-                step="any"
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-                placeholder="19.070834"
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <label className="mb-2 block text-sm text-slate-400">
-              Geofence radius (meters)
-            </label>
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={geofenceRadius}
-              onChange={(e) => setGeofenceRadius(e.target.value)}
-              placeholder="100"
-              className={inputClass}
-            />
-          </div>
-
-          <label className="mt-4 flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-            <span className="text-sm text-slate-300">Enable GPS tracking</span>
-            <input
-              type="checkbox"
-              checked={geofenceEnabled}
-              onChange={(e) => setGeofenceEnabled(e.target.checked)}
-              className="h-5 w-5 accent-orange-500"
-            />
-          </label>
+          )}
         </div>
 
         <button
