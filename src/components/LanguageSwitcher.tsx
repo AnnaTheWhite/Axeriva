@@ -11,10 +11,15 @@ const SHORT_LABEL: Record<Language, string> = {
 };
 
 // Single switcher reused in both the authenticated Topbar and the public
-// LandingNavbar — h-10 + px-3 sm:px-4 here must stay in sync with the
-// Login/Sign up/Logout button styles in those two headers so every header
-// control lines up at the same height regardless of which language is
-// selected (selected option text length must never shift the box size).
+// LandingNavbar. A native <select> sizes its closed-state box to fit
+// whichever <option> text is currently selected — with the full language
+// name in there ("EN — English" vs "HU — Hungarian"), the box width
+// changed depending on the selected language, which on the landing page
+// pushed the Login/Sign up buttons partially off-screen. Showing only the
+// short code (EN/HU) keeps the rendered text identical length in both
+// languages, and the fixed w-14/w-16 caps the box so it can never grow
+// past that regardless of font or OS rendering differences. The full
+// language name is still available via `title` for hover/accessibility.
 export default function LanguageSwitcher() {
   const { language, setLanguage, t } = useTranslation();
 
@@ -23,11 +28,12 @@ export default function LanguageSwitcher() {
       value={language}
       onChange={(e) => setLanguage(e.target.value as Language)}
       aria-label={t("common.appName")}
-      className="h-10 shrink-0 whitespace-nowrap rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition hover:bg-white/10 focus:border-orange-500 sm:px-4"
+      title={t(LABEL_KEY[language])}
+      className="h-10 w-14 shrink-0 overflow-hidden whitespace-nowrap rounded-xl border border-white/10 bg-white/5 px-2 text-center text-sm text-white outline-none transition hover:bg-white/10 focus:border-orange-500 sm:w-16 sm:px-3"
     >
       {LANGUAGES.map((lang) => (
-        <option key={lang} value={lang}>
-          {SHORT_LABEL[lang]} — {t(LABEL_KEY[lang])}
+        <option key={lang} value={lang} title={t(LABEL_KEY[lang])}>
+          {SHORT_LABEL[lang]}
         </option>
       ))}
     </select>
