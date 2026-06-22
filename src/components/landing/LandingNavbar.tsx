@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
+import LanguageSwitcher from "../LanguageSwitcher";
 
 export default function LandingNavbar() {
   const { t } = useTranslation();
@@ -22,16 +23,17 @@ export default function LandingNavbar() {
           </Link>
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <LanguageSwitcher />
           <Link
             to="/login"
-            className="rounded-xl px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+            className="rounded-xl px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:px-4"
           >
             {t("landing.nav.logIn")}
           </Link>
           <Link
             to="/register"
-            className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-orange-600"
+            className="rounded-xl bg-orange-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-orange-600 sm:px-4"
           >
             {t("landing.nav.signUp")}
           </Link>
