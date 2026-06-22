@@ -29,7 +29,7 @@ export default function LanguageSwitcher() {
       onChange={(e) => setLanguage(e.target.value as Language)}
       aria-label={t("common.appName")}
       title={t(LABEL_KEY[language])}
-      className="h-10 w-14 shrink-0 overflow-hidden whitespace-nowrap rounded-xl border border-white/10 bg-white/5 px-2 text-center text-sm text-white outline-none transition hover:bg-white/10 focus:border-orange-500 sm:w-16 sm:px-3"
+      className="h-9 w-14 shrink-0 whitespace-nowrap rounded-xl border border-white/10 bg-white/5 px-1 text-center text-xs leading-none text-white outline-none transition hover:bg-white/10 focus:border-orange-500"
     >
       {LANGUAGES.map((lang) => (
         <option key={lang} value={lang} title={t(LABEL_KEY[lang])}>
