@@ -1,5 +1,6 @@
 import Modal from "../ui/Modal";
 import ShiftForm from "./ShiftForm";
+import { useTranslation } from "../../i18n";
 import type { Shift } from "../../types/shifts";
 
 type ShiftModalProps = {
@@ -15,10 +16,11 @@ export default function ShiftModal({
   onClose,
   onSuccess,
 }: ShiftModalProps) {
+  const { t } = useTranslation();
   return (
     <Modal
       open={open}
-      title={shift ? "Edit Shift" : "Add Shift"}
+      title={shift ? t("schedule.editShiftTitle") : t("schedule.addShift")}
       onClose={onClose}
     >
       <ShiftForm

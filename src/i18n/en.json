@@ -42,7 +42,11 @@
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "selectDate": "Select date",
-    "clear": "Clear"
+    "clear": "Clear",
+    "previous": "Previous",
+    "next": "Next",
+    "download": "Download",
+    "noLogo": "No logo"
   },
   "language": {
     "english": "English",
@@ -55,6 +59,13 @@
     "activeProjects": "Active projects",
     "totalCustomers": "Total customers",
     "todaysHours": "Today's hours",
+    "weeklyHours": "Weekly hours",
+    "importantNotes": {
+      "title": "Important notes",
+      "pinned": "Pinned",
+      "noNotesTitle": "No notes yet",
+      "noNotesDesc": "Pinned and recent owner notes will show up here."
+    },
     "todaysActivity": "Today's activity",
     "topProjectsByHours": "Top projects by hours",
     "upcomingShifts": "Upcoming shifts (next 7 days)",
@@ -86,7 +97,20 @@
     "firstName": "First Name",
     "lastName": "Last Name",
     "phone": "Phone",
-    "email": "Email"
+    "email": "Email",
+    "name": "Name",
+    "plan": "Plan",
+    "users": "Users",
+    "employees": "Employees",
+    "role": "Role",
+    "companyId": "Company ID",
+    "action": "Action",
+    "userId": "User ID",
+    "company": "Company",
+    "details": "Details",
+    "when": "When",
+    "type": "Type",
+    "category": "Category"
   },
   "employees": {
     "title": "Employees",
@@ -102,7 +126,14 @@
     "deleted": "Employee deleted",
     "deleteFailed": "Failed to delete employee",
     "deleteTitle": "Delete Employee",
-    "deleteMessage": "Are you sure you want to delete {{name}}?"
+    "deleteMessage": "Are you sure you want to delete {{name}}?",
+    "editModalTitle": "Edit Employee",
+    "inviteModalTitle": "Invite employee",
+    "inviteCreatedMessage": "Invite created. You can also share this link directly:",
+    "inviteDone": "Done",
+    "sendingInvite": "Sending invite...",
+    "sendInvite": "Send invite",
+    "inviteFailed": "Failed to create invite."
   },
   "customers": {
     "title": "Customers",
@@ -150,6 +181,8 @@
     "overview": "Overview",
     "siteLocation": "Site location",
     "address": "Address",
+    "addressPlaceholder": "1138 Budapest, Váci út 100",
+    "selectDeadlinePlaceholder": "Select deadline",
     "coordinates": "Coordinates",
     "geofenceRadius": "Geofence radius",
     "notSet": "Not set",
@@ -162,7 +195,26 @@
       "Planned": "Planned",
       "Active": "Active",
       "Completed": "Completed"
-    }
+    },
+    "editModalTitle": "Edit Project",
+    "namePlaceholder": "Project Name",
+    "descriptionPlaceholder": "Description",
+    "statusLabel": "Status",
+    "advancedToggle": "Advanced (geofence — coming soon)",
+    "advancedHint": "These fields are stored for a future automatic clock-in/out feature, which isn't active yet — safe to leave blank.",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "geofenceRadiusMeters": "Geofence radius (meters)",
+    "enableGpsTracking": "Enable GPS tracking",
+    "saveProject": "Save Project",
+    "createdSuccessfully": "Project created successfully",
+    "createFailed": "Failed to create project",
+    "updateFailed": "Update failed",
+    "assignModalTitle": "Assign Employee",
+    "searchEmployeePlaceholder": "Search employee...",
+    "employeeHashId": "Employee #{{id}}",
+    "noEmployeesFound": "No employees found",
+    "assignEmployeeSubmit": "Assign Employee"
   },
   "schedule": {
     "title": "Schedule",
@@ -176,7 +228,30 @@
     "deleteMessage": "Are you sure you want to delete this shift?",
     "noShifts": "No shifts yet",
     "noShiftsDesc": "Your shifts will show up here.",
-    "inProgress": "In progress"
+    "inProgress": "In progress",
+    "editShiftTitle": "Edit Shift",
+    "calendar": {
+      "title": "Calendar",
+      "subtitle": "Team schedule overview"
+    },
+    "shiftForm": {
+      "employee": "Employee",
+      "selectEmployee": "Select Employee",
+      "project": "Project",
+      "selectProjectOptional": "Select Project (optional)",
+      "date": "Date",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "selectStartTime": "Select start time",
+      "selectEndTime": "Select end time",
+      "duration": "Duration: {{duration}}",
+      "timeRangeError": "End time must be after start time",
+      "selectEmployeeError": "Please select an employee",
+      "notes": "Notes",
+      "saveShift": "Save Shift",
+      "updateFailed": "Failed to update shift",
+      "createFailed": "Failed to create shift"
+    }
   },
   "timeTracking": {
     "title": "Time Tracking",
@@ -265,7 +340,10 @@
     "title": "My Projects",
     "subtitle": "Projects you're assigned to.",
     "noProjects": "No projects yet",
-    "noProjectsDesc": "You're not assigned to any project."
+    "noProjectsDesc": "You're not assigned to any project.",
+    "backToMyProjects": "← Back to my projects",
+    "notFoundTitle": "Project not found",
+    "notFoundDesc": "It may have been deleted, or you're not assigned to it."
   },
   "profile": {
     "title": "Profile",
@@ -275,13 +353,261 @@
   },
   "settings": {
     "title": "Settings",
-    "subtitle": "Manage your company profile."
+    "subtitle": "Manage your company profile.",
+    "companyProfile": {
+      "title": "Company Profile",
+      "description": "Used on email templates, PDFs, quotes, and invoices.",
+      "companyName": "Company Name",
+      "billingEmail": "Billing Email",
+      "contactEmail": "Contact Email",
+      "phoneNumber": "Phone Number",
+      "website": "Website",
+      "address": "Address",
+      "taxNumber": "Tax Number",
+      "vatNumber": "VAT Number",
+      "saved": "Saved.",
+      "saveFailed": "Failed to save changes."
+    },
+    "branding": {
+      "title": "Branding",
+      "description": "Your logo appears on emails, PDFs, quotes, and invoices.",
+      "noLogo": "No logo",
+      "saveLogo": "Save logo",
+      "uploading": "Uploading...",
+      "logoUpdated": "Logo updated.",
+      "uploadFailed": "Failed to upload logo.",
+      "logoAlt": "Company logo preview"
+    }
   },
   "subscription": {
     "title": "Subscription",
     "subtitle": "Manage your Axeriva billing plan."
   },
   "auth": {
-    "loggedOut": "You have been logged out."
+    "loggedOut": "You have been logged out.",
+    "login": {
+      "title": "Log in to Axeriva",
+      "email": "Email",
+      "password": "Password",
+      "forgotPassword": "Forgot password?",
+      "submitting": "Logging in...",
+      "submit": "Log in",
+      "noAccount": "Don't have an account?",
+      "signUp": "Sign up",
+      "invalidCredentials": "Invalid email or password"
+    },
+    "register": {
+      "title": "Register your company",
+      "companyName": "Company name",
+      "email": "Email",
+      "password": "Password",
+      "submitting": "Signing up...",
+      "submit": "Sign up",
+      "haveAccount": "Already have an account?",
+      "logIn": "Log in",
+      "failed": "Registration failed. Try a different email address."
+    },
+    "forgotPassword": {
+      "title": "Forgot password",
+      "description": "Enter your email and we'll send you a link to reset your password.",
+      "email": "Email",
+      "submitting": "Sending...",
+      "submit": "Send reset link",
+      "backToLogin": "Back to login",
+      "genericMessage": "If an account with that email exists, a reset link has been sent."
+    },
+    "resetPassword": {
+      "title": "Reset password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "submitting": "Resetting...",
+      "submit": "Reset password",
+      "mismatch": "Passwords don't match",
+      "failed": "Reset failed",
+      "successTitle": "Password reset",
+      "successDescription": "Your password has been changed. You can now log in.",
+      "goToLogin": "Go to login",
+      "errorTitle": "Reset failed",
+      "requestNewLink": "Request a new link"
+    },
+    "verifyEmail": {
+      "verifying": "Verifying your email...",
+      "successTitle": "Email verified",
+      "successDescription": "Your email address has been confirmed.",
+      "continue": "Continue to Axeriva",
+      "failedTitle": "Verification failed",
+      "failed": "Verification failed",
+      "goToLogin": "Go to login"
+    },
+    "acceptInvite": {
+      "invalidLink": "This invitation link is invalid or has expired.",
+      "goToLogin": "Go to login",
+      "join": "Join {{companyName}}",
+      "activatingFor": "Activating account for",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "password": "Password",
+      "submitting": "Activating...",
+      "submit": "Activate account",
+      "failed": "Failed to activate your account."
+    }
+  },
+  "emailBanner": {
+    "message": "Please verify your email address to secure your account.",
+    "resend": "Resend verification email",
+    "sending": "Sending...",
+    "sent": "Verification email sent — check your inbox.",
+    "failed": "Failed to resend email"
+  },
+  "account": {
+    "dangerZone": {
+      "title": "Danger Zone",
+      "description": "Deleting your account deactivates it immediately. This can't be undone from the app.",
+      "deleteAccount": "Delete account"
+    },
+    "deleteModal": {
+      "title": "Delete account",
+      "description": "This will deactivate your account. This action can't be undone from the app — contact support if you need it reversed.",
+      "password": "Password",
+      "confirmPrefix": "Type",
+      "confirmSuffix": "to confirm",
+      "submitting": "Deleting...",
+      "submit": "Permanently delete my account",
+      "missingFields": "Enter your password and type \"DELETE\" to confirm.",
+      "failed": "Failed to delete account"
+    }
+  },
+  "projectActivity": {
+    "notes": {
+      "title": "Notes",
+      "placeholder": "Add a note about this project...",
+      "adding": "Adding...",
+      "addNote": "Add note",
+      "noNotes": "No notes yet.",
+      "loadFailed": "Failed to load notes",
+      "addFailed": "Failed to add note"
+    },
+    "attachments": {
+      "title": "Photos & Files",
+      "categoryLabel": "Category for next upload",
+      "dropHint": "Drag & drop files here, or click to choose (multiple allowed)",
+      "allowedTypes": "JPG, PNG, PDF, DOCX, XLSX",
+      "uploading": "Uploading...",
+      "loadFailed": "Failed to load files",
+      "uploadFailed": "Failed to upload files",
+      "deleteFailed": "Failed to delete file",
+      "typeAll": "All",
+      "typeImages": "Images",
+      "typeDocuments": "Documents",
+      "categoryAll": "All",
+      "gallery": "Gallery",
+      "documents": "Documents",
+      "noMatch": "No files match these filters.",
+      "category": {
+        "Before": "Before",
+        "During": "During",
+        "After": "After",
+        "Issue": "Issue",
+        "Material": "Material",
+        "Other": "Other"
+      }
+    },
+    "timeline": {
+      "title": "Activity Timeline",
+      "noActivity": "No activity yet.",
+      "addedNote": "added a note",
+      "addedNoteWithPreview": "added a note: \"{{preview}}\"",
+      "uploadedFile": "uploaded {{fileName}}",
+      "uploadedFileWithCategory": "uploaded {{fileName}} ({{category}})",
+      "clockedIn": "clocked in",
+      "clockedOut": "clocked out",
+      "completedTask": "completed a task",
+      "defaultFileName": "a file"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Platform Dashboard",
+      "subtitle": "Cross-tenant overview.",
+      "activeSubscriptions": "Active subscriptions"
+    },
+    "companies": {
+      "title": "Companies",
+      "subtitle": "Every tenant on the platform."
+    },
+    "users": {
+      "title": "Users",
+      "subtitle": "Every user account on the platform."
+    },
+    "billing": {
+      "title": "Billing",
+      "subtitle": "Plan and subscription status per company."
+    },
+    "logs": {
+      "title": "Logs",
+      "subtitle": "Platform audit trail.",
+      "noActivityTitle": "No activity yet",
+      "noActivityDesc": "Audited actions (like account deletions) will show up here."
+    }
+  },
+  "landing": {
+    "nav": {
+      "whyAxeriva": "Why Axeriva",
+      "features": "Features",
+      "pricing": "Pricing",
+      "logIn": "Log in",
+      "signUp": "Sign up"
+    },
+    "footer": {
+      "rights": "© {{year}} Axeriva. All rights reserved."
+    },
+    "hero": {
+      "badge": "Built for field service teams",
+      "titleLine1": "Axeriva — Workforce Management",
+      "titleLine2": "for Field Service Businesses",
+      "description": "Schedule your crews, track employees and projects, manage customers and time — all in one modern, easy-to-use platform.",
+      "signUp": "Sign up",
+      "logIn": "Log in"
+    },
+    "benefits": {
+      "title": "Why Axeriva?",
+      "subtitle": "Everything you need to run a field service business, without the spreadsheets.",
+      "items": {
+        "shiftScheduling": { "title": "Shift scheduling", "description": "Plan and assign shifts in minutes." },
+        "employeeManagement": { "title": "Employee management", "description": "Keep your whole crew organized in one place." },
+        "projectTracking": { "title": "Project tracking", "description": "See the status of every job at a glance." },
+        "customerManagement": { "title": "Customer management", "description": "Centralize client details and project history." },
+        "timeTracking": { "title": "Time tracking", "description": "Log hours worked, accurately and effortlessly." },
+        "multiSite": { "title": "Multi-site & multi-team", "description": "Run several locations and teams from one account." },
+        "mobileFriendly": { "title": "Mobile friendly", "description": "Works smoothly on phones, tablets and desktop." }
+      }
+    },
+    "features": {
+      "title": "Features",
+      "subtitle": "One platform covering every part of your daily operations.",
+      "items": {
+        "employees": { "title": "Employees", "description": "Manage your workforce, statuses and contact details." },
+        "projects": { "title": "Projects", "description": "Track jobs from planning through completion." },
+        "scheduling": { "title": "Scheduling", "description": "Build shift schedules and assign crews to projects." },
+        "timeTracking": { "title": "Time Tracking", "description": "Capture worked hours per employee and project." },
+        "customers": { "title": "Customers", "description": "Keep client information and project history in sync." },
+        "reports": { "title": "Reports", "description": "Get visibility into activity across your business." }
+      }
+    },
+    "pricing": {
+      "title": "Simple pricing",
+      "subtitle": "One plan. Everything included. No surprises.",
+      "planName": "Axeriva Pro",
+      "perMonth": "/ month",
+      "subscribe": "Subscribe",
+      "included": {
+        "unlimitedEmployees": "Unlimited employees",
+        "unlimitedProjects": "Unlimited projects",
+        "customerManagement": "Customer management",
+        "shiftScheduling": "Shift scheduling",
+        "timeTracking": "Time tracking",
+        "futureAi": "Future AI features"
+      }
+    }
   }
 }

@@ -3,10 +3,12 @@ import { useNavigate, Link } from "react-router-dom";
 import { register } from "../services/auth.service";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
+import { useTranslation } from "../i18n";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { t } = useTranslation();
 
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
@@ -24,7 +26,7 @@ export default function RegisterPage() {
       await login(email, password);
       navigate("/");
     } catch {
-      setError("Registration failed. Try a different email address.");
+      setError(t("auth.register.failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -37,7 +39,7 @@ export default function RegisterPage() {
         className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-white/5 p-8"
       >
         <h1 className="text-xl font-semibold text-white">
-          Register your company
+          {t("auth.register.title")}
         </h1>
 
         {error && (
@@ -47,7 +49,7 @@ export default function RegisterPage() {
         )}
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">Company name</label>
+          <label className="block text-sm text-white/70">{t("auth.register.companyName")}</label>
           <input
             type="text"
             required
@@ -58,7 +60,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">Email</label>
+          <label className="block text-sm text-white/70">{t("auth.register.email")}</label>
           <input
             type="email"
             required
@@ -69,7 +71,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">Password</label>
+          <label className="block text-sm text-white/70">{t("auth.register.password")}</label>
           <input
             type="password"
             required
@@ -81,13 +83,13 @@ export default function RegisterPage() {
         </div>
 
         <Button type="submit">
-          {isSubmitting ? "Signing up..." : "Sign up"}
+          {isSubmitting ? t("auth.register.submitting") : t("auth.register.submit")}
         </Button>
 
         <p className="text-center text-sm text-white/50">
-          Already have an account?{" "}
+          {t("auth.register.haveAccount")}{" "}
           <Link to="/login" className="text-orange-500 hover:underline">
-            Log in
+            {t("auth.register.logIn")}
           </Link>
         </p>
       </form>

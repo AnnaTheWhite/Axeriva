@@ -4,6 +4,7 @@ import {
   getCompanySettings,
   updateCompanySettings,
 } from "../../services/companySettings.service";
+import { useTranslation } from "../../i18n";
 
 // No file-storage backend exists yet (no S3/multer setup) — the logo is
 // stored as a base64 data URL directly in Company.logoUrl. Good enough for
@@ -18,6 +19,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export default function BrandingSection() {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -52,9 +54,9 @@ export default function BrandingSection() {
       setLogoUrl(updated.logoUrl);
       setPreviewUrl(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setMessage("Logo updated.");
+      setMessage(t("settings.branding.logoUpdated"));
     } catch {
-      setMessage("Failed to upload logo.");
+      setMessage(t("settings.branding.uploadFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -68,9 +70,9 @@ export default function BrandingSection() {
 
   return (
     <div className="mt-8 max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
-      <h3 className="text-lg font-semibold text-white">Branding</h3>
+      <h3 className="text-lg font-semibold text-white">{t("settings.branding.title")}</h3>
       <p className="mt-1 text-sm text-slate-400">
-        Your logo appears on emails, PDFs, quotes, and invoices.
+        {t("settings.branding.description")}
       </p>
 
       <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -78,11 +80,11 @@ export default function BrandingSection() {
           {displayUrl ? (
             <img
               src={displayUrl}
-              alt="Company logo preview"
+              alt={t("settings.branding.logoAlt")}
               className="h-full w-full object-contain"
             />
           ) : (
-            <span className="text-xs text-slate-500">No logo</span>
+            <span className="text-xs text-slate-500">{t("settings.branding.noLogo")}</span>
           )}
         </div>
 
@@ -97,7 +99,7 @@ export default function BrandingSection() {
 
           {previewUrl && (
             <Button onClick={handleSave}>
-              {isSaving ? "Uploading..." : "Save logo"}
+              {isSaving ? t("settings.branding.uploading") : t("settings.branding.saveLogo")}
             </Button>
           )}
         </div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Modal from "../ui/Modal";
 import { getEmployees } from "../../services/employee.service";
 import { assignEmployeeToProject } from "../../services/project.service";
+import { useTranslation } from "../../i18n";
 
 import type { Employee } from "../../types/employee";
 import type { Project } from "../../types/project";
@@ -20,6 +21,7 @@ export default function AssignEmployeeModal({
   onClose,
   onSuccess,
 }: AssignEmployeeModalProps) {
+  const { t } = useTranslation();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeId, setEmployeeId] = useState("");
   const [search, setSearch] = useState("");
@@ -68,11 +70,11 @@ export default function AssignEmployeeModal({
   };
 
   return (
-    <Modal open={open} title="Assign Employee" onClose={onClose}>
+    <Modal open={open} title={t("projects.assignModalTitle")} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           type="text"
-          placeholder="Search employee..."
+          placeholder={t("projects.searchEmployeePlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-orange-500"
@@ -94,14 +96,14 @@ export default function AssignEmployeeModal({
                 {employee.firstName} {employee.lastName}
               </div>
               <div className="text-sm text-slate-400">
-                Employee #{employee.id}
+                {t("projects.employeeHashId", { id: employee.id })}
               </div>
             </button>
           ))}
 
           {filteredEmployees.length === 0 && (
             <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center text-slate-400">
-              No employees found
+              {t("projects.noEmployeesFound")}
             </div>
           )}
         </div>
@@ -111,7 +113,7 @@ export default function AssignEmployeeModal({
           disabled={!employeeId}
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Assign Employee
+          {t("projects.assignEmployeeSubmit")}
         </button>
       </form>
     </Modal>

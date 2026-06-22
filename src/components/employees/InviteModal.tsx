@@ -4,6 +4,7 @@ import Button from "../ui/Button";
 import Toast from "../ui/Toast";
 import { useToast } from "../../hooks/useToast";
 import { createInvite } from "../../services/invites.service";
+import { useTranslation } from "../../i18n";
 
 type InviteModalProps = {
   open: boolean;
@@ -16,6 +17,7 @@ export default function InviteModal({
   onClose,
   onSuccess,
 }: InviteModalProps) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,7 +34,7 @@ export default function InviteModal({
       onSuccess();
     } catch (error) {
       triggerToast(
-        error instanceof Error ? error.message : "Failed to create invite."
+        error instanceof Error ? error.message : t("employees.inviteFailed")
       );
     } finally {
       setIsSubmitting(false);
@@ -46,12 +48,11 @@ export default function InviteModal({
   }
 
   return (
-    <Modal open={open} title="Invite employee" onClose={handleClose}>
+    <Modal open={open} title={t("employees.inviteModalTitle")} onClose={handleClose}>
       {inviteLink ? (
         <div className="space-y-4">
           <p className="text-slate-300">
-            Invite created. Email sending isn't wired up yet — share this
-            link with the employee directly:
+            {t("employees.inviteCreatedMessage")}
           </p>
           <input
             readOnly
@@ -59,12 +60,12 @@ export default function InviteModal({
             onClick={(e) => e.currentTarget.select()}
             className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
           />
-          <Button onClick={handleClose}>Done</Button>
+          <Button onClick={handleClose}>{t("employees.inviteDone")}</Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-white/70">Email</label>
+            <label className="block text-sm text-white/70">{t("table.email")}</label>
             <input
               type="email"
               required
@@ -75,7 +76,7 @@ export default function InviteModal({
           </div>
 
           <Button type="submit">
-            {isSubmitting ? "Sending invite..." : "Send invite"}
+            {isSubmitting ? t("employees.sendingInvite") : t("employees.sendInvite")}
           </Button>
         </form>
       )}

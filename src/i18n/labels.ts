@@ -14,3 +14,20 @@ export function translateOwnerNoteStatus(t: T, status: OwnerNoteStatus): string 
 export function translatePriority(t: T, priority: Priority): string {
   return t(`commandCenter.priority.${priority}`);
 }
+
+export function translateProjectStatus(t: T, status: string): string {
+  return t(`projects.status.${status}`);
+}
+
+export function translateEmployeeStatus(t: T, status: string): string {
+  const key: Record<string, string> = {
+    Active: "employees.statusActive",
+    Sick: "employees.statusSick",
+    Vacation: "employees.statusVacation",
+  };
+  return key[status] ? t(key[status]) : status;
+}
+
+export function translateAttachmentCategory(t: T, category: string): string {
+  return t(`projectActivity.attachments.category.${category}`);
+}

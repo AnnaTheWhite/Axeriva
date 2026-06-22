@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import { forgotPassword } from "../services/auth.service";
+import { useTranslation } from "../i18n";
 
 export default function ForgotPasswordPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,9 +21,7 @@ export default function ForgotPasswordPage() {
       // forgot-password always returns a generic success message, but
       // guard against network errors with the same generic copy so we
       // never reveal whether the email is registered.
-      setMessage(
-        "If an account with that email exists, a reset link has been sent."
-      );
+      setMessage(t("auth.forgotPassword.genericMessage"));
     } finally {
       setIsSubmitting(false);
     }
@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-white/5 p-8"
       >
-        <h1 className="text-xl font-semibold text-white">Forgot password</h1>
+        <h1 className="text-xl font-semibold text-white">{t("auth.forgotPassword.title")}</h1>
 
         {message ? (
           <p className="rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-400">
@@ -42,12 +42,11 @@ export default function ForgotPasswordPage() {
         ) : (
           <>
             <p className="text-sm text-white/50">
-              Enter your email and we'll send you a link to reset your
-              password.
+              {t("auth.forgotPassword.description")}
             </p>
 
             <div className="space-y-2">
-              <label className="block text-sm text-white/70">Email</label>
+              <label className="block text-sm text-white/70">{t("auth.forgotPassword.email")}</label>
               <input
                 type="email"
                 required
@@ -58,14 +57,14 @@ export default function ForgotPasswordPage() {
             </div>
 
             <Button type="submit">
-              {isSubmitting ? "Sending..." : "Send reset link"}
+              {isSubmitting ? t("auth.forgotPassword.submitting") : t("auth.forgotPassword.submit")}
             </Button>
           </>
         )}
 
         <p className="text-center text-sm text-white/50">
           <Link to="/login" className="text-orange-500 hover:underline">
-            Back to login
+            {t("auth.forgotPassword.backToLogin")}
           </Link>
         </p>
       </form>

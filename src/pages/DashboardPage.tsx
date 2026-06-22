@@ -4,19 +4,32 @@ import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import Loading from "../components/Loading";
 import EmptyState from "../components/ui/EmptyState";
+import ImportantNotesWidget from "../components/dashboard/ImportantNotesWidget";
 import { useTranslation } from "../i18n";
 
 import { getDashboard } from "../services/dashboard.service";
 import type { DashboardData } from "../services/dashboard.service";
+import { getOwnerNotes } from "../services/ownerNotes.service";
+import type { OwnerNote } from "../types/ownerNote";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [notes, setNotes] = useState<OwnerNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    getDashboard()
-      .then(setData)
+    Promise.all([
+      getDashboard(),
+      // Owner Notes are already sorted pinned-first, newest-first by the
+      // backend — fetched here at the page level so the widget itself stays
+      // purely presentational.
+      getOwnerNotes().catch(() => [] as OwnerNote[]),
+    ])
+      .then(([dashboardData, ownerNotes]) => {
+        setData(dashboardData);
+        setNotes(ownerNotes);
+      })
       .catch(console.error)
       .finally(() => setIsLoading(false));
   }, []);
@@ -54,6 +67,17 @@ export default function DashboardPage() {
         <StatCard title={t("dashboard.activeProjects")} value={kpis.activeProjects} />
         <StatCard title={t("dashboard.totalCustomers")} value={kpis.totalCustomers} />
         <StatCard title={t("dashboard.todaysHours")} value={kpis.todaysHours.toFixed(1)} />
+      </div>
+
+      {/* Weekly Hours + Important Notes — own row so the main 4-card KPI
+          grid above stays untouched. */}
+      <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <StatCard title={t("dashboard.weeklyHours")} value={kpis.weeklyHours.toFixed(1)} />
+
+        <div className="lg:col-span-2">
+          <h2 className="mb-4 text-xl font-semibold">{t("dashboard.importantNotes.title")}</h2>
+          <ImportantNotesWidget notes={notes.slice(0, 5)} />
+        </div>
       </div>
 
       <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">

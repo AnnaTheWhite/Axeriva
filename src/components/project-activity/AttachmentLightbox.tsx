@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { attachmentDownloadUrl } from "../../services/projectActivity.service";
 import type { ProjectAttachment } from "../../types/projectActivity";
+import { useTranslation } from "../../i18n";
 
 type AttachmentLightboxProps = {
   images: ProjectAttachment[];
@@ -15,6 +16,7 @@ export default function AttachmentLightbox({
   onClose,
   onNavigate,
 }: AttachmentLightboxProps) {
+  const { t } = useTranslation();
   const current = images[index];
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function AttachmentLightbox({
       <button
         onClick={onClose}
         className="absolute right-6 top-6 text-3xl text-white/70 hover:text-white"
-        aria-label="Close"
+        aria-label={t("common.close")}
       >
         ×
       </button>
@@ -50,7 +52,7 @@ export default function AttachmentLightbox({
             onNavigate((index - 1 + images.length) % images.length);
           }}
           className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-3 text-2xl text-white hover:bg-white/20"
-          aria-label="Previous"
+          aria-label={t("common.previous")}
         >
           ‹
         </button>
@@ -70,7 +72,7 @@ export default function AttachmentLightbox({
             onNavigate((index + 1) % images.length);
           }}
           className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-3 text-2xl text-white hover:bg-white/20"
-          aria-label="Next"
+          aria-label={t("common.next")}
         >
           ›
         </button>

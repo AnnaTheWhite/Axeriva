@@ -3,11 +3,13 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { getInviteByToken, acceptInvite } from "../services/invites.service";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
+import { useTranslation } from "../i18n";
 
 export default function AcceptInvitePage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const { setSession } = useAuth();
+  const { t } = useTranslation();
 
   const [invite, setInvite] = useState<{
     email: string;
@@ -26,7 +28,8 @@ export default function AcceptInvitePage() {
 
     getInviteByToken(token)
       .then(setInvite)
-      .catch(() => setLoadError("This invitation link is invalid or has expired."));
+      .catch(() => setLoadError(t("auth.acceptInvite.invalidLink")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -41,7 +44,7 @@ export default function AcceptInvitePage() {
       setSession(data.token, data.user);
       navigate("/");
     } catch {
-      setError("Failed to activate your account.");
+      setError(t("auth.acceptInvite.failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -53,7 +56,7 @@ export default function AcceptInvitePage() {
         <div className="max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white">
           <p>{loadError}</p>
           <Link to="/login" className="mt-4 inline-block text-orange-500 hover:underline">
-            Go to login
+            {t("auth.acceptInvite.goToLogin")}
           </Link>
         </div>
       </div>
@@ -71,10 +74,11 @@ export default function AcceptInvitePage() {
         className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-white/5 p-8"
       >
         <h1 className="text-xl font-semibold text-white">
-          Join {invite.companyName}
+          {t("auth.acceptInvite.join", { companyName: invite.companyName })}
         </h1>
         <p className="text-sm text-slate-400">
-          Activating account for <span className="text-white">{invite.email}</span>
+          {t("auth.acceptInvite.activatingFor")}{" "}
+          <span className="text-white">{invite.email}</span>
         </p>
 
         {error && (
@@ -84,7 +88,7 @@ export default function AcceptInvitePage() {
         )}
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">First name</label>
+          <label className="block text-sm text-white/70">{t("auth.acceptInvite.firstName")}</label>
           <input
             type="text"
             required
@@ -95,7 +99,7 @@ export default function AcceptInvitePage() {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">Last name</label>
+          <label className="block text-sm text-white/70">{t("auth.acceptInvite.lastName")}</label>
           <input
             type="text"
             required
@@ -106,7 +110,7 @@ export default function AcceptInvitePage() {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">Password</label>
+          <label className="block text-sm text-white/70">{t("auth.acceptInvite.password")}</label>
           <input
             type="password"
             required
@@ -118,7 +122,7 @@ export default function AcceptInvitePage() {
         </div>
 
         <Button type="submit">
-          {isSubmitting ? "Activating..." : "Activate account"}
+          {isSubmitting ? t("auth.acceptInvite.submitting") : t("auth.acceptInvite.submit")}
         </Button>
       </form>
     </div>

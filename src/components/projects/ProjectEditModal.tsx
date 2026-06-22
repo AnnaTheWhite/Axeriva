@@ -4,6 +4,7 @@ import Modal from "../ui/Modal";
 import DatePicker from "../ui/DatePicker";
 import { updateProject } from "../../services/project.service";
 import { useToast } from "../../hooks/useToast";
+import { useTranslation } from "../../i18n";
 
 import type { Project } from "../../types/project";
 
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export default function ProjectEditModal({ open, project, onClose, onSuccess }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("Planned");
@@ -64,12 +66,12 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
         geofenceRadius: geofenceRadius ? Number(geofenceRadius) : null,
         geofenceEnabled,
       });
-      triggerToast("Project updated");
+      triggerToast(t("projects.updated"));
       onSuccess();
       onClose();
     } catch (error) {
       console.error(error);
-      triggerToast("Update failed");
+      triggerToast(t("projects.updateFailed"));
     }
   };
 
@@ -78,12 +80,12 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
   const inputClass = "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-orange-500";
 
   return (
-    <Modal open={open} title="Edit Project" onClose={onClose}>
+    <Modal open={open} title={t("projects.editModalTitle")} onClose={onClose}>
       <form onSubmit={handleSave} className="space-y-4">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Project Name"
+          placeholder={t("projects.namePlaceholder")}
           required
           className={inputClass}
         />
@@ -91,7 +93,7 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description"
+          placeholder={t("projects.descriptionPlaceholder")}
           className={inputClass}
         />
 
@@ -100,29 +102,29 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
           onChange={(e) => setStatus(e.target.value)}
           className={inputClass}
         >
-          <option value="Planned">Planned</option>
-          <option value="Active">Active</option>
-          <option value="Completed">Completed</option>
+          <option value="Planned">{t("projects.status.Planned")}</option>
+          <option value="Active">{t("projects.status.Active")}</option>
+          <option value="Completed">{t("projects.status.Completed")}</option>
         </select>
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Deadline</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("projects.deadline")}</label>
           <DatePicker
             value={deadline}
             onChange={setDeadline}
-            placeholder="Select deadline"
+            placeholder={t("projects.selectDeadlinePlaceholder")}
           />
         </div>
 
         <div className="border-t border-white/10 pt-4">
-          <p className="mb-3 text-sm font-medium text-slate-300">Site location</p>
+          <p className="mb-3 text-sm font-medium text-slate-300">{t("projects.siteLocation")}</p>
 
           <div>
-            <label className="mb-2 block text-sm text-slate-400">Address</label>
+            <label className="mb-2 block text-sm text-slate-400">{t("projects.address")}</label>
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="1138 Budapest, Váci út 100"
+              placeholder={t("projects.addressPlaceholder")}
               className={inputClass}
             />
           </div>
@@ -132,20 +134,19 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
             onClick={() => setShowAdvanced((v) => !v)}
             className="mt-4 flex w-full items-center justify-between text-sm text-slate-400 hover:text-slate-300"
           >
-            <span>Advanced (geofence — coming soon)</span>
+            <span>{t("projects.advancedToggle")}</span>
             <span>{showAdvanced ? "▾" : "▸"}</span>
           </button>
 
           {showAdvanced && (
             <div className="mt-3 space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="text-xs text-slate-500">
-                These fields are stored for a future automatic clock-in/out
-                feature, which isn't active yet — safe to leave blank.
+                {t("projects.advancedHint")}
               </p>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm text-slate-400">Latitude</label>
+                  <label className="mb-2 block text-sm text-slate-400">{t("projects.latitude")}</label>
                   <input
                     type="number"
                     step="any"
@@ -157,7 +158,7 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm text-slate-400">Longitude</label>
+                  <label className="mb-2 block text-sm text-slate-400">{t("projects.longitude")}</label>
                   <input
                     type="number"
                     step="any"
@@ -171,7 +172,7 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
 
               <div>
                 <label className="mb-2 block text-sm text-slate-400">
-                  Geofence radius (meters)
+                  {t("projects.geofenceRadiusMeters")}
                 </label>
                 <input
                   type="number"
@@ -185,7 +186,7 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
               </div>
 
               <label className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <span className="text-sm text-slate-300">Enable GPS tracking</span>
+                <span className="text-sm text-slate-300">{t("projects.enableGpsTracking")}</span>
                 <input
                   type="checkbox"
                   checked={geofenceEnabled}
@@ -201,7 +202,7 @@ export default function ProjectEditModal({ open, project, onClose, onSuccess }: 
           type="submit"
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600"
         >
-          Save Changes
+          {t("common.saveChanges")}
         </button>
       </form>
     </Modal>

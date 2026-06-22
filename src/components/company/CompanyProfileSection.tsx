@@ -5,6 +5,7 @@ import {
   updateCompanySettings,
   type CompanySettings,
 } from "../../services/companySettings.service";
+import { useTranslation } from "../../i18n";
 
 type FormState = {
   name: string;
@@ -41,18 +42,19 @@ function toFormState(settings: CompanySettings): FormState {
   };
 }
 
-const FIELDS: Array<{ key: keyof FormState; label: string; type?: string }> = [
-  { key: "name", label: "Company Name" },
-  { key: "billingEmail", label: "Billing Email", type: "email" },
-  { key: "contactEmail", label: "Contact Email", type: "email" },
-  { key: "phone", label: "Phone Number", type: "tel" },
-  { key: "website", label: "Website", type: "url" },
-  { key: "address", label: "Address" },
-  { key: "taxNumber", label: "Tax Number" },
-  { key: "vatNumber", label: "VAT Number" },
+const FIELDS: Array<{ key: keyof FormState; labelKey: string; type?: string }> = [
+  { key: "name", labelKey: "settings.companyProfile.companyName" },
+  { key: "billingEmail", labelKey: "settings.companyProfile.billingEmail", type: "email" },
+  { key: "contactEmail", labelKey: "settings.companyProfile.contactEmail", type: "email" },
+  { key: "phone", labelKey: "settings.companyProfile.phoneNumber", type: "tel" },
+  { key: "website", labelKey: "settings.companyProfile.website", type: "url" },
+  { key: "address", labelKey: "settings.companyProfile.address" },
+  { key: "taxNumber", labelKey: "settings.companyProfile.taxNumber" },
+  { key: "vatNumber", labelKey: "settings.companyProfile.vatNumber" },
 ];
 
 export default function CompanyProfileSection() {
+  const { t } = useTranslation();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -75,9 +77,9 @@ export default function CompanyProfileSection() {
     try {
       const updated = await updateCompanySettings(form);
       setForm(toFormState(updated));
-      setMessage("Saved.");
+      setMessage(t("settings.companyProfile.saved"));
     } catch {
-      setMessage("Failed to save changes.");
+      setMessage(t("settings.companyProfile.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -89,15 +91,15 @@ export default function CompanyProfileSection() {
 
   return (
     <div className="mt-8 max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
-      <h3 className="text-lg font-semibold text-white">Company Profile</h3>
+      <h3 className="text-lg font-semibold text-white">{t("settings.companyProfile.title")}</h3>
       <p className="mt-1 text-sm text-slate-400">
-        Used on email templates, PDFs, quotes, and invoices.
+        {t("settings.companyProfile.description")}
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {FIELDS.map(({ key, label, type }) => (
+        {FIELDS.map(({ key, labelKey, type }) => (
           <div key={key} className="space-y-2">
-            <label className="block text-sm text-white/70">{label}</label>
+            <label className="block text-sm text-white/70">{t(labelKey)}</label>
             <input
               type={type ?? "text"}
               value={form[key]}
@@ -111,7 +113,7 @@ export default function CompanyProfileSection() {
       {message && <p className="mt-4 text-sm text-slate-400">{message}</p>}
 
       <div className="mt-6">
-        <Button onClick={handleSave}>{isSaving ? "Saving..." : "Save"}</Button>
+        <Button onClick={handleSave}>{isSaving ? t("common.saving") : t("common.save")}</Button>
       </div>
     </div>
   );

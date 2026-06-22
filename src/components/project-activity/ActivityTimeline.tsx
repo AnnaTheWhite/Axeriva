@@ -1,36 +1,48 @@
 import { useEffect, useState } from "react";
 import { getProjectActivity } from "../../services/projectActivity.service";
 import type { ProjectActivityEntry } from "../../types/projectActivity";
+import { useTranslation } from "../../i18n";
+import { translateAttachmentCategory } from "../../i18n/labels";
 
 type ActivityTimelineProps = {
   projectId: number;
 };
 
-function describeActivity(entry: ProjectActivityEntry): string {
-  const fileName = (entry.metadata?.fileName as string | undefined) ?? "a file";
+function describeActivity(
+  entry: ProjectActivityEntry,
+  t: ReturnType<typeof useTranslation>["t"]
+): string {
+  const fileName =
+    (entry.metadata?.fileName as string | undefined) ??
+    t("projectActivity.timeline.defaultFileName");
   const preview = entry.metadata?.preview as string | undefined;
   const category = entry.metadata?.category as string | undefined;
-  const categorySuffix = category && category !== "Other" ? ` (${category})` : "";
+  const categoryLabel =
+    category && category !== "Other" ? translateAttachmentCategory(t, category) : "";
 
   switch (entry.type) {
     case "NOTE_CREATED":
-      return preview ? `added a note: "${preview}"` : "added a note";
+      return preview
+        ? t("projectActivity.timeline.addedNoteWithPreview", { preview })
+        : t("projectActivity.timeline.addedNote");
     case "FILE_UPLOADED":
-      return `uploaded ${fileName}${categorySuffix}`;
     case "PHOTO_UPLOADED":
-      return `uploaded ${fileName}${categorySuffix}`;
+      return categoryLabel
+        ? t("projectActivity.timeline.uploadedFileWithCategory", { fileName, category: categoryLabel })
+        : t("projectActivity.timeline.uploadedFile", { fileName });
     case "CLOCK_IN":
-      return "clocked in";
+      return t("projectActivity.timeline.clockedIn");
     case "CLOCK_OUT":
-      return "clocked out";
+      return t("projectActivity.timeline.clockedOut");
     case "TASK_COMPLETED":
-      return "completed a task";
+      return t("projectActivity.timeline.completedTask");
     default:
       return entry.type;
   }
 }
 
 export default function ActivityTimeline({ projectId }: ActivityTimelineProps) {
+  const { t } = useTranslation();
   const [activity, setActivity] = useState<ProjectActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -43,11 +55,11 @@ export default function ActivityTimeline({ projectId }: ActivityTimelineProps) {
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl sm:p-8">
-      <h3 className="text-lg font-semibold text-white">Activity Timeline</h3>
+      <h3 className="text-lg font-semibold text-white">{t("projectActivity.timeline.title")}</h3>
 
       <div className="mt-6 space-y-4">
         {isLoading ? null : activity.length === 0 ? (
-          <p className="text-sm text-slate-400">No activity yet.</p>
+          <p className="text-sm text-slate-400">{t("projectActivity.timeline.noActivity")}</p>
         ) : (
           <ol className="space-y-4 border-l border-white/10 pl-4">
             {activity.map((entry) => (
@@ -61,7 +73,7 @@ export default function ActivityTimeline({ projectId }: ActivityTimelineProps) {
                     })}
                   </span>{" "}
                   — <span className="font-medium text-white">{entry.userName}</span>{" "}
-                  {describeActivity(entry)}
+                  {describeActivity(entry, t)}
                 </p>
               </li>
             ))}

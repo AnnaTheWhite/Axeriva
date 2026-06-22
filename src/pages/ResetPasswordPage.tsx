@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import { resetPassword } from "../services/auth.service";
+import { useTranslation } from "../i18n";
 
 type Status = "form" | "success" | "error";
 
 export default function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -20,7 +22,7 @@ export default function ResetPasswordPage() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords don't match");
+      setError(t("auth.resetPassword.mismatch"));
       return;
     }
 
@@ -33,7 +35,7 @@ export default function ResetPasswordPage() {
       setStatus("success");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Reset failed");
+      setError(err instanceof Error ? err.message : t("auth.resetPassword.failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -45,7 +47,7 @@ export default function ResetPasswordPage() {
         {status === "form" && (
           <form onSubmit={handleSubmit} className="space-y-5">
             <h1 className="text-xl font-semibold text-white">
-              Reset password
+              {t("auth.resetPassword.title")}
             </h1>
 
             {error && (
@@ -56,7 +58,7 @@ export default function ResetPasswordPage() {
 
             <div className="space-y-2">
               <label className="block text-sm text-white/70">
-                New password
+                {t("auth.resetPassword.newPassword")}
               </label>
               <input
                 type="password"
@@ -69,7 +71,7 @@ export default function ResetPasswordPage() {
 
             <div className="space-y-2">
               <label className="block text-sm text-white/70">
-                Confirm new password
+                {t("auth.resetPassword.confirmPassword")}
               </label>
               <input
                 type="password"
@@ -81,7 +83,7 @@ export default function ResetPasswordPage() {
             </div>
 
             <Button type="submit">
-              {isSubmitting ? "Resetting..." : "Reset password"}
+              {isSubmitting ? t("auth.resetPassword.submitting") : t("auth.resetPassword.submit")}
             </Button>
           </form>
         )}
@@ -89,16 +91,16 @@ export default function ResetPasswordPage() {
         {status === "success" && (
           <div className="space-y-4 text-center">
             <h1 className="text-xl font-semibold text-white">
-              Password reset
+              {t("auth.resetPassword.successTitle")}
             </h1>
             <p className="text-slate-400">
-              Your password has been changed. You can now log in.
+              {t("auth.resetPassword.successDescription")}
             </p>
             <button
               onClick={() => navigate("/login")}
               className="inline-block rounded-xl bg-orange-500 px-5 py-2 font-medium text-white hover:bg-orange-600"
             >
-              Go to login
+              {t("auth.resetPassword.goToLogin")}
             </button>
           </div>
         )}
@@ -106,11 +108,11 @@ export default function ResetPasswordPage() {
         {status === "error" && (
           <div className="space-y-4 text-center">
             <h1 className="text-xl font-semibold text-white">
-              Reset failed
+              {t("auth.resetPassword.errorTitle")}
             </h1>
             <p className="text-slate-400">{error}</p>
             <Link to="/forgot-password" className="text-orange-500 hover:underline">
-              Request a new link
+              {t("auth.resetPassword.requestNewLink")}
             </Link>
           </div>
         )}

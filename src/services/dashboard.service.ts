@@ -6,6 +6,7 @@ export type DashboardData = {
     activeProjects: number;
     totalCustomers: number;
     todaysHours: number;
+    weeklyHours: number;
   };
   activeNow: {
     id: number;

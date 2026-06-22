@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import PageHeader from "../../components/PageHeader";
 import { getAdminCompanies } from "../../services/admin.service";
 import type { AdminCompany } from "../../services/admin.service";
+import { useTranslation } from "../../i18n";
 
 export default function AdminBillingPage() {
+  const { t } = useTranslation();
   const [companies, setCompanies] = useState<AdminCompany[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -16,16 +18,16 @@ export default function AdminBillingPage() {
 
   return (
     <div className="p-8">
-      <PageHeader title="Billing" subtitle="Plan and subscription status per company." />
+      <PageHeader title={t("admin.billing.title")} subtitle={t("admin.billing.subtitle")} />
 
       {isLoading ? null : (
         <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10 text-left">
-                <th className="p-4">Company</th>
-                <th className="p-4">Plan</th>
-                <th className="p-4">Status</th>
+                <th className="p-4">{t("table.company")}</th>
+                <th className="p-4">{t("table.plan")}</th>
+                <th className="p-4">{t("table.status")}</th>
               </tr>
             </thead>
             <tbody>

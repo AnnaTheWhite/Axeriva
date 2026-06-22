@@ -4,6 +4,7 @@ import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { useAuth } from "../../context/AuthContext";
 import { deleteAccount } from "../../services/account.service";
+import { useTranslation } from "../../i18n";
 
 const CONFIRMATION_TEXT = "DELETE";
 
@@ -18,6 +19,7 @@ export default function DeleteAccountModal({
 }: DeleteAccountModalProps) {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -37,7 +39,7 @@ export default function DeleteAccountModal({
     e.preventDefault();
 
     if (!canSubmit) {
-      setError('Enter your password and type "DELETE" to confirm.');
+      setError(t("account.deleteModal.missingFields"));
       return;
     }
 
@@ -49,18 +51,17 @@ export default function DeleteAccountModal({
       logout();
       navigate("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete account");
+      setError(err instanceof Error ? err.message : t("account.deleteModal.failed"));
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <Modal open={open} title="Delete account" onClose={handleClose}>
+    <Modal open={open} title={t("account.deleteModal.title")} onClose={handleClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-slate-300">
-          This will deactivate your account. This action can't be undone from
-          the app — contact support if you need it reversed.
+          {t("account.deleteModal.description")}
         </p>
 
         {error && (
@@ -70,7 +71,7 @@ export default function DeleteAccountModal({
         )}
 
         <div>
-          <label className="block text-sm text-white/70">Password</label>
+          <label className="block text-sm text-white/70">{t("account.deleteModal.password")}</label>
           <input
             type="password"
             required
@@ -82,7 +83,9 @@ export default function DeleteAccountModal({
 
         <div>
           <label className="block text-sm text-white/70">
-            Type <span className="font-mono text-red-400">DELETE</span> to confirm
+            {t("account.deleteModal.confirmPrefix")}{" "}
+            <span className="font-mono text-red-400">{CONFIRMATION_TEXT}</span>{" "}
+            {t("account.deleteModal.confirmSuffix")}
           </label>
           <input
             type="text"
@@ -94,7 +97,7 @@ export default function DeleteAccountModal({
         </div>
 
         <Button type="submit" variant="danger">
-          {isSubmitting ? "Deleting..." : "Permanently delete my account"}
+          {isSubmitting ? t("account.deleteModal.submitting") : t("account.deleteModal.submit")}
         </Button>
       </form>
     </Modal>

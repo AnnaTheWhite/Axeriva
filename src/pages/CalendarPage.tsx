@@ -6,6 +6,7 @@ import { hu } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
 import { getShifts } from "../services/shift.service";
+import { useTranslation } from "../i18n";
 
 const localizer = dateFnsLocalizer({
   format,
@@ -16,6 +17,7 @@ const localizer = dateFnsLocalizer({
 });
 
 export default function CalendarPage() {
+  const { t } = useTranslation();
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,15 +50,15 @@ export default function CalendarPage() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold">Calendar</h1>
+        <h1 className="text-4xl font-bold">{t("schedule.calendar.title")}</h1>
 
         <p className="mt-2 text-slate-400">
-          Team schedule overview
+          {t("schedule.calendar.subtitle")}
         </p>
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <p>{t("common.loading")}</p>
       ) : (
         <div
           className="

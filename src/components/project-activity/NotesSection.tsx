@@ -5,12 +5,14 @@ import {
   getProjectNotes,
 } from "../../services/projectActivity.service";
 import type { ProjectNote } from "../../types/projectActivity";
+import { useTranslation } from "../../i18n";
 
 type NotesSectionProps = {
   projectId: number;
 };
 
 export default function NotesSection({ projectId }: NotesSectionProps) {
+  const { t } = useTranslation();
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -20,7 +22,7 @@ export default function NotesSection({ projectId }: NotesSectionProps) {
   useEffect(() => {
     getProjectNotes(projectId)
       .then(setNotes)
-      .catch(() => setError("Failed to load notes"))
+      .catch(() => setError(t("projectActivity.notes.loadFailed")))
       .finally(() => setIsLoading(false));
   }, [projectId]);
 
@@ -36,7 +38,7 @@ export default function NotesSection({ projectId }: NotesSectionProps) {
       setNotes((prev) => [note, ...prev]);
       setContent("");
     } catch {
-      setError("Failed to add note");
+      setError(t("projectActivity.notes.addFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -44,25 +46,27 @@ export default function NotesSection({ projectId }: NotesSectionProps) {
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl sm:p-8">
-      <h3 className="text-lg font-semibold text-white">Notes</h3>
+      <h3 className="text-lg font-semibold text-white">{t("projectActivity.notes.title")}</h3>
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-3">
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Add a note about this project..."
+          placeholder={t("projectActivity.notes.placeholder")}
           rows={3}
           className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-orange-500"
         />
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        <Button type="submit">{isSubmitting ? "Adding..." : "Add note"}</Button>
+        <Button type="submit">
+          {isSubmitting ? t("projectActivity.notes.adding") : t("projectActivity.notes.addNote")}
+        </Button>
       </form>
 
       <div className="mt-6 space-y-4">
         {isLoading ? null : notes.length === 0 ? (
-          <p className="text-sm text-slate-400">No notes yet.</p>
+          <p className="text-sm text-slate-400">{t("projectActivity.notes.noNotes")}</p>
         ) : (
           notes.map((note) => (
             <div

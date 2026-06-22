@@ -1,5 +1,6 @@
 import Modal from "../ui/Modal";
 import ProjectForm from "./ProjectForm";
+import { useTranslation } from "../../i18n";
 
 type ProjectModalProps = {
   open: boolean;
@@ -12,10 +13,11 @@ export default function ProjectModal({
   onClose,
   onSuccess,
 }: ProjectModalProps) {
+  const { t } = useTranslation();
   return (
     <Modal
       open={open}
-      title="Add Project"
+      title={t("projects.addProject")}
       onClose={onClose}
     >
       <ProjectForm

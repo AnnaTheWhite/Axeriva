@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import Modal from "../ui/Modal";
 import { updateEmployee } from "../../services/employee.service";
+import { useTranslation } from "../../i18n";
 
 type Employee = {
   id: number;
@@ -25,6 +26,7 @@ export default function EmployeeEditModal({
   onClose,
   onSuccess,
 }: Props) {
+  const { t } = useTranslation();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -65,33 +67,33 @@ export default function EmployeeEditModal({
   if (!open) return null;
 
   return (
-    <Modal open={open} title="Edit Employee" onClose={onClose}>
+    <Modal open={open} title={t("employees.editModalTitle")} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           value={firstName}
           onChange={(e) => setFirstName(e.target.value)}
-          placeholder="First Name"
+          placeholder={t("table.firstName")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"
         />
 
         <input
           value={lastName}
           onChange={(e) => setLastName(e.target.value)}
-          placeholder="Last Name"
+          placeholder={t("table.lastName")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"
         />
 
         <input
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          placeholder="Phone"
+          placeholder={t("table.phone")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"
         />
 
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
+          placeholder={t("table.email")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"
         />
 
@@ -100,16 +102,16 @@ export default function EmployeeEditModal({
           onChange={(e) => setStatus(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3"
         >
-          <option value="Active">Active</option>
-          <option value="Sick">Sick</option>
-          <option value="Vacation">Vacation</option>
+          <option value="Active">{t("employees.statusActive")}</option>
+          <option value="Sick">{t("employees.statusSick")}</option>
+          <option value="Vacation">{t("employees.statusVacation")}</option>
         </select>
 
         <button
           type="submit"
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white"
         >
-          Save Changes
+          {t("common.saveChanges")}
         </button>
       </form>
     </Modal>

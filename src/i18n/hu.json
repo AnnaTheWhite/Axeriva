@@ -42,7 +42,11 @@
     "openMenu": "Menü megnyitása",
     "closeMenu": "Menü bezárása",
     "selectDate": "Válasszon dátumot",
-    "clear": "Törlés"
+    "clear": "Törlés",
+    "previous": "Előző",
+    "next": "Következő",
+    "download": "Letöltés",
+    "noLogo": "Nincs logó"
   },
   "language": {
     "english": "Angol",
@@ -55,6 +59,13 @@
     "activeProjects": "Aktív projektek",
     "totalCustomers": "Összes ügyfél",
     "todaysHours": "Mai óraszám",
+    "weeklyHours": "Heti óraszám",
+    "importantNotes": {
+      "title": "Fontos jegyzetek",
+      "pinned": "Kitűzött",
+      "noNotesTitle": "Még nincs jegyzet",
+      "noNotesDesc": "A kitűzött és legutóbbi owner jegyzetek itt jelennek meg."
+    },
     "todaysActivity": "Mai tevékenység",
     "topProjectsByHours": "Top projektek óraszám szerint",
     "upcomingShifts": "Közelgő műszakok (következő 7 nap)",
@@ -86,7 +97,20 @@
     "firstName": "Keresztnév",
     "lastName": "Vezetéknév",
     "phone": "Telefon",
-    "email": "E-mail"
+    "email": "E-mail",
+    "name": "Név",
+    "plan": "Csomag",
+    "users": "Felhasználók",
+    "employees": "Munkavállalók",
+    "role": "Szerepkör",
+    "companyId": "Cég ID",
+    "action": "Művelet",
+    "userId": "Felhasználó ID",
+    "company": "Cég",
+    "details": "Részletek",
+    "when": "Időpont",
+    "type": "Típus",
+    "category": "Kategória"
   },
   "employees": {
     "title": "Munkavállalók",
@@ -102,7 +126,14 @@
     "deleted": "Munkavállaló törölve",
     "deleteFailed": "A munkavállaló törlése sikertelen",
     "deleteTitle": "Munkavállaló törlése",
-    "deleteMessage": "Biztosan törli {{name}} munkavállalót?"
+    "deleteMessage": "Biztosan törli {{name}} munkavállalót?",
+    "editModalTitle": "Munkavállaló szerkesztése",
+    "inviteModalTitle": "Munkavállaló meghívása",
+    "inviteCreatedMessage": "A meghívás létrejött. Ezt a linket is megoszthatja közvetlenül:",
+    "inviteDone": "Kész",
+    "sendingInvite": "Meghívás küldése...",
+    "sendInvite": "Meghívás küldése",
+    "inviteFailed": "A meghívás létrehozása sikertelen."
   },
   "customers": {
     "title": "Ügyfelek",
@@ -150,6 +181,8 @@
     "overview": "Áttekintés",
     "siteLocation": "Helyszín",
     "address": "Cím",
+    "addressPlaceholder": "1138 Budapest, Váci út 100",
+    "selectDeadlinePlaceholder": "Válasszon határidőt",
     "coordinates": "Koordináták",
     "geofenceRadius": "Geofence sugár",
     "notSet": "Nincs beállítva",
@@ -162,7 +195,26 @@
       "Planned": "Tervezett",
       "Active": "Aktív",
       "Completed": "Befejezett"
-    }
+    },
+    "editModalTitle": "Projekt szerkesztése",
+    "namePlaceholder": "Projekt neve",
+    "descriptionPlaceholder": "Leírás",
+    "statusLabel": "Státusz",
+    "advancedToggle": "Speciális (geofence — hamarosan)",
+    "advancedHint": "Ezek a mezők egy jövőbeli automatikus be-/kijelentkezési funkcióhoz kerülnek tárolásra, ami még nem aktív — üresen hagyhatók.",
+    "latitude": "Szélesség",
+    "longitude": "Hosszúság",
+    "geofenceRadiusMeters": "Geofence sugár (méter)",
+    "enableGpsTracking": "GPS-követés engedélyezése",
+    "saveProject": "Projekt mentése",
+    "createdSuccessfully": "Projekt sikeresen létrehozva",
+    "createFailed": "A projekt létrehozása sikertelen",
+    "updateFailed": "A frissítés sikertelen",
+    "assignModalTitle": "Munkavállaló hozzárendelése",
+    "searchEmployeePlaceholder": "Munkavállaló keresése...",
+    "employeeHashId": "Munkavállaló #{{id}}",
+    "noEmployeesFound": "Nem található munkavállaló",
+    "assignEmployeeSubmit": "Munkavállaló hozzárendelése"
   },
   "schedule": {
     "title": "Beosztás",
@@ -176,7 +228,30 @@
     "deleteMessage": "Biztosan törli ezt a műszakot?",
     "noShifts": "Még nincs műszak",
     "noShiftsDesc": "A műszakjai itt jelennek meg.",
-    "inProgress": "Folyamatban"
+    "inProgress": "Folyamatban",
+    "editShiftTitle": "Műszak szerkesztése",
+    "calendar": {
+      "title": "Naptár",
+      "subtitle": "Csapat-beosztás áttekintése"
+    },
+    "shiftForm": {
+      "employee": "Munkavállaló",
+      "selectEmployee": "Válasszon munkavállalót",
+      "project": "Projekt",
+      "selectProjectOptional": "Válasszon projektet (opcionális)",
+      "date": "Dátum",
+      "startTime": "Kezdés időpontja",
+      "endTime": "Befejezés időpontja",
+      "selectStartTime": "Válassza ki a kezdés időpontját",
+      "selectEndTime": "Válassza ki a befejezés időpontját",
+      "duration": "Időtartam: {{duration}}",
+      "timeRangeError": "A befejezésnek a kezdés után kell lennie",
+      "selectEmployeeError": "Kérjük, válasszon munkavállalót",
+      "notes": "Megjegyzések",
+      "saveShift": "Műszak mentése",
+      "updateFailed": "A műszak frissítése sikertelen",
+      "createFailed": "A műszak létrehozása sikertelen"
+    }
   },
   "timeTracking": {
     "title": "Munkaidő",
@@ -265,7 +340,10 @@
     "title": "Projektjeim",
     "subtitle": "Projektek, amelyekhez hozzá van rendelve.",
     "noProjects": "Még nincs projekt",
-    "noProjectsDesc": "Nincs hozzárendelve semmilyen projekthez."
+    "noProjectsDesc": "Nincs hozzárendelve semmilyen projekthez.",
+    "backToMyProjects": "← Vissza a projektjeimhez",
+    "notFoundTitle": "A projekt nem található",
+    "notFoundDesc": "Lehet, hogy törölték, vagy nincs hozzárendelve hozzá."
   },
   "profile": {
     "title": "Profil",
@@ -275,13 +353,261 @@
   },
   "settings": {
     "title": "Beállítások",
-    "subtitle": "Kezelje cége profilját."
+    "subtitle": "Kezelje cége profilját.",
+    "companyProfile": {
+      "title": "Cégprofil",
+      "description": "Email-sablonokon, PDF-eken, ajánlatokon és számlákon jelenik meg.",
+      "companyName": "Cégnév",
+      "billingEmail": "Számlázási e-mail",
+      "contactEmail": "Kapcsolattartási e-mail",
+      "phoneNumber": "Telefonszám",
+      "website": "Weboldal",
+      "address": "Cím",
+      "taxNumber": "Adószám",
+      "vatNumber": "Közösségi adószám",
+      "saved": "Mentve.",
+      "saveFailed": "A változások mentése sikertelen."
+    },
+    "branding": {
+      "title": "Márkajelzés",
+      "description": "A logója megjelenik az emaileken, PDF-eken, ajánlatokon és számlákon.",
+      "noLogo": "Nincs logó",
+      "saveLogo": "Logó mentése",
+      "uploading": "Feltöltés...",
+      "logoUpdated": "Logó frissítve.",
+      "uploadFailed": "A logó feltöltése sikertelen.",
+      "logoAlt": "Cég-logó előnézet"
+    }
   },
   "subscription": {
     "title": "Előfizetés",
     "subtitle": "Kezelje az Axeriva előfizetési csomagját."
   },
   "auth": {
-    "loggedOut": "Sikeresen kijelentkezett."
+    "loggedOut": "Sikeresen kijelentkezett.",
+    "login": {
+      "title": "Bejelentkezés az Axerivába",
+      "email": "E-mail",
+      "password": "Jelszó",
+      "forgotPassword": "Elfelejtett jelszó?",
+      "submitting": "Bejelentkezés...",
+      "submit": "Bejelentkezés",
+      "noAccount": "Nincs még fiókja?",
+      "signUp": "Regisztráció",
+      "invalidCredentials": "Érvénytelen e-mail vagy jelszó"
+    },
+    "register": {
+      "title": "Cég regisztrálása",
+      "companyName": "Cégnév",
+      "email": "E-mail",
+      "password": "Jelszó",
+      "submitting": "Regisztráció...",
+      "submit": "Regisztráció",
+      "haveAccount": "Már van fiókja?",
+      "logIn": "Bejelentkezés",
+      "failed": "A regisztráció sikertelen. Próbáljon másik e-mail-címet."
+    },
+    "forgotPassword": {
+      "title": "Elfelejtett jelszó",
+      "description": "Adja meg az e-mail-címét, és küldünk egy linket a jelszó visszaállításához.",
+      "email": "E-mail",
+      "submitting": "Küldés...",
+      "submit": "Visszaállító link küldése",
+      "backToLogin": "Vissza a bejelentkezéshez",
+      "genericMessage": "Ha létezik fiók ezzel az e-mail-címmel, küldtünk rá egy visszaállító linket."
+    },
+    "resetPassword": {
+      "title": "Jelszó visszaállítása",
+      "newPassword": "Új jelszó",
+      "confirmPassword": "Új jelszó megerősítése",
+      "submitting": "Visszaállítás...",
+      "submit": "Jelszó visszaállítása",
+      "mismatch": "A jelszavak nem egyeznek",
+      "failed": "A visszaállítás sikertelen",
+      "successTitle": "Jelszó visszaállítva",
+      "successDescription": "A jelszava megváltozott. Most már bejelentkezhet.",
+      "goToLogin": "Bejelentkezés",
+      "errorTitle": "A visszaállítás sikertelen",
+      "requestNewLink": "Új link kérése"
+    },
+    "verifyEmail": {
+      "verifying": "Email-cím ellenőrzése...",
+      "successTitle": "Email-cím megerősítve",
+      "successDescription": "Az email-címét megerősítettük.",
+      "continue": "Folytatás az Axerivában",
+      "failedTitle": "A megerősítés sikertelen",
+      "failed": "A megerősítés sikertelen",
+      "goToLogin": "Bejelentkezés"
+    },
+    "acceptInvite": {
+      "invalidLink": "Ez a meghívó link érvénytelen vagy lejárt.",
+      "goToLogin": "Bejelentkezés",
+      "join": "Csatlakozás: {{companyName}}",
+      "activatingFor": "Fiók aktiválása ehhez:",
+      "firstName": "Keresztnév",
+      "lastName": "Vezetéknév",
+      "password": "Jelszó",
+      "submitting": "Aktiválás...",
+      "submit": "Fiók aktiválása",
+      "failed": "A fiók aktiválása sikertelen."
+    }
+  },
+  "emailBanner": {
+    "message": "Kérjük, erősítse meg email-címét a fiókja biztonsága érdekében.",
+    "resend": "Megerősítő email újraküldése",
+    "sending": "Küldés...",
+    "sent": "Megerősítő email elküldve — nézze meg a postafiókját.",
+    "failed": "Az email újraküldése sikertelen"
+  },
+  "account": {
+    "dangerZone": {
+      "title": "Veszélyes zóna",
+      "description": "A fiók törlése azonnal deaktiválja azt. Ez az appból nem vonható vissza.",
+      "deleteAccount": "Fiók törlése"
+    },
+    "deleteModal": {
+      "title": "Fiók törlése",
+      "description": "Ez deaktiválja a fiókját. Ez a művelet az appból nem vonható vissza — vegye fel a kapcsolatot az ügyfélszolgálattal, ha vissza szeretné állítani.",
+      "password": "Jelszó",
+      "confirmPrefix": "Írja be:",
+      "confirmSuffix": "a megerősítéshez",
+      "submitting": "Törlés...",
+      "submit": "Fiókom végleges törlése",
+      "missingFields": "Adja meg a jelszavát, és írja be a \"DELETE\" szót a megerősítéshez.",
+      "failed": "A fiók törlése sikertelen"
+    }
+  },
+  "projectActivity": {
+    "notes": {
+      "title": "Jegyzetek",
+      "placeholder": "Adjon hozzá egy jegyzetet ehhez a projekthez...",
+      "adding": "Hozzáadás...",
+      "addNote": "Jegyzet hozzáadása",
+      "noNotes": "Még nincs jegyzet.",
+      "loadFailed": "A jegyzetek betöltése sikertelen",
+      "addFailed": "A jegyzet hozzáadása sikertelen"
+    },
+    "attachments": {
+      "title": "Fotók és fájlok",
+      "categoryLabel": "Kategória a következő feltöltéshez",
+      "dropHint": "Húzza ide a fájlokat, vagy kattintson a kiválasztáshoz (több is választható)",
+      "allowedTypes": "JPG, PNG, PDF, DOCX, XLSX",
+      "uploading": "Feltöltés...",
+      "loadFailed": "A fájlok betöltése sikertelen",
+      "uploadFailed": "A fájlok feltöltése sikertelen",
+      "deleteFailed": "A fájl törlése sikertelen",
+      "typeAll": "Mind",
+      "typeImages": "Képek",
+      "typeDocuments": "Dokumentumok",
+      "categoryAll": "Mind",
+      "gallery": "Galéria",
+      "documents": "Dokumentumok",
+      "noMatch": "Nincs a szűrőknek megfelelő fájl.",
+      "category": {
+        "Before": "Előtte",
+        "During": "Közben",
+        "After": "Utána",
+        "Issue": "Probléma",
+        "Material": "Anyag",
+        "Other": "Egyéb"
+      }
+    },
+    "timeline": {
+      "title": "Tevékenység-idővonal",
+      "noActivity": "Még nincs tevékenység.",
+      "addedNote": "jegyzetet adott hozzá",
+      "addedNoteWithPreview": "jegyzetet adott hozzá: „{{preview}}”",
+      "uploadedFile": "feltöltötte: {{fileName}}",
+      "uploadedFileWithCategory": "feltöltötte: {{fileName}} ({{category}})",
+      "clockedIn": "bejelentkezett",
+      "clockedOut": "kijelentkezett",
+      "completedTask": "befejezett egy feladatot",
+      "defaultFileName": "egy fájlt"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Platform irányítópult",
+      "subtitle": "Tenantokon átfogó áttekintés.",
+      "activeSubscriptions": "Aktív előfizetések"
+    },
+    "companies": {
+      "title": "Cégek",
+      "subtitle": "A platform minden tenantja."
+    },
+    "users": {
+      "title": "Felhasználók",
+      "subtitle": "A platform minden felhasználói fiókja."
+    },
+    "billing": {
+      "title": "Számlázás",
+      "subtitle": "Csomag és előfizetési státusz cégenként."
+    },
+    "logs": {
+      "title": "Naplók",
+      "subtitle": "Platform audit-napló.",
+      "noActivityTitle": "Még nincs tevékenység",
+      "noActivityDesc": "A naplózott műveletek (pl. fióktörlés) itt jelennek meg."
+    }
+  },
+  "landing": {
+    "nav": {
+      "whyAxeriva": "Miért Axeriva",
+      "features": "Funkciók",
+      "pricing": "Árak",
+      "logIn": "Bejelentkezés",
+      "signUp": "Regisztráció"
+    },
+    "footer": {
+      "rights": "© {{year}} Axeriva. Minden jog fenntartva."
+    },
+    "hero": {
+      "badge": "Terepi szolgáltató csapatoknak készült",
+      "titleLine1": "Axeriva — Munkaerő-menedzsment",
+      "titleLine2": "terepi szolgáltató vállalkozásoknak",
+      "description": "Ütemezze csapatait, kövesse a munkavállalókat és projekteket, kezelje az ügyfeleket és a munkaidőt — mindezt egy modern, könnyen használható platformon.",
+      "signUp": "Regisztráció",
+      "logIn": "Bejelentkezés"
+    },
+    "benefits": {
+      "title": "Miért az Axeriva?",
+      "subtitle": "Minden, amire egy terepi szolgáltató vállalkozás működtetéséhez szükség van, táblázatok nélkül.",
+      "items": {
+        "shiftScheduling": { "title": "Műszak-beosztás", "description": "Tervezzen és rendeljen műszakokat percek alatt." },
+        "employeeManagement": { "title": "Munkavállaló-kezelés", "description": "Tartsa rendben az egész csapatát egy helyen." },
+        "projectTracking": { "title": "Projektkövetés", "description": "Lássa minden munka státuszát egy pillantással." },
+        "customerManagement": { "title": "Ügyfélkezelés", "description": "Központosítsa az ügyféladatokat és a projekt-előzményeket." },
+        "timeTracking": { "title": "Munkaidő-nyilvántartás", "description": "Pontosan és könnyedén rögzítse a ledolgozott órákat." },
+        "multiSite": { "title": "Több telephely és csapat", "description": "Több helyszínt és csapatot kezeljen egyetlen fiókból." },
+        "mobileFriendly": { "title": "Mobilbarát", "description": "Zökkenőmentesen működik telefonon, tableten és asztali gépen is." }
+      }
+    },
+    "features": {
+      "title": "Funkciók",
+      "subtitle": "Egy platform, amely lefedi a napi működés minden részét.",
+      "items": {
+        "employees": { "title": "Munkavállalók", "description": "Kezelje a munkaerejét, státuszait és elérhetőségeit." },
+        "projects": { "title": "Projektek", "description": "Kövesse a munkákat a tervezéstől a befejezésig." },
+        "scheduling": { "title": "Ütemezés", "description": "Készítsen műszak-beosztást, és rendeljen csapatokat projektekhez." },
+        "timeTracking": { "title": "Munkaidő-nyilvántartás", "description": "Rögzítse a ledolgozott órákat munkavállalónként és projektenként." },
+        "customers": { "title": "Ügyfelek", "description": "Tartsa szinkronban az ügyféladatokat és a projekt-előzményeket." },
+        "reports": { "title": "Riportok", "description": "Lássa át a vállalkozása teljes tevékenységét." }
+      }
+    },
+    "pricing": {
+      "title": "Egyszerű árazás",
+      "subtitle": "Egy csomag. Minden benne van. Nincs meglepetés.",
+      "planName": "Axeriva Pro",
+      "perMonth": "/ hó",
+      "subscribe": "Előfizetés",
+      "included": {
+        "unlimitedEmployees": "Korlátlan munkavállaló",
+        "unlimitedProjects": "Korlátlan projekt",
+        "customerManagement": "Ügyfélkezelés",
+        "shiftScheduling": "Műszak-beosztás",
+        "timeTracking": "Munkaidő-nyilvántartás",
+        "futureAi": "Jövőbeli AI-funkciók"
+      }
+    }
   }
 }

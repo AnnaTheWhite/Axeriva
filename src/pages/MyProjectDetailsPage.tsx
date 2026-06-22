@@ -7,8 +7,10 @@ import type { Project } from "../types/project";
 import NotesSection from "../components/project-activity/NotesSection";
 import AttachmentsSection from "../components/project-activity/AttachmentsSection";
 import ActivityTimeline from "../components/project-activity/ActivityTimeline";
+import { useTranslation } from "../i18n";
 
 export default function MyProjectDetailsPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<Project | null | undefined>(undefined);
 
@@ -28,8 +30,8 @@ export default function MyProjectDetailsPage() {
     return (
       <div className="p-4 sm:p-8">
         <EmptyState
-          title="Project not found"
-          description="It may have been deleted, or you're not assigned to it."
+          title={t("myProjects.notFoundTitle")}
+          description={t("myProjects.notFoundDesc")}
         />
       </div>
     );
@@ -38,7 +40,7 @@ export default function MyProjectDetailsPage() {
   return (
     <div className="p-4 sm:p-8">
       <Link to="/my-projects" className="text-sm text-orange-500 hover:underline">
-        ← Back to my projects
+        {t("myProjects.backToMyProjects")}
       </Link>
 
       <PageHeader title={project.name} subtitle={project.description} />

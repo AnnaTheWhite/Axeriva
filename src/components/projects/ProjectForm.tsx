@@ -4,12 +4,14 @@ import { createProject } from "../../services/project.service";
 import { useToast } from "../../hooks/useToast";
 import Toast from "../ui/Toast";
 import DatePicker from "../ui/DatePicker";
+import { useTranslation } from "../../i18n";
 
 type ProjectFormProps = {
   onSuccess: () => void;
 };
 
 export default function ProjectForm({ onSuccess }: ProjectFormProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("Planned");
@@ -47,12 +49,12 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
       setLongitude("");
       setGeofenceRadius("");
       setGeofenceEnabled(false);
-      triggerToast("Project created successfully");
+      triggerToast(t("projects.createdSuccessfully"));
       onSuccess();
     } catch (error) {
       console.error(error);
       triggerToast(
-        error instanceof Error ? error.message : "Failed to create project"
+        error instanceof Error ? error.message : t("projects.createFailed")
       );
     }
   };
@@ -63,7 +65,7 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
     <>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Project Name</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("projects.namePlaceholder")}</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -73,7 +75,7 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Description</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("projects.descriptionPlaceholder")}</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -82,36 +84,36 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Status</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("projects.statusLabel")}</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className={inputClass}
           >
-            <option value="Planned">Planned</option>
-            <option value="Active">Active</option>
-            <option value="Completed">Completed</option>
+            <option value="Planned">{t("projects.status.Planned")}</option>
+            <option value="Active">{t("projects.status.Active")}</option>
+            <option value="Completed">{t("projects.status.Completed")}</option>
           </select>
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Deadline</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("projects.deadline")}</label>
           <DatePicker
             value={deadline}
             onChange={setDeadline}
-            placeholder="Select deadline"
+            placeholder={t("projects.selectDeadlinePlaceholder")}
           />
         </div>
 
         <div className="border-t border-white/10 pt-4">
-          <p className="mb-3 text-sm font-medium text-slate-300">Site location</p>
+          <p className="mb-3 text-sm font-medium text-slate-300">{t("projects.siteLocation")}</p>
 
           <div>
-            <label className="mb-2 block text-sm text-slate-400">Address</label>
+            <label className="mb-2 block text-sm text-slate-400">{t("projects.address")}</label>
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="1138 Budapest, Váci út 100"
+              placeholder={t("projects.addressPlaceholder")}
               className={inputClass}
             />
           </div>
@@ -121,20 +123,19 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
             onClick={() => setShowAdvanced((v) => !v)}
             className="mt-4 flex w-full items-center justify-between text-sm text-slate-400 hover:text-slate-300"
           >
-            <span>Advanced (geofence — coming soon)</span>
+            <span>{t("projects.advancedToggle")}</span>
             <span>{showAdvanced ? "▾" : "▸"}</span>
           </button>
 
           {showAdvanced && (
             <div className="mt-3 space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="text-xs text-slate-500">
-                These fields are stored for a future automatic clock-in/out
-                feature, which isn't active yet — safe to leave blank.
+                {t("projects.advancedHint")}
               </p>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm text-slate-400">Latitude</label>
+                  <label className="mb-2 block text-sm text-slate-400">{t("projects.latitude")}</label>
                   <input
                     type="number"
                     step="any"
@@ -146,7 +147,7 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm text-slate-400">Longitude</label>
+                  <label className="mb-2 block text-sm text-slate-400">{t("projects.longitude")}</label>
                   <input
                     type="number"
                     step="any"
@@ -160,7 +161,7 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
 
               <div>
                 <label className="mb-2 block text-sm text-slate-400">
-                  Geofence radius (meters)
+                  {t("projects.geofenceRadiusMeters")}
                 </label>
                 <input
                   type="number"
@@ -174,7 +175,7 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
               </div>
 
               <label className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <span className="text-sm text-slate-300">Enable GPS tracking</span>
+                <span className="text-sm text-slate-300">{t("projects.enableGpsTracking")}</span>
                 <input
                   type="checkbox"
                   checked={geofenceEnabled}
@@ -190,7 +191,7 @@ export default function ProjectForm({ onSuccess }: ProjectFormProps) {
           type="submit"
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600"
         >
-          Save Project
+          {t("projects.saveProject")}
         </button>
       </form>
 

@@ -8,6 +8,7 @@ import { useToast } from "../../hooks/useToast";
 import Toast from "../ui/Toast";
 import DatePicker from "../ui/DatePicker";
 import TimePicker from "../ui/TimePicker";
+import { useTranslation } from "../../i18n";
 
 import type { Employee } from "../../types/employee";
 import type { Project } from "../../types/project";
@@ -37,6 +38,7 @@ function formatDuration(startTime: string, endTime: string): string | null {
 }
 
 export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
+  const { t } = useTranslation();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
 
@@ -90,12 +92,12 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
     e.preventDefault();
 
     if (!employeeId) {
-      triggerToast("Please select an employee");
+      triggerToast(t("schedule.shiftForm.selectEmployeeError"));
       return;
     }
 
     if (hasTimeRangeError) {
-      triggerToast("End time must be after start time");
+      triggerToast(t("schedule.shiftForm.timeRangeError"));
       return;
     }
 
@@ -116,7 +118,11 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
       onSuccess();
     } catch (error) {
       console.error(error);
-      triggerToast(shift ? "Failed to update shift" : "Failed to create shift");
+      triggerToast(
+        shift
+          ? t("schedule.shiftForm.updateFailed")
+          : t("schedule.shiftForm.createFailed")
+      );
     }
   };
 
@@ -127,14 +133,14 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
     <>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Employee</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("schedule.shiftForm.employee")}</label>
           <select
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
             className={selectClass}
             required
           >
-            <option value="">Select Employee</option>
+            <option value="">{t("schedule.shiftForm.selectEmployee")}</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {employee.firstName} {employee.lastName}
@@ -144,13 +150,13 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Project</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("schedule.shiftForm.project")}</label>
           <select
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             className={selectClass}
           >
-            <option value="">Select Project (optional)</option>
+            <option value="">{t("schedule.shiftForm.selectProjectOptional")}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
@@ -160,32 +166,32 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Date</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("schedule.shiftForm.date")}</label>
           <DatePicker
             value={date}
             onChange={setDate}
-            placeholder="Select date"
+            placeholder={t("common.selectDate")}
             required
           />
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-2 block text-sm text-slate-400">Start Time</label>
+            <label className="mb-2 block text-sm text-slate-400">{t("schedule.shiftForm.startTime")}</label>
             <TimePicker
               value={startTime}
               onChange={setStartTime}
-              placeholder="Select start time"
+              placeholder={t("schedule.shiftForm.selectStartTime")}
               required
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm text-slate-400">End Time</label>
+            <label className="mb-2 block text-sm text-slate-400">{t("schedule.shiftForm.endTime")}</label>
             <TimePicker
               value={endTime}
               onChange={setEndTime}
-              placeholder="Select end time"
+              placeholder={t("schedule.shiftForm.selectEndTime")}
               required
             />
           </div>
@@ -198,18 +204,18 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
             </p>
             {duration ? (
               <p className="mt-1 text-lg font-semibold text-white">
-                Duration: {duration}
+                {t("schedule.shiftForm.duration", { duration })}
               </p>
             ) : (
               <p className="mt-1 text-sm text-red-400">
-                End time must be after start time
+                {t("schedule.shiftForm.timeRangeError")}
               </p>
             )}
           </div>
         )}
 
         <div>
-          <label className="mb-2 block text-sm text-slate-400">Notes</label>
+          <label className="mb-2 block text-sm text-slate-400">{t("schedule.shiftForm.notes")}</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -221,7 +227,7 @@ export default function ShiftForm({ shift = null, onSuccess }: ShiftFormProps) {
           type="submit"
           className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600"
         >
-          {shift ? "Save Changes" : "Save Shift"}
+          {shift ? t("common.saveChanges") : t("schedule.shiftForm.saveShift")}
         </button>
       </form>
 

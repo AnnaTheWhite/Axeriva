@@ -11,6 +11,8 @@ import {
   type AttachmentCategory,
   type ProjectAttachment,
 } from "../../types/projectActivity";
+import { useTranslation } from "../../i18n";
+import { translateAttachmentCategory } from "../../i18n/labels";
 
 type AttachmentsSectionProps = {
   projectId: number;
@@ -37,6 +39,7 @@ export default function AttachmentsSection({
   projectId,
   canDelete,
 }: AttachmentsSectionProps) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [attachments, setAttachments] = useState<ProjectAttachment[]>([]);
@@ -51,10 +54,16 @@ export default function AttachmentsSection({
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
+  const typeFilterLabels: Record<TypeFilter, string> = {
+    All: t("projectActivity.attachments.typeAll"),
+    Images: t("projectActivity.attachments.typeImages"),
+    Documents: t("projectActivity.attachments.typeDocuments"),
+  };
+
   useEffect(() => {
     getProjectAttachments(projectId)
       .then(setAttachments)
-      .catch(() => setError("Failed to load files"))
+      .catch(() => setError(t("projectActivity.attachments.loadFailed")))
       .finally(() => setIsLoading(false));
   }, [projectId]);
 
@@ -68,7 +77,7 @@ export default function AttachmentsSection({
       const uploaded = await uploadProjectAttachments(projectId, files, uploadCategory);
       setAttachments((prev) => [...uploaded, ...prev]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload files");
+      setError(err instanceof Error ? err.message : t("projectActivity.attachments.uploadFailed"));
     } finally {
       setIsUploading(false);
     }
@@ -90,7 +99,7 @@ export default function AttachmentsSection({
       await deleteProjectAttachment(id);
       setAttachments((prev) => prev.filter((a) => a.id !== id));
     } catch {
-      setError("Failed to delete file");
+      setError(t("projectActivity.attachments.deleteFailed"));
     }
   }
 
@@ -108,11 +117,11 @@ export default function AttachmentsSection({
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl sm:p-8">
-      <h3 className="text-lg font-semibold text-white">Photos & Files</h3>
+      <h3 className="text-lg font-semibold text-white">{t("projectActivity.attachments.title")}</h3>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <label className="text-sm text-slate-400">
-          Category for next upload
+          {t("projectActivity.attachments.categoryLabel")}
         </label>
         <select
           value={uploadCategory}
@@ -121,7 +130,7 @@ export default function AttachmentsSection({
         >
           {ATTACHMENT_CATEGORIES.map((category) => (
             <option key={category} value={category}>
-              {category}
+              {translateAttachmentCategory(t, category)}
             </option>
           ))}
         </select>
@@ -143,10 +152,10 @@ export default function AttachmentsSection({
       >
         <p className="text-sm text-slate-300">
           {isUploading
-            ? "Uploading..."
-            : "Drag & drop files here, or click to choose (multiple allowed)"}
+            ? t("projectActivity.attachments.uploading")
+            : t("projectActivity.attachments.dropHint")}
         </p>
-        <p className="mt-1 text-xs text-slate-500">JPG, PNG, PDF, DOCX, XLSX</p>
+        <p className="mt-1 text-xs text-slate-500">{t("projectActivity.attachments.allowedTypes")}</p>
 
         <input
           ref={fileInputRef}
@@ -162,7 +171,7 @@ export default function AttachmentsSection({
 
       <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Type</span>
+          <span className="text-xs text-slate-500">{t("table.type")}</span>
           {(["All", "Images", "Documents"] as TypeFilter[]).map((option) => (
             <button
               key={option}
@@ -173,13 +182,13 @@ export default function AttachmentsSection({
                   : "bg-white/5 text-slate-400 hover:bg-white/10"
               }`}
             >
-              {option}
+              {typeFilterLabels[option]}
             </button>
           ))}
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Category</span>
+          <span className="text-xs text-slate-500">{t("table.category")}</span>
           <button
             onClick={() => setCategoryFilter("All")}
             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
@@ -188,7 +197,7 @@ export default function AttachmentsSection({
                 : "bg-white/5 text-slate-400 hover:bg-white/10"
             }`}
           >
-            All
+            {t("projectActivity.attachments.categoryAll")}
           </button>
           {ATTACHMENT_CATEGORIES.map((category) => (
             <button
@@ -200,19 +209,19 @@ export default function AttachmentsSection({
                   : "bg-white/5 text-slate-400 hover:bg-white/10"
               }`}
             >
-              {category}
+              {translateAttachmentCategory(t, category)}
             </button>
           ))}
         </div>
       </div>
 
       {isLoading ? null : filteredAttachments.length === 0 ? (
-        <p className="mt-6 text-sm text-slate-400">No files match these filters.</p>
+        <p className="mt-6 text-sm text-slate-400">{t("projectActivity.attachments.noMatch")}</p>
       ) : (
         <>
           {galleryImages.length > 0 && (
             <div className="mt-6">
-              <p className="mb-3 text-sm font-medium text-slate-300">Gallery</p>
+              <p className="mb-3 text-sm font-medium text-slate-300">{t("projectActivity.attachments.gallery")}</p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {galleryImages.map((attachment, i) => (
                   <button
@@ -226,7 +235,7 @@ export default function AttachmentsSection({
                       className="h-full w-full object-cover transition group-hover:scale-105"
                     />
                     <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
-                      {attachment.category}
+                      {translateAttachmentCategory(t, attachment.category)}
                     </span>
                     {canDelete && (
                       <span
@@ -236,7 +245,7 @@ export default function AttachmentsSection({
                         }}
                         className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-red-400 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100"
                       >
-                        Delete
+                        {t("common.delete")}
                       </span>
                     )}
                     <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-2 py-1 text-[10px] text-white">
@@ -251,7 +260,7 @@ export default function AttachmentsSection({
 
           {documents.length > 0 && (
             <div className="mt-6">
-              <p className="mb-3 text-sm font-medium text-slate-300">Documents</p>
+              <p className="mb-3 text-sm font-medium text-slate-300">{t("projectActivity.attachments.documents")}</p>
               <div className="space-y-2">
                 {documents.map((attachment) => (
                   <div
@@ -265,7 +274,7 @@ export default function AttachmentsSection({
                           {attachment.fileName}
                         </p>
                         <p className="text-xs text-slate-500">
-                          {attachment.category} · {attachment.userName} ·{" "}
+                          {translateAttachmentCategory(t, attachment.category)} · {attachment.userName} ·{" "}
                           {formatDate(attachment.createdAt)} ·{" "}
                           {formatFileSize(attachment.fileSize)}
                         </p>
@@ -279,7 +288,7 @@ export default function AttachmentsSection({
                         rel="noreferrer"
                         className="text-xs text-orange-500 hover:underline"
                       >
-                        Download
+                        {t("common.download")}
                       </a>
 
                       {canDelete && (
@@ -287,7 +296,7 @@ export default function AttachmentsSection({
                           onClick={() => handleDelete(attachment.id)}
                           className="text-xs text-red-400 hover:underline"
                         >
-                          Delete
+                          {t("common.delete")}
                         </button>
                       )}
                     </div>

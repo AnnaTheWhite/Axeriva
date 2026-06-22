@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
+import { useTranslation } from "../i18n";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +23,7 @@ export default function LoginPage() {
       await login(email, password);
       navigate("/");
     } catch {
-      setError("Invalid email or password");
+      setError(t("auth.login.invalidCredentials"));
     } finally {
       setIsSubmitting(false);
     }
@@ -34,7 +36,7 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-white/5 p-8"
       >
         <h1 className="text-xl font-semibold text-white">
-          Log in to Axeriva
+          {t("auth.login.title")}
         </h1>
 
         {error && (
@@ -44,7 +46,7 @@ export default function LoginPage() {
         )}
 
         <div className="space-y-2">
-          <label className="block text-sm text-white/70">Email</label>
+          <label className="block text-sm text-white/70">{t("auth.login.email")}</label>
           <input
             type="email"
             required
@@ -56,12 +58,12 @@ export default function LoginPage() {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="block text-sm text-white/70">Password</label>
+            <label className="block text-sm text-white/70">{t("auth.login.password")}</label>
             <Link
               to="/forgot-password"
               className="text-sm text-orange-500 hover:underline"
             >
-              Forgot password?
+              {t("auth.login.forgotPassword")}
             </Link>
           </div>
           <input
@@ -74,13 +76,13 @@ export default function LoginPage() {
         </div>
 
         <Button type="submit">
-          {isSubmitting ? "Logging in..." : "Log in"}
+          {isSubmitting ? t("auth.login.submitting") : t("auth.login.submit")}
         </Button>
 
         <p className="text-center text-sm text-white/50">
-          Don't have an account?{" "}
+          {t("auth.login.noAccount")}{" "}
           <Link to="/register" className="text-orange-500 hover:underline">
-            Sign up
+            {t("auth.login.signUp")}
           </Link>
         </p>
       </form>

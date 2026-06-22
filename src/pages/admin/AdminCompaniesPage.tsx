@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import PageHeader from "../../components/PageHeader";
 import { getAdminCompanies } from "../../services/admin.service";
 import type { AdminCompany } from "../../services/admin.service";
+import { useTranslation } from "../../i18n";
 
 export default function AdminCompaniesPage() {
+  const { t } = useTranslation();
   const [companies, setCompanies] = useState<AdminCompany[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -16,19 +18,19 @@ export default function AdminCompaniesPage() {
 
   return (
     <div className="p-8">
-      <PageHeader title="Companies" subtitle="Every tenant on the platform." />
+      <PageHeader title={t("admin.companies.title")} subtitle={t("admin.companies.subtitle")} />
 
       {isLoading ? null : (
         <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5">
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10 text-left">
-                <th className="p-4">ID</th>
-                <th className="p-4">Name</th>
-                <th className="p-4">Plan</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Users</th>
-                <th className="p-4">Employees</th>
+                <th className="p-4">{t("table.id")}</th>
+                <th className="p-4">{t("table.name")}</th>
+                <th className="p-4">{t("table.plan")}</th>
+                <th className="p-4">{t("table.status")}</th>
+                <th className="p-4">{t("table.users")}</th>
+                <th className="p-4">{t("table.employees")}</th>
               </tr>
             </thead>
             <tbody>
