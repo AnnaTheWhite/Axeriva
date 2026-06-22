@@ -34,6 +34,12 @@
     "close": "Bezárás",
     "showPassword": "Jelszó megjelenítése",
     "hidePassword": "Jelszó elrejtése",
+    "passwordStrength": {
+      "label": "Jelszó erőssége:",
+      "weak": "Gyenge",
+      "medium": "Közepes",
+      "strong": "Erős"
+    },
     "search": "Keresés",
     "clearFilters": "Szűrők törlése",
     "all": "Mind",

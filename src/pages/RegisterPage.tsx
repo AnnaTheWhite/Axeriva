@@ -79,6 +79,7 @@ export default function RegisterPage() {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            showStrength
           />
         </div>
 

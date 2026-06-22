@@ -34,6 +34,12 @@
     "close": "Close",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
+    "passwordStrength": {
+      "label": "Password strength:",
+      "weak": "Weak",
+      "medium": "Medium",
+      "strong": "Strong"
+    },
     "search": "Search",
     "clearFilters": "Clear filters",
     "all": "All",
