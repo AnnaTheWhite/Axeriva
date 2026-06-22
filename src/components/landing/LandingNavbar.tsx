@@ -23,17 +23,21 @@ export default function LandingNavbar() {
           </Link>
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* LanguageSwitcher + Log in + Sign up form one header control
+            group — all three share the same h-10 height, px-3 sm:px-4
+            padding, and rounded-xl radius so the row never jumps when the
+            language (and option text length) changes. */}
+        <div className="flex h-10 items-center gap-2 sm:gap-3">
           <LanguageSwitcher />
           <Link
             to="/login"
-            className="rounded-xl px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:px-4"
+            className="flex h-10 shrink-0 items-center whitespace-nowrap rounded-xl px-3 text-sm font-medium text-white transition hover:bg-white/10 sm:px-4"
           >
             {t("landing.nav.logIn")}
           </Link>
           <Link
             to="/register"
-            className="rounded-xl bg-orange-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-orange-600 sm:px-4"
+            className="flex h-10 shrink-0 items-center whitespace-nowrap rounded-xl bg-orange-500 px-3 text-sm font-medium text-white transition hover:bg-orange-600 sm:px-4"
           >
             {t("landing.nav.signUp")}
           </Link>

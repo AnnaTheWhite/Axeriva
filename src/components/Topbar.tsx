@@ -65,19 +65,27 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
         <LanguageSwitcher />
 
+        {/* Same h-10 + px-3 sm:px-4 + rounded-xl as LanguageSwitcher above,
+            so the two controls always line up — and whitespace-nowrap so
+            "Log out" never wraps to two lines on narrow screens. */}
         <button
           onClick={handleLogout}
           className="
+            flex
+            h-10
+            shrink-0
+            items-center
+            whitespace-nowrap
             rounded-xl
             border
             border-white/10
             bg-white/5
             px-3
-            py-1.5
             text-sm
             text-white
             transition
             hover:bg-white/10
+            sm:px-4
           "
         >
           {t("common.logout")}

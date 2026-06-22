@@ -10,8 +10,11 @@ const SHORT_LABEL: Record<Language, string> = {
   hu: "HU",
 };
 
-// Single switcher reused in Topbar — same component renders correctly on
-// both mobile and desktop since Topbar itself is always visible.
+// Single switcher reused in both the authenticated Topbar and the public
+// LandingNavbar — h-10 + px-3 sm:px-4 here must stay in sync with the
+// Login/Sign up/Logout button styles in those two headers so every header
+// control lines up at the same height regardless of which language is
+// selected (selected option text length must never shift the box size).
 export default function LanguageSwitcher() {
   const { language, setLanguage, t } = useTranslation();
 
@@ -20,7 +23,7 @@ export default function LanguageSwitcher() {
       value={language}
       onChange={(e) => setLanguage(e.target.value as Language)}
       aria-label={t("common.appName")}
-      className="rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white outline-none transition hover:bg-white/10 focus:border-orange-500"
+      className="h-10 shrink-0 whitespace-nowrap rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition hover:bg-white/10 focus:border-orange-500 sm:px-4"
     >
       {LANGUAGES.map((lang) => (
         <option key={lang} value={lang}>
