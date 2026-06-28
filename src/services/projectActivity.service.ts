@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 import type {
   ProjectAttachment,
   ProjectActivityEntry,
@@ -10,7 +10,7 @@ export function attachmentDownloadUrl(fileUrl: string): string {
 }
 
 export async function getProjectNotes(projectId: number): Promise<ProjectNote[]> {
-  const response = await fetch(`${API_URL}/projects/${projectId}/notes`, {
+  const response = await apiFetch(`${API_URL}/projects/${projectId}/notes`, {
     headers: { ...authHeaders() },
   });
 
@@ -25,7 +25,7 @@ export async function createProjectNote(
   projectId: number,
   content: string
 ): Promise<ProjectNote> {
-  const response = await fetch(`${API_URL}/projects/${projectId}/notes`, {
+  const response = await apiFetch(`${API_URL}/projects/${projectId}/notes`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ content }),
@@ -41,7 +41,7 @@ export async function createProjectNote(
 export async function getProjectAttachments(
   projectId: number
 ): Promise<ProjectAttachment[]> {
-  const response = await fetch(`${API_URL}/projects/${projectId}/attachments`, {
+  const response = await apiFetch(`${API_URL}/projects/${projectId}/attachments`, {
     headers: { ...authHeaders() },
   });
 
@@ -61,7 +61,7 @@ export async function uploadProjectAttachments(
   files.forEach((file) => formData.append("files", file));
   if (category) formData.append("category", category);
 
-  const response = await fetch(`${API_URL}/projects/${projectId}/attachments`, {
+  const response = await apiFetch(`${API_URL}/projects/${projectId}/attachments`, {
     method: "POST",
     // No Content-Type here on purpose — the browser sets the multipart
     // boundary itself when given a FormData body.
@@ -78,7 +78,7 @@ export async function uploadProjectAttachments(
 }
 
 export async function deleteProjectAttachment(id: number): Promise<void> {
-  const response = await fetch(`${API_URL}/attachments/${id}`, {
+  const response = await apiFetch(`${API_URL}/attachments/${id}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });
@@ -91,7 +91,7 @@ export async function deleteProjectAttachment(id: number): Promise<void> {
 export async function getProjectActivity(
   projectId: number
 ): Promise<ProjectActivityEntry[]> {
-  const response = await fetch(`${API_URL}/projects/${projectId}/activity`, {
+  const response = await apiFetch(`${API_URL}/projects/${projectId}/activity`, {
     headers: { ...authHeaders() },
   });
 

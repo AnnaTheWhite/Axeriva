@@ -1,8 +1,8 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 import type { Project } from "../types/project";
 
 export async function getProjects(): Promise<Project[]> {
-  const response = await fetch(`${API_URL}/projects`, {
+  const response = await apiFetch(`${API_URL}/projects`, {
     headers: { ...authHeaders() },
   });
 
@@ -28,7 +28,7 @@ export async function createProject(data: {
   deadline?: string;
   customerId?: number;
 } & GeofenceFields) {
-  const response = await fetch(`${API_URL}/projects`, {
+  const response = await apiFetch(`${API_URL}/projects`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
@@ -52,7 +52,7 @@ export async function updateProject(
     customerId?: number;
   } & GeofenceFields
 ) {
-  const response = await fetch(`${API_URL}/projects/${id}`, {
+  const response = await apiFetch(`${API_URL}/projects/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
@@ -66,7 +66,7 @@ export async function updateProject(
 }
 
 export async function deleteProject(id: number) {
-  const response = await fetch(`${API_URL}/projects/${id}`, {
+  const response = await apiFetch(`${API_URL}/projects/${id}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });
@@ -80,7 +80,7 @@ export async function assignEmployeeToProject(
   projectId: number,
   employeeId: number
 ) {
-  const response = await fetch(`${API_URL}/projects/${projectId}/assign`, {
+  const response = await apiFetch(`${API_URL}/projects/${projectId}/assign`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ employeeId }),
@@ -97,7 +97,7 @@ export async function removeEmployeeFromProject(
   projectId: number,
   employeeId: number
 ) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/projects/${projectId}/assign/${employeeId}`,
     { method: "DELETE", headers: { ...authHeaders() } }
   );

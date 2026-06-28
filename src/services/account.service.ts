@@ -1,10 +1,10 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export async function deleteAccount(
   password: string,
   confirmation: string
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/account/delete`, {
+  const response = await apiFetch(`${API_URL}/account/delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ password, confirmation }),

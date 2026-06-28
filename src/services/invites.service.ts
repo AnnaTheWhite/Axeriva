@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export type Invitation = {
   id: number;
@@ -13,7 +13,7 @@ export type Invitation = {
 };
 
 export async function createInvite(email: string): Promise<Invitation> {
-  const response = await fetch(`${API_URL}/invites`, {
+  const response = await apiFetch(`${API_URL}/invites`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ email }),
@@ -28,7 +28,7 @@ export async function createInvite(email: string): Promise<Invitation> {
 }
 
 export async function getInvites(): Promise<Invitation[]> {
-  const response = await fetch(`${API_URL}/invites`, {
+  const response = await apiFetch(`${API_URL}/invites`, {
     headers: { ...authHeaders() },
   });
 
@@ -40,7 +40,7 @@ export async function getInvites(): Promise<Invitation[]> {
 }
 
 export async function revokeInvite(id: number): Promise<void> {
-  const response = await fetch(`${API_URL}/invites/${id}`, {
+  const response = await apiFetch(`${API_URL}/invites/${id}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });
@@ -50,6 +50,11 @@ export async function revokeInvite(id: number): Promise<void> {
   }
 }
 
+// Public — looked up by an unauthenticated visitor following the invite
+// link, before they have any session. Intentionally left on plain
+// `fetch`, not apiFetch: there's no token to invalidate here, and a 401
+// would be an unexpected/irrelevant case to route through the
+// authenticated-session "clear and redirect to /login" behavior.
 export async function getInviteByToken(
   token: string
 ): Promise<{ email: string; companyName: string }> {
@@ -62,6 +67,7 @@ export async function getInviteByToken(
   return response.json();
 }
 
+// Public — same reasoning as getInviteByToken above.
 export async function acceptInvite(
   token: string,
   data: { firstName: string; lastName: string; password: string }

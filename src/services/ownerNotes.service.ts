@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 import type {
   DetectedEntities,
   OwnerNote,
@@ -31,7 +31,7 @@ function buildQuery(filters: OwnerNoteFilters = {}): string {
 export async function getOwnerNotes(
   filters?: OwnerNoteFilters
 ): Promise<OwnerNote[]> {
-  const response = await fetch(`${API_URL}/owner-notes${buildQuery(filters)}`, {
+  const response = await apiFetch(`${API_URL}/owner-notes${buildQuery(filters)}`, {
     headers: { ...authHeaders() },
   });
 
@@ -43,7 +43,7 @@ export async function getOwnerNotes(
 }
 
 export async function getOwnerNotesDashboard(): Promise<OwnerNoteDashboard> {
-  const response = await fetch(`${API_URL}/owner-notes/dashboard`, {
+  const response = await apiFetch(`${API_URL}/owner-notes/dashboard`, {
     headers: { ...authHeaders() },
   });
 
@@ -57,7 +57,7 @@ export async function getOwnerNotesDashboard(): Promise<OwnerNoteDashboard> {
 export async function detectOwnerNoteEntities(
   text: string
 ): Promise<DetectedEntities> {
-  const response = await fetch(`${API_URL}/owner-notes/detect`, {
+  const response = await apiFetch(`${API_URL}/owner-notes/detect`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ text }),
@@ -79,7 +79,7 @@ export async function createOwnerNote(data: {
   priority?: Priority;
   pinned?: boolean;
 }): Promise<OwnerNote> {
-  const response = await fetch(`${API_URL}/owner-notes`, {
+  const response = await apiFetch(`${API_URL}/owner-notes`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
@@ -106,7 +106,7 @@ export async function updateOwnerNote(
     pinned?: boolean;
   }
 ): Promise<OwnerNote> {
-  const response = await fetch(`${API_URL}/owner-notes/${id}`, {
+  const response = await apiFetch(`${API_URL}/owner-notes/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
@@ -121,7 +121,7 @@ export async function updateOwnerNote(
 }
 
 export async function deleteOwnerNote(id: number): Promise<void> {
-  const response = await fetch(`${API_URL}/owner-notes/${id}`, {
+  const response = await apiFetch(`${API_URL}/owner-notes/${id}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });

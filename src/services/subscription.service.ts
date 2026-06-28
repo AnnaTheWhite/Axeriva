@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export type SubscriptionStatus = {
   plan: string;
@@ -8,7 +8,7 @@ export type SubscriptionStatus = {
 };
 
 export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
-  const response = await fetch(`${API_URL}/subscription`, {
+  const response = await apiFetch(`${API_URL}/subscription`, {
     headers: { ...authHeaders() },
   });
 
@@ -20,7 +20,7 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
 }
 
 async function startStripeFlow(path: string): Promise<string> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await apiFetch(`${API_URL}${path}`, {
     method: "POST",
     headers: { ...authHeaders() },
   });
@@ -48,7 +48,7 @@ export async function startPortal(): Promise<string> {
 // without waiting for the webhook (which may be delayed, or — on a local
 // dev machine without `stripe listen` running — may never arrive at all).
 export async function syncCheckoutSession(sessionId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/subscription/sync`, {
+  const response = await apiFetch(`${API_URL}/subscription/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ sessionId }),

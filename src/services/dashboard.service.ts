@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export type DashboardData = {
   kpis: {
@@ -28,7 +28,7 @@ export type DashboardData = {
 };
 
 export async function getDashboard(): Promise<DashboardData> {
-  const response = await fetch(`${API_URL}/dashboard`, {
+  const response = await apiFetch(`${API_URL}/dashboard`, {
     headers: { ...authHeaders() },
   });
 

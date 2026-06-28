@@ -1,7 +1,7 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export async function getShifts() {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/shifts`,
     { headers: { ...authHeaders() } }
   );
@@ -22,7 +22,7 @@ export async function createShift(data: {
   end: string;
   notes: string;
 }) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/shifts`,
     {
       method: "POST",
@@ -54,7 +54,7 @@ export async function updateShift(
     notes: string;
   }
 ) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/shifts/${id}`,
     {
       method: "PUT",
@@ -79,7 +79,7 @@ export async function updateShift(
 export async function deleteShift(
   id: number
 ) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/shifts/${id}`,
     {
       method: "DELETE",
@@ -97,7 +97,7 @@ export async function deleteShift(
 }
 
 export async function getMyShifts() {
-  const response = await fetch(`${API_URL}/shifts/me`, {
+  const response = await apiFetch(`${API_URL}/shifts/me`, {
     headers: { ...authHeaders() },
   });
 
@@ -109,7 +109,7 @@ export async function getMyShifts() {
 }
 
 export async function clockIn(projectId: number) {
-  const response = await fetch(`${API_URL}/shifts/clock-in`, {
+  const response = await apiFetch(`${API_URL}/shifts/clock-in`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ projectId }),
@@ -123,7 +123,7 @@ export async function clockIn(projectId: number) {
 }
 
 export async function clockOut() {
-  const response = await fetch(`${API_URL}/shifts/clock-out`, {
+  const response = await apiFetch(`${API_URL}/shifts/clock-out`, {
     method: "POST",
     headers: { ...authHeaders() },
   });
@@ -142,7 +142,7 @@ export type ProjectHours = {
 };
 
 export async function getHoursByProject(): Promise<ProjectHours[]> {
-  const response = await fetch(`${API_URL}/shifts/hours-by-project`, {
+  const response = await apiFetch(`${API_URL}/shifts/hours-by-project`, {
     headers: { ...authHeaders() },
   });
 

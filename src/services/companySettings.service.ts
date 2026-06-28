@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export type CompanySettings = {
   id: number;
@@ -26,7 +26,7 @@ function settingsUrl(companyId?: number): string {
 export async function getCompanySettings(
   companyId?: number
 ): Promise<CompanySettings> {
-  const response = await fetch(settingsUrl(companyId), {
+  const response = await apiFetch(settingsUrl(companyId), {
     headers: { ...authHeaders() },
   });
 
@@ -41,7 +41,7 @@ export async function updateCompanySettings(
   data: UpdateCompanySettingsInput,
   companyId?: number
 ): Promise<CompanySettings> {
-  const response = await fetch(settingsUrl(companyId), {
+  const response = await apiFetch(settingsUrl(companyId), {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),

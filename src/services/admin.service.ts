@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export type AdminCompany = {
   id: number;
@@ -18,7 +18,7 @@ export type AdminUser = {
 };
 
 export async function getAdminCompanies(): Promise<AdminCompany[]> {
-  const response = await fetch(`${API_URL}/admin/companies`, {
+  const response = await apiFetch(`${API_URL}/admin/companies`, {
     headers: { ...authHeaders() },
   });
 
@@ -30,7 +30,7 @@ export async function getAdminCompanies(): Promise<AdminCompany[]> {
 }
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
-  const response = await fetch(`${API_URL}/admin/users`, {
+  const response = await apiFetch(`${API_URL}/admin/users`, {
     headers: { ...authHeaders() },
   });
 
@@ -52,7 +52,7 @@ export type AuditLogEntry = {
 };
 
 export async function getAdminLogs(): Promise<AuditLogEntry[]> {
-  const response = await fetch(`${API_URL}/admin/logs`, {
+  const response = await apiFetch(`${API_URL}/admin/logs`, {
     headers: { ...authHeaders() },
   });
 

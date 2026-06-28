@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export type Customer = {
   id: number;
@@ -11,7 +11,7 @@ export type Customer = {
 };
 
 export async function getCustomers(): Promise<Customer[]> {
-  const res = await fetch(`${API_URL}/customers`, {
+  const res = await apiFetch(`${API_URL}/customers`, {
     headers: { ...authHeaders() },
   });
 
@@ -28,7 +28,7 @@ export async function createCustomer(data: {
   phone?: string;
   address?: string;
 }): Promise<Customer> {
-  const res = await fetch(`${API_URL}/customers`, {
+  const res = await apiFetch(`${API_URL}/customers`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
@@ -50,7 +50,7 @@ export async function updateCustomer(
     address?: string;
   }
 ): Promise<Customer> {
-  const res = await fetch(`${API_URL}/customers/${id}`, {
+  const res = await apiFetch(`${API_URL}/customers/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(data),
@@ -78,7 +78,7 @@ export type CustomerCommunicationLog = {
 export async function getCustomerCommunications(
   customerId: number
 ): Promise<CustomerCommunicationLog[]> {
-  const res = await fetch(`${API_URL}/customers/${customerId}/communications`, {
+  const res = await apiFetch(`${API_URL}/customers/${customerId}/communications`, {
     headers: { ...authHeaders() },
   });
 
@@ -90,7 +90,7 @@ export async function getCustomerCommunications(
 }
 
 export async function deleteCustomer(id: number): Promise<void> {
-  const res = await fetch(`${API_URL}/customers/${id}`, {
+  const res = await apiFetch(`${API_URL}/customers/${id}`, {
     method: "DELETE",
     headers: { ...authHeaders() },
   });

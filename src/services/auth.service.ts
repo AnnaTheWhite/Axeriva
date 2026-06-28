@@ -1,6 +1,11 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 import type { AuthResponse } from "../types/auth";
 
+// Public, unauthenticated — intentionally left on plain `fetch`, not
+// apiFetch. A wrong password here returns 401 as a normal form-validation
+// outcome, not a session-invalidity signal; routing that through
+// apiFetch's "clear session and redirect to /login" behavior would wipe
+// the on-screen error message before the user ever saw it.
 export async function login(
   email: string,
   password: string
@@ -45,8 +50,10 @@ export async function verifyEmail(token: string): Promise<void> {
   }
 }
 
+// Authenticated — requires a valid session, so a 401 here genuinely means
+// the session is no longer valid.
 export async function resendVerificationEmail(): Promise<void> {
-  const response = await fetch(`${API_URL}/auth/resend-verification`, {
+  const response = await apiFetch(`${API_URL}/auth/resend-verification`, {
     method: "POST",
     headers: { ...authHeaders() },
   });

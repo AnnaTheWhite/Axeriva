@@ -7,6 +7,7 @@ import {
 import type { ReactNode } from "react";
 import type { AuthUser } from "../types/auth";
 import { login as loginRequest } from "../services/auth.service";
+import { clearSession } from "../services/api";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -51,8 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearSession();
 
     setToken(null);
     setUser(null);

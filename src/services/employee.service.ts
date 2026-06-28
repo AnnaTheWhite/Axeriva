@@ -1,7 +1,7 @@
-import { API_URL, authHeaders } from "./api";
+import { API_URL, authHeaders, apiFetch } from "./api";
 
 export async function getEmployees() {
-  const response = await fetch(`${API_URL}/employees`, {
+  const response = await apiFetch(`${API_URL}/employees`, {
     headers: { ...authHeaders() },
   });
 
@@ -20,7 +20,7 @@ export async function updateEmployeeStatus(
   id: number,
   status: string
 ) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/employees/${id}/status`,
     {
       method: "PUT",
@@ -40,7 +40,7 @@ export async function updateEmployeeStatus(
 }
 
 export async function deleteEmployee(id: number) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/employees/${id}`,
     {
       method: "DELETE",
@@ -64,7 +64,7 @@ export async function updateEmployee(
     status: string;
   }
 ) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_URL}/employees/${id}`,
     {
       method: "PUT",

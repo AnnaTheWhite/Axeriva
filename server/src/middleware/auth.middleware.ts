@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import prisma from "../database/prisma";
 
 export type AuthPayload = {
   userId: number;
@@ -16,7 +17,7 @@ declare global {
   }
 }
 
-export function authMiddleware(
+export async function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
@@ -29,16 +30,36 @@ export function authMiddleware(
 
   const token = header.slice("Bearer ".length);
 
+  let payload: AuthPayload;
+
   try {
-    const payload = jwt.verify(
+    payload = jwt.verify(
       token,
       process.env.JWT_SECRET as string
     ) as AuthPayload;
-
-    req.user = payload;
-
-    return next();
   } catch (error) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+
+  // The JWT itself stays valid for up to 7 days after issuance, but the
+  // account it names may have been soft-deleted since then (see
+  // account.routes.ts POST /account/delete). Re-checking `active` here —
+  // on every request, not just at login — closes that gap without
+  // needing to revoke or track individual tokens. Same generic error as
+  // an invalid/expired token, so this can't be used to distinguish a
+  // deleted account from any other auth failure. Company-level
+  // deactivation is intentionally out of scope here (separate
+  // stabilization pass).
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { active: true },
+  });
+
+  if (!user || !user.active) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  req.user = payload;
+
+  return next();
 }

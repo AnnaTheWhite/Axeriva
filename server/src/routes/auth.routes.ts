@@ -260,8 +260,13 @@ router.post("/reset-password/:token", async (req, res) => {
     where: { passwordResetToken: token },
   });
 
+  // Same generic message for "no such token", "expired", and
+  // "soft-deleted" — mirrors forgot-password's existing !user.active
+  // check, so this endpoint can't be used to distinguish a deleted
+  // account from an expired link.
   if (
     !user ||
+    !user.active ||
     !user.passwordResetExpiresAt ||
     user.passwordResetExpiresAt < new Date()
   ) {
