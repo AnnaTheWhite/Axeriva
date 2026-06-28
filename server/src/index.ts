@@ -23,6 +23,20 @@ import { UPLOAD_ROOT } from "./middleware/upload.middleware";
 
 dotenv.config();
 
+// Fail fast if JWT_SECRET is missing, empty, or whitespace-only. Every
+// jwt.sign()/jwt.verify() call below (auth.middleware.ts, auth.routes.ts,
+// invites.routes.ts) casts process.env.JWT_SECRET to string without a
+// runtime check, so a missing secret would otherwise only surface as a
+// confusing failure on the first auth request instead of at startup.
+const jwtSecret = process.env.JWT_SECRET?.trim();
+
+if (!jwtSecret) {
+  console.error(
+    "FATAL: JWT_SECRET environment variable is missing. Refusing to start Axeriva API."
+  );
+  process.exit(1);
+}
+
 const app = express();
 
 // Restricted to the configured frontend origin once APP_URL is set to a
