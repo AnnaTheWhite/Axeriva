@@ -11,29 +11,21 @@ const SHORT_LABEL: Record<Language, string> = {
   hu: "HU",
 };
 
-const MENU_WIDTH = 128; // matches w-32
 const ESTIMATED_MENU_HEIGHT = LANGUAGES.length * 36 + 8;
-const VIEWPORT_MARGIN = 8;
-
-type MenuPosition = {
-  top: number;
-  left: number;
-};
 
 // Compact dropdown reused in both the authenticated Topbar and the public
 // LandingNavbar. Closed state only ever shows the current language's short
 // code ("HU"/"EN"), so the trigger button stays a fixed, narrow size
 // regardless of language — unlike a native <select>, whose closed-state
-// width follows the selected <option> text and previously made this
-// control balloon to form-field size. Opening reveals the full language
-// names ("Magyar"/"English") in a small menu, same interaction pattern as
-// CustomSelect.tsx elsewhere in the app. i18n logic (useTranslation,
-// setLanguage) and localStorage persistence are untouched — this is a
-// pure presentation change.
+// width follows the selected <option> text. Opening reveals the full
+// language names ("Magyar"/"English") in a small menu, same interaction
+// pattern as CustomSelect.tsx elsewhere in the app. i18n logic
+// (useTranslation, setLanguage) and localStorage persistence are
+// untouched — this is a pure presentation change.
 export default function LanguageSwitcher() {
   const { language, setLanguage, t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
+  const [openUpward, setOpenUpward] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -51,10 +43,10 @@ export default function LanguageSwitcher() {
   useEffect(() => {
     if (!open) return;
 
-    // Dropdowns can't reliably track scroll/resize while staying simple, so
-    // instead of repositioning continuously we just close on either — the
-    // same convention as click-outside. This avoids a stale, misplaced
-    // menu after the page moves under it.
+    // The up/down decision is measured once at open time; if the page
+    // scrolls or resizes while open, that decision can go stale, so we
+    // just close instead of repositioning continuously — same convention
+    // as click-outside.
     function close() {
       setOpen(false);
     }
@@ -76,18 +68,7 @@ export default function LanguageSwitcher() {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
       const spaceBelow = window.innerHeight - rect.bottom;
-      const openUpward = spaceBelow < ESTIMATED_MENU_HEIGHT && rect.top > spaceBelow;
-
-      const top = openUpward
-        ? Math.max(VIEWPORT_MARGIN, rect.top - ESTIMATED_MENU_HEIGHT - 8)
-        : Math.min(rect.bottom + 8, window.innerHeight - ESTIMATED_MENU_HEIGHT - VIEWPORT_MARGIN);
-
-      const left = Math.min(
-        Math.max(VIEWPORT_MARGIN, rect.right - MENU_WIDTH),
-        window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN
-      );
-
-      setMenuPosition({ top, left });
+      setOpenUpward(spaceBelow < ESTIMATED_MENU_HEIGHT && rect.top > spaceBelow);
     }
 
     setOpen(true);
@@ -116,22 +97,29 @@ export default function LanguageSwitcher() {
         </svg>
       </button>
 
-      {/* Fixed + viewport-clamped instead of absolute-below-trigger: a
-          regular absolute/top-full menu can render past the bottom edge of
-          the window when the trigger sits low on the page (e.g. a short
-          page, or no sticky header), which grows the document's scrollable
-          area and forces the user to scroll just to reach the options.
-          Computing top/left from the trigger's getBoundingClientRect() at
-          open time and clamping against window.innerHeight/innerWidth
-          keeps the whole menu on-screen and flips it above the trigger
-          when there isn't room below — without ever expanding page
-          height, since fixed elements are positioned relative to the
-          viewport, not the document flow. */}
-      {open && menuPosition && (
+      {/* `absolute`, anchored to this component's own `relative` wrapper —
+          not `position: fixed`. A previous version used fixed positioning
+          computed from getBoundingClientRect(), but LandingNavbar's header
+          uses backdrop-blur-xl (backdrop-filter), which establishes a new
+          containing block for fixed-position descendants in modern
+          browsers. That silently broke the viewport-relative math, making
+          the menu (and visually, the trigger/header area around it)
+          behave unpredictably instead of acting as a clean overlay.
+          `absolute` only cares about the nearest positioned ancestor —
+          this wrapper — so it's immune to that bug regardless of any
+          backdrop-filter/transform on outer ancestors. It still never
+          takes up document flow space and never changes the trigger's or
+          navbar's size, since flex siblings only react to in-flow boxes.
+          The up/down flip (top-full vs bottom-full) is decided once at
+          open time from the trigger's real position, so a trigger sitting
+          low on a short page opens upward instead of spilling past the
+          viewport bottom and growing the page's scrollable area. */}
+      {open && (
         <div
           role="listbox"
-          style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: MENU_WIDTH }}
-          className="z-50 overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-2xl"
+          className={`absolute right-0 z-50 w-32 overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-2xl ${
+            openUpward ? "bottom-full mb-2" : "top-full mt-2"
+          }`}
         >
           {LANGUAGES.map((lang) => (
             <button
