@@ -71,9 +71,21 @@ router.post("/delete", async (req, res) => {
 
   const now = new Date();
 
+  // Free up the email for reuse (K3 business decision): User.email stays
+  // a DB-level @unique column, so a soft-deleted row would otherwise
+  // permanently block both new registrations and invite-accept on this
+  // address (both look the row up by the literal email string). Rewriting
+  // it to a tombstone value — userId guarantees no collision with any
+  // other row, deleted user's own primary key is unique by definition —
+  // frees the original address without touching the unique constraint,
+  // without reactivating this row, and without any change needed in
+  // auth.routes.ts or invites.routes.ts: their existing lookups simply no
+  // longer find a match on the original address.
+  const tombstoneEmail = `deleted+${userId}+${now.getTime()}__${user.email}`;
+
   await prisma.user.update({
     where: { id: userId },
-    data: { active: false, deletedAt: now },
+    data: { active: false, deletedAt: now, email: tombstoneEmail },
   });
 
   if (role === ROLES.BUSINESS_OWNER && companyId) {
