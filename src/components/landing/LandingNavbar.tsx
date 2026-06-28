@@ -29,8 +29,10 @@ export default function LandingNavbar() {
             shrink-0 on each child + the LanguageSwitcher's own fixed width
             keep this whole group from ever pushing wider than the
             viewport, so it always stays on one row without clipping
-            either auth button. */}
-        <div className="flex h-9 min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
+            either auth button. Gap matches Topbar's control group
+            (gap-2 sm:gap-4) so the LanguageSwitcher sits with the same
+            spacing rhythm on both the dashboard and the landing page. */}
+        <div className="flex h-9 min-w-0 shrink-0 items-center gap-2 sm:gap-4">
           <LanguageSwitcher />
           <Link
             to="/login"
