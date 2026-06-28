@@ -23,6 +23,15 @@ body,
 body {
   background: var(--background);
   color: var(--text-primary);
+  /* Global horizontal-scroll guard. Previously this lived as
+     overflow-x-hidden directly on the sticky landing header, but per the
+     CSS Overflow spec, pairing overflow-x: hidden with an unset (visible)
+     overflow-y on the same element forces the browser to compute that
+     visible axis as auto — turning the header into a vertical clipping
+     container that cut off anything overflowing it, like an open
+     LanguageSwitcher dropdown. Keeping the horizontal guard on body
+     instead avoids creating that clipping ancestor for header content. */
+  overflow-x: hidden;
 }
 
 /* ─── Egységes form elemek dark theme-hez ─── */
