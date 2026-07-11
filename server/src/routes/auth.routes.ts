@@ -7,6 +7,7 @@ import { emailService } from "../services/email";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { signAuthToken } from "../utils/authToken";
 import { hashToken } from "../utils/tokenHash";
+import { validatePassword } from "../utils/passwordPolicy";
 import { createRateLimiter, maskEmail } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { config } from "../config";
@@ -67,13 +68,19 @@ router.post("/register", registerLimiter, async (req, res) => {
     });
   }
 
+  const passwordCheck = validatePassword(password);
+
+  if (!passwordCheck.ok) {
+    return res.status(400).json({ error: passwordCheck.error });
+  }
+
   const existing = await prisma.user.findUnique({ where: { email } });
 
   if (existing) {
     return res.status(409).json({ error: "Email already in use" });
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(passwordCheck.password, 10);
 
   const company = await prisma.company.create({
     data: { name: companyName },
@@ -316,6 +323,12 @@ router.post("/reset-password/:token", resetPasswordLimiter, async (req, res) => 
     return res.status(400).json({ error: "password is required" });
   }
 
+  const passwordCheck = validatePassword(password);
+
+  if (!passwordCheck.ok) {
+    return res.status(400).json({ error: passwordCheck.error });
+  }
+
   const user = await prisma.user.findUnique({
     where: { passwordResetToken: hashToken(token) },
     include: { company: { select: { active: true } } },
@@ -336,7 +349,7 @@ router.post("/reset-password/:token", resetPasswordLimiter, async (req, res) => 
     return res.status(400).json({ error: "Invalid or expired reset link" });
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(passwordCheck.password, 10);
 
   await prisma.user.update({
     where: { id: user.id },

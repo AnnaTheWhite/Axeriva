@@ -9,6 +9,7 @@ import { emailService } from "../services/email";
 import { isEmployeeLimitReached } from "../utils/planLimits";
 import { signAuthToken } from "../utils/authToken";
 import { hashToken } from "../utils/tokenHash";
+import { validatePassword } from "../utils/passwordPolicy";
 import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { config } from "../config";
@@ -180,7 +181,13 @@ router.post("/:token/accept", inviteAcceptLimiter, async (req, res) => {
     return res.status(409).json({ error: "Email already in use" });
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const passwordCheck = validatePassword(password);
+
+  if (!passwordCheck.ok) {
+    return res.status(400).json({ error: passwordCheck.error });
+  }
+
+  const hashedPassword = await bcrypt.hash(passwordCheck.password, 10);
 
   const employee = await prisma.employee.create({
     data: {

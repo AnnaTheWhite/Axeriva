@@ -145,6 +145,37 @@ offboarding) után a cég munkavállalói tovább hozzáfértek a cég adataihoz
 RBAC dolga), és nem fedi a Stripe-előfizetés lejártát — a `plan`/limit
 logika attól független.
 
+## Password Policy (K2.1.6)
+
+**Szabályok** (központilag:
+[server/src/utils/passwordPolicy.ts](../server/src/utils/passwordPolicy.ts)):
+
+- legalább **12 karakter**
+- legalább egy kisbetű, egy nagybetű és egy számjegy
+- speciális karakter **nem** kötelező
+- Unicode-jelszavak támogatottak — a kis-/nagybetű-ellenőrzés
+  Unicode-tudatos (`\p{Ll}` / `\p{Lu}` / `\p{Nd}`), így pl. az
+  `Árvíztűrő123x` érvényes
+- csak a bevezető/záró whitespace trimmelődik (a trimmelt forma kerül
+  hash-elésre); a belső szóköz legális jelszó-karakter és érintetlen marad
+
+A `validatePassword()` az egyetlen erősség-validátor — a register, a
+jelszó-reset és a meghívó-elfogadás mind ezt hívja; másolt szabály nincs.
+Minden flow ugyanazt a konzisztens hibaüzenetet adja
+(`400`, `PASSWORD_POLICY_MESSAGE`), implementációs részletek nélkül.
+
+**Backward compatibility:** a policy KIZÁRÓLAG jelszó létrehozásakor/
+cseréjekor fut — a login soha nem validál erősséget, a meglévő (akár
+gyengébb) jelszavú fiókok változatlanul bejelentkeznek, kényszerített
+jelszócsere nincs, a tárolt hash-ekhez és a bcrypt költséghez nem nyúltunk.
+A régi jelszavak a következő önkéntes cserénél „nőnek bele" a policybe.
+
+**Future extension:** a modul a természetes helye a későbbi bővítéseknek —
+pl. gyakori-jelszó lista (top-10k denylist), e-mail≠jelszó ellenőrzés,
+haveibeenpwned-integráció, maximum-hossz. Új szabály felvételéhez csak a
+`validatePassword()` és a `PASSWORD_POLICY_MESSAGE` módosítandó; minden
+flow automatikusan örökli.
+
 ## Egyéb meglévő védelmek
 
 - Soft-deletelt user: login tiltva, middleware minden kérésnél kizárja,
