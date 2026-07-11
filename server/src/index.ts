@@ -26,6 +26,11 @@ import attachmentsRoutes from "./routes/attachments.routes";
 import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { UPLOAD_ROOT } from "./middleware/upload.middleware";
+import {
+  httpSecurity,
+  permissionsPolicy,
+  uploadsResourcePolicy,
+} from "./middleware/httpSecurity";
 
 const app = express();
 
@@ -45,6 +50,13 @@ app.use((req, _res, next) => {
   req.id = crypto.randomUUID();
   next();
 });
+
+// HTTP security headers (K2.2) — Helmet (CSP, HSTS, frameguard, nosniff,
+// CORP/COOP, referrer policy) plus an explicit Permissions-Policy. Applied
+// before routing so every response carries them. See middleware/
+// httpSecurity.ts and docs/http-security.md.
+app.use(httpSecurity());
+app.use(permissionsPolicy());
 
 // Production: only the configured frontend origin (APP_URL is a required
 // variable there — see config.ts). Development: APP_URL if set, otherwise
@@ -89,7 +101,11 @@ app.use(express.json({ limit: "5mb" }));
 // uploaded names, so this can stay a plain static mount without leaking
 // anything by browsing it. Files are immutable once written (a new upload
 // gets a new UUID), so letting browsers cache them for a day is safe.
-app.use("/uploads", express.static(UPLOAD_ROOT, { maxAge: "1d" }));
+// uploadsResourcePolicy overrides the global same-origin CORP with
+// cross-origin so the frontend can embed attachment images across origins
+// (see httpSecurity.ts). Static files keep the day-long cache and inherit
+// nosniff from the global Helmet layer.
+app.use("/uploads", uploadsResourcePolicy(), express.static(UPLOAD_ROOT, { maxAge: "1d" }));
 
 app.get("/", (_req, res) => {
   res.json({
