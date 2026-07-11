@@ -4,6 +4,7 @@ import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { logAudit } from "../services/audit/auditLog";
+import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 
 const router = Router();
 
@@ -85,7 +86,16 @@ router.post("/delete", async (req, res) => {
 
   await prisma.user.update({
     where: { id: userId },
-    data: { active: false, deletedAt: now, email: tombstoneEmail },
+    // tokenVersion bump: the `active: false` check in auth.middleware.ts
+    // already blocks soft-deleted users on every request; incrementing the
+    // version as well is defence in depth (K2.1.2) — the tokens die even if
+    // the active-check ever changes.
+    data: {
+      active: false,
+      deletedAt: now,
+      email: tombstoneEmail,
+      tokenVersion: { increment: 1 },
+    },
   });
 
   if (role === ROLES.BUSINESS_OWNER && companyId) {
@@ -100,6 +110,18 @@ router.post("/delete", async (req, res) => {
     userId,
     companyId,
     metadata: { role },
+  });
+
+  // Console auth-audit alongside the persistent DB audit above — destructive
+  // account event, surfaced in the same structured stream as the rest of
+  // the auth flow.
+  logAuthEvent(AuthEvent.ACCOUNT_DELETED, {
+    req,
+    level: "WARN",
+    result: "success",
+    userId,
+    companyId,
+    role,
   });
 
   return res.json({ deleted: true });

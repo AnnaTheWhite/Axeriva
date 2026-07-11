@@ -11,6 +11,7 @@ import { validatePassword } from "../utils/passwordPolicy";
 import { validateEmail } from "../utils/emailValidation";
 import { createRateLimiter, maskEmail } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
+import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { config } from "../config";
 
 const router = Router();
@@ -118,10 +119,12 @@ router.post("/register", registerLimiter, async (req, res) => {
     // hash so this path matches the timing of the bcrypt.hash() below and
     // no new timing side-channel replaces the removed status-code leak.
     await bcrypt.compare(passwordCheck.password, DUMMY_PASSWORD_HASH);
-    // Internal-only signal; masked email, never returned to the client.
-    console.warn(
-      `[auth] duplicate registration attempt for ${maskEmail(emailCheck.email)}`
-    );
+    logAuthEvent(AuthEvent.REGISTRATION_DUPLICATE, {
+      req,
+      level: "WARN",
+      result: "failure",
+      email: emailCheck.email,
+    });
     return res.status(201).json(GENERIC_REGISTER_RESPONSE);
   }
 
@@ -163,8 +166,15 @@ router.post("/register", registerLimiter, async (req, res) => {
       console.error("[auth] verification email failed", error);
     });
 
-  // Internal-only signal; masked email, never returned to the client.
-  console.log(`[auth] new registration for ${maskEmail(user.email)}`);
+  logAuthEvent(AuthEvent.REGISTRATION_SUCCEEDED, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    email: user.email,
+  });
 
   return res.status(201).json(GENERIC_REGISTER_RESPONSE);
 });
@@ -197,18 +207,48 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
     // identical, so neither the response nor its timing distinguishes
     // "unknown email" from "wrong password".
     await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+    // Log fields are identical in shape to the wrong-password branch below
+    // (one masked-email LOGIN_FAILED); only the internal `reason` differs,
+    // so neither timing nor the client response distinguishes the cases.
+    logAuthEvent(AuthEvent.LOGIN_FAILED, {
+      req,
+      level: "WARN",
+      result: "failure",
+      email: emailCheck.email,
+      reason: "unknown_email",
+    });
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
   const valid = await bcrypt.compare(password, user.password);
 
   if (!valid) {
+    logAuthEvent(AuthEvent.LOGIN_FAILED, {
+      req,
+      level: "WARN",
+      result: "failure",
+      userId: user.id,
+      companyId: user.companyId,
+      role: user.role,
+      email: user.email,
+      reason: "bad_password",
+    });
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
   // Soft-deleted account — don't reveal that distinction from "wrong
   // password", same as the unknown-email case above.
   if (!user.active) {
+    logAuthEvent(AuthEvent.LOGIN_FAILED, {
+      req,
+      level: "WARN",
+      result: "failure",
+      userId: user.id,
+      companyId: user.companyId,
+      role: user.role,
+      email: user.email,
+      reason: "user_inactive",
+    });
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
@@ -216,10 +256,30 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
   // error, so company status doesn't leak. DEVELOPER users have no company
   // (company is null) and pass through.
   if (user.company && !user.company.active) {
+    logAuthEvent(AuthEvent.LOGIN_FAILED, {
+      req,
+      level: "WARN",
+      result: "failure",
+      userId: user.id,
+      companyId: user.companyId,
+      role: user.role,
+      email: user.email,
+      reason: "company_inactive",
+    });
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
   const token = signAuthToken(user);
+
+  logAuthEvent(AuthEvent.LOGIN_SUCCEEDED, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    email: user.email,
+  });
 
   return res.json({
     token,
@@ -244,6 +304,15 @@ router.post("/logout", authMiddleware, async (req, res) => {
   await prisma.user.update({
     where: { id: req.user!.userId },
     data: { tokenVersion: { increment: 1 } },
+  });
+
+  logAuthEvent(AuthEvent.LOGOUT, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: req.user!.userId,
+    companyId: req.user!.companyId,
+    role: req.user!.role,
   });
 
   return res.json({ loggedOut: true });
@@ -279,6 +348,16 @@ router.get("/verify-email/:token", async (req, res) => {
       emailVerificationToken: null,
       emailVerificationExpiresAt: null,
     },
+  });
+
+  logAuthEvent(AuthEvent.EMAIL_VERIFIED, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    email: user.email,
   });
 
   return res.json({ verified: true });
@@ -319,6 +398,16 @@ router.post("/resend-verification", verifyEmailLimiter, authMiddleware, async (r
     return res.status(502).json({ error: "Failed to send verification email" });
   }
 
+  logAuthEvent(AuthEvent.EMAIL_VERIFICATION_REQUESTED, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    email: user.email,
+  });
+
   return res.json({ sent: true });
 });
 
@@ -344,6 +433,17 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   if (!emailCheck.ok) {
     return res.status(400).json({ error: emailCheck.error });
   }
+
+  // Logged uniformly for every well-formed request, before the account
+  // lookup — so the audit trail never distinguishes "account exists" from
+  // "doesn't", preserving the enumeration protection of the generic
+  // response.
+  logAuthEvent(AuthEvent.PASSWORD_RESET_REQUESTED, {
+    req,
+    level: "INFO",
+    result: "success",
+    email: emailCheck.email,
+  });
 
   const user = await prisma.user.findUnique({
     where: { email: emailCheck.email },
@@ -427,6 +527,16 @@ router.post("/reset-password/:token", resetPasswordLimiter, async (req, res) => 
       // auth.middleware.ts tokenVersion check).
       tokenVersion: { increment: 1 },
     },
+  });
+
+  logAuthEvent(AuthEvent.PASSWORD_RESET_COMPLETED, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    email: user.email,
   });
 
   return res.json({ reset: true });

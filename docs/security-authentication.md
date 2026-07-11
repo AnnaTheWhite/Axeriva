@@ -319,6 +319,80 @@ in use" helyett — ez tudatos csere: az enumeration-védelem fontosabb, mint a
 duplikátum azonnali jelzése (a felhasználó a login-oldalon a „forgot
 password" úton tud továbbmenni).
 
+## Authentication Audit Logging (K2.1.10)
+
+**Központi helper:**
+[server/src/services/audit/authAudit.ts](../server/src/services/audit/authAudit.ts)
+— `logAuthEvent(event, context)`. Minden auth-flow és a middleware/rate
+limiter ezen keresztül logol; nincs szétszórt `console.log`. Az esemény-
+típusok zárt halmaza az `AuthEvent` konstansban él. (Nem ugyanaz, mint a
+perzisztens DB `logAudit` — az az `AuditLog` táblába ír; ez strukturált
+konzol-audit a teljes auth-felületre.)
+
+**Kimenet:** eseményenként egyetlen **strukturált JSON sor** a megfelelő
+konzol-streamre (INFO→stdout, WARN/ERROR→stderr). A JSON két okból fontos:
+(1) gépi feldolgozhatóság egy jövőbeli SIEM/log-shipping pipeline-hoz;
+(2) a JSON.stringify escape-eli az újsorokat/idézőjeleket, így a támadó-
+vezérelt mezők (pl. User-Agent) nem használhatók **log injection**-re.
+Külső logrendszert nem vezettünk be (constraint) — ez csak egységesíti,
+ami eddig is a konzolra ment.
+
+### Log-séma
+
+Minden bejegyzés mezői: `ts` (ISO-8601), `channel` (`"auth-audit"`),
+`level`, `event`, `result` (`success`/`failure`/`denied`), `userId`,
+`companyId`, `role`, `email` (**maszkolva**), `ip`, `userAgent` (max 256
+karakter), `requestId` (per-kérés UUID, az index.ts request-id middleware-
+éből), `reason` (rövid, nem-érzékeny gépi címke, pl. `session_invalidated`).
+Ismeretlen mezők `null`-ok.
+
+### Naplózott események és szintjeik
+
+| Event | Level | Mikor |
+|---|---|---|
+| `LOGIN_SUCCEEDED` | INFO | sikeres login |
+| `LOGIN_FAILED` | WARN | ismeretlen e-mail / rossz jelszó / inaktív user / inaktív cég (a `reason` különbözteti) |
+| `REGISTRATION_SUCCEEDED` | INFO | új fiók létrejött |
+| `REGISTRATION_DUPLICATE` | WARN | létező címre regisztrációs kísérlet |
+| `PASSWORD_RESET_REQUESTED` | INFO | forgot-password (uniform, fiók-létezéstől függetlenül) |
+| `PASSWORD_RESET_COMPLETED` | INFO | reset sikeresen lezajlott |
+| `EMAIL_VERIFICATION_REQUESTED` | INFO | resend-verification |
+| `EMAIL_VERIFIED` | INFO | e-mail megerősítve |
+| `INVITATION_CREATED` | INFO | meghívó létrehozva |
+| `INVITATION_ACCEPTED` | INFO | meghívó elfogadva |
+| `LOGOUT` | INFO | szerveroldali logout |
+| `ACCOUNT_DELETED` | WARN | fiók-törlés |
+| `AUTH_DENIED` | WARN | hiányzó/rossz formátumú Bearer token |
+| `COMPANY_INACTIVE_DENIED` | WARN | inaktív cég tagjának kérése elutasítva |
+| `RATE_LIMIT_TRIGGERED` | WARN | limiter blokkolt (`reason` = limiter neve) |
+| `INVALID_TOKEN` | WARN | JWT verify hiba / inaktív user / session invalidált |
+
+### Sensitive Data Policy
+
+**Soha nem kerül logba:** jelszó, JWT, reset-/verifikációs-/meghívó-token,
+`Authorization` header, cookie, API-kulcs, egyéb titok. Az e-mail mindig
+**maszkolt** (`an***@example.com`) — a helper a nyers címet a kiírás előtt
+maszkolja, a hívók csak a nyers címet adják át. A `reason` mező kizárólag
+rögzített gépi címkéket vesz fel. Regressziós scan (16 eseménytípuson):
+nyers jelszó / JWT / token / maszkolatlan e-mail **0** előfordulás.
+
+### Future SIEM Integration
+
+A `channel: "auth-audit"` prefix és a stabil JSON-séma alapján a Render
+(vagy bármely) log-drain egy külső gyűjtőbe (pl. Datadog, Loki, ELK)
+irányíthatja és szűrheti ezeket a sorokat kódváltoztatás nélkül. A
+`requestId` a nem-audit kérés-logokkal korrelálható. Bővítéskor: új
+esemény felvétele az `AuthEvent` konstansba + `logAuthEvent(...)` hívás —
+a séma és a maszkolás automatikusan öröklődik.
+
+### Ismert korlátok
+
+Az `INVALID_TOKEN`/`AUTH_DENIED` a védett végpontokon nincs rate-limitelve,
+így egy érvénytelen tokenekkel bombázó támadó log-volument generálhat —
+éles környezetben a log-drain oldali sampling/aggregáció ajánlott. A logok
+process-lokálisak (stdout/stderr); tartós megőrzést a hosting/log-drain ad,
+nem az alkalmazás.
+
 ## Egyéb meglévő védelmek
 
 - Soft-deletelt user: login tiltva, middleware minden kérésnél kizárja,

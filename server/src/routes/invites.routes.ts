@@ -13,6 +13,7 @@ import { validatePassword } from "../utils/passwordPolicy";
 import { validateEmail } from "../utils/emailValidation";
 import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
+import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { config } from "../config";
 
 const router = Router();
@@ -87,6 +88,16 @@ router.post(
     } catch (error) {
       console.error("[invites] invitation email failed", error);
     }
+
+    logAuthEvent(AuthEvent.INVITATION_CREATED, {
+      req,
+      level: "INFO",
+      result: "success",
+      userId: req.user!.userId,
+      companyId: req.user!.companyId,
+      role: req.user!.role,
+      email: emailCheck.email,
+    });
 
     // `invitation.token` is the stored hash — echo the RAW token instead,
     // exactly as this endpoint responded before K2.1.4 (the owner UI builds
@@ -225,6 +236,16 @@ router.post("/:token/accept", inviteAcceptLimiter, async (req, res) => {
   });
 
   const jwtToken = signAuthToken(user);
+
+  logAuthEvent(AuthEvent.INVITATION_ACCEPTED, {
+    req,
+    level: "INFO",
+    result: "success",
+    userId: user.id,
+    companyId: user.companyId,
+    role: user.role,
+    email: user.email,
+  });
 
   return res.status(201).json({
     token: jwtToken,
