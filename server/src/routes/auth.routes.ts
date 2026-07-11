@@ -18,6 +18,18 @@ const router = Router();
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
+// Timing-attack mitigation (K2.1.8): a valid bcrypt hash of a random value,
+// generated ONCE at module load — never per request, and no plaintext
+// password lives in the source. When a login hits an unknown email, we run
+// bcrypt.compare() against this hash so the request costs the same as a
+// wrong-password attempt on a real account; without it, the fast "no such
+// user" path let response times reveal which emails are registered. Cost
+// factor 10 matches real user hashes, so compare timing matches too.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(
+  crypto.randomBytes(32).toString("hex"),
+  10
+);
+
 // Two independent login limiters (K2.1.3): a per-IP ceiling against bulk
 // credential stuffing, and a tighter per-IP+email limit against targeted
 // brute force. The email is masked in the key so a rate-limit log line
@@ -160,6 +172,12 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
   });
 
   if (!user) {
+    // Burn the same bcrypt cost as a real comparison (see
+    // DUMMY_PASSWORD_HASH above), then return the exact same error as the
+    // wrong-password path — status, body and (absence of) logging are
+    // identical, so neither the response nor its timing distinguishes
+    // "unknown email" from "wrong password".
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     return res.status(401).json({ error: "Invalid credentials" });
   }
 

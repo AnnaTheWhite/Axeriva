@@ -213,6 +213,41 @@ keres; a korábbi register minden címet kisbetű-érzékenyen tárolt, ahogy
 gépelték — nagybetűs domainű örökölt rekord elvben elérhetetlenné válna,
 a meglévő adatbázisban ilyen nincs).
 
+## Timing Attack Protection — login (K2.1.8)
+
+**Probléma:** ismeretlen e-mailnél a login a DB-lookup után azonnal
+visszatért (~0,3 ms), létező fióknál viszont lefutott a bcrypt-összehasonlítás
+(~46 ms) — a válaszidő tehát elárulta, mely címek regisztráltak, hiába volt
+azonos a hibaüzenet (K2.1.1 M2).
+
+**Dummy hash:** az [auth.routes.ts](../server/src/routes/auth.routes.ts)
+modul-betöltéskor EGYSZER legenerál egy érvényes bcrypt-hash-t egy 32 bájtos
+véletlen értékből (`DUMMY_PASSWORD_HASH`) — kérésekként soha nem generálódik
+újra, plaintext jelszó nincs a forrásban, a cost factor (10) megegyezik a
+valós user-hash-ekével, így az összehasonlítás ideje is egyezik.
+
+**Folyamat:** ismeretlen e-mailnél a szerver a dummy hash ellen futtatja le
+a `bcrypt.compare()`-t, majd PONTOSAN ugyanazt a generikus 401-et adja, mint
+a rossz-jelszó ág — státusz, body, headerek és a (nem létező) naplózás is
+azonos. Mesterséges `sleep()` nincs: a védelem valódi, azonos munkavégzés.
+
+**Mérés** (100–100 sikertelen login, kód-szinten — a HTTP-mérést a
+rate limiter blokkolná): létező user átlag 46,71 ms (min 46,00 / max 54,61),
+ismeretlen user átlag 46,51 ms (min 45,94 / max 49,93) — **0,2 ms átlagos
+eltérés, teljesen átfedő eloszlások**; a régi ismeretlen-user út 0,33 ms
+volt.
+
+**Threat model:** a válaszidő-alapú user enumerationt zárja a loginon. Nem
+fedi: a register 409-es enumeration-viselkedését (K2.1.1 H3, külön feladat),
+a forgot-password apró timing-eltérését (DB-írás + e-mail-sorbaállítás csak
+létező usernél — a rate limit 5/óra plafonja miatt statisztikai mérésre
+gyakorlatilag alkalmatlan), és a hálózati jitter feletti mikro-eltéréseket.
+
+**Performance:** többletköltség csak az ismeretlen-e-mailes sikertelen
+loginokon van (+1 bcrypt-compare, ~46 ms) — sikeres és rossz-jelszavas
+loginok költsége változatlan. Ez a többlet a rate limittel (max 20
+login/IP/15 perc) együtt elhanyagolható terhelés.
+
 ## Egyéb meglévő védelmek
 
 - Soft-deletelt user: login tiltva, middleware minden kérésnél kizárja,
