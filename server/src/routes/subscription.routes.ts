@@ -4,14 +4,11 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { stripe } from "../services/stripe/stripeClient";
 import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
+import { config } from "../config";
 
 const router = Router();
 
 router.use(requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER));
-
-function appUrl() {
-  return process.env.APP_URL || "http://localhost:5173";
-}
 
 // Current plan / billing status for the logged-in company.
 router.get("/", async (req, res) => {
@@ -36,7 +33,7 @@ router.get("/", async (req, res) => {
 // Only the BUSINESS_OWNER who owns the company can subscribe — not
 // DEVELOPER (platform operator) and not EMPLOYEE.
 router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
-  if (!process.env.STRIPE_PRICE_ID) {
+  if (!config.stripe.priceId) {
     return res.status(500).json({
       error: "Stripe is not configured yet (missing STRIPE_PRICE_ID).",
     });
@@ -74,9 +71,9 @@ router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: stripeCustomerId,
-    line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
-    success_url: `${appUrl()}/subscription?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl()}/subscription?checkout=cancelled`,
+    line_items: [{ price: config.stripe.priceId, quantity: 1 }],
+    success_url: `${config.frontendUrl}/subscription?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${config.frontendUrl}/subscription?checkout=cancelled`,
     subscription_data: {
       metadata: { companyId: String(company.id) },
     },
@@ -144,7 +141,7 @@ router.post("/portal", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: company.stripeCustomerId,
-    return_url: `${appUrl()}/subscription`,
+    return_url: `${config.frontendUrl}/subscription`,
   });
 
   return res.json({ url: session.url });

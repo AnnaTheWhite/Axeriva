@@ -69,6 +69,13 @@ model User {
   passwordResetToken      String?   @unique
   passwordResetExpiresAt  DateTime?
 
+  // Session invalidation (K2.1.2) — every issued JWT carries the value
+  // current at sign-in; the auth middleware rejects tokens whose claim no
+  // longer matches. Incrementing this field therefore kills every
+  // outstanding session at once (password reset, account deletion, future
+  // forced/manual logout).
+  tokenVersion Int @default(0)
+
   // Soft-delete — login is rejected once `active` is false. Set by
   // POST /account/delete; nothing is physically removed.
   active    Boolean   @default(true)

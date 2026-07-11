@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables — never commit real secrets
+.env
+.env.local
+
+# Local SQLite database (contains real user data) and TS build cache
+server/prisma/axeriva.db
+server/tsconfig.tsbuildinfo

@@ -8,3 +8,7 @@ dist
 
 # User-uploaded project attachments (real files, see middleware/upload.middleware.ts)
 /uploads
+
+.env.local
+tsconfig.tsbuildinfo
+prisma/axeriva.db

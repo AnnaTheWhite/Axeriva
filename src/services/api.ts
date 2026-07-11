@@ -3,6 +3,16 @@
 // URL. Falls back to the local dev server when unset.
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+// A production build without VITE_API_URL would silently talk to localhost —
+// every API call would fail for real users. Surface it loudly in the browser
+// console so a misconfigured deploy is diagnosable in seconds.
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
+  console.error(
+    "[config] VITE_API_URL was not set at build time — API calls will target http://localhost:5000. " +
+      "Rebuild with VITE_API_URL set to the deployed backend URL (see docs/render-deployment.md)."
+  );
+}
+
 export function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("token");
 

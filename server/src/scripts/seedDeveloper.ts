@@ -1,13 +1,11 @@
 import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
 import prisma from "../database/prisma";
 import { ROLES } from "../constants/roles";
-
-dotenv.config();
+import { config } from "../config";
 
 async function main() {
-  const email = process.argv[2] || process.env.DEVELOPER_EMAIL;
-  const password = process.argv[3] || process.env.DEVELOPER_PASSWORD;
+  const email = process.argv[2] || config.developerEmail;
+  const password = process.argv[3] || config.developerPassword;
 
   if (!email || !password) {
     console.error(

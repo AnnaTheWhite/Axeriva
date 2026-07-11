@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import multer from "multer";
+import { config } from "../config";
 
 // Real files on disk, not base64 in the DB — served back out via
 // express.static (see index.ts). Filenames are randomized (not the
@@ -13,10 +14,22 @@ import multer from "multer";
 // (e.g. Render's disk is typically mounted outside the app's working
 // directory) — without it, uploaded files would be wiped on every deploy.
 // Defaults to ./uploads under the project root for local development.
-export const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(process.cwd(), "uploads");
+export const UPLOAD_ROOT = config.uploadRoot ?? path.join(process.cwd(), "uploads");
 export const UPLOADS_DIR = path.join(UPLOAD_ROOT, "projects");
 
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Runs at import time, i.e. during startup — if the upload directory can't
+// be created (bad UPLOAD_ROOT path, missing disk mount, permissions), fail
+// with a clear message now instead of erroring on the first upload request.
+try {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+} catch (error) {
+  console.error(
+    `FATAL: cannot create upload directory "${UPLOADS_DIR}". ` +
+      "Check UPLOAD_ROOT (must be a writable path; in production it must point inside the persistent disk mount).",
+    error
+  );
+  process.exit(1);
+}
 
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",

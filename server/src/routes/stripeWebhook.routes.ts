@@ -8,6 +8,7 @@ import {
 } from "../services/stripe/syncSubscription";
 import { emailService } from "../services/email";
 import { ROLES } from "../constants/roles";
+import { config } from "../config";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ async function resolveCompanyId(
 
 router.post("/", async (req, res) => {
   const signature = req.headers["stripe-signature"];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = config.stripe.webhookSecret;
 
   if (!signature || !webhookSecret) {
     return res.status(400).json({ error: "Webhook not configured" });
