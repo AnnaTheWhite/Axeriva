@@ -10,6 +10,7 @@ import { isEmployeeLimitReached } from "../utils/planLimits";
 import { signAuthToken } from "../utils/authToken";
 import { hashToken } from "../utils/tokenHash";
 import { validatePassword } from "../utils/passwordPolicy";
+import { validateEmail } from "../utils/emailValidation";
 import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { config } from "../config";
@@ -39,6 +40,12 @@ router.post(
       return res.status(400).json({ error: "email is required" });
     }
 
+    const emailCheck = validateEmail(email);
+
+    if (!emailCheck.ok) {
+      return res.status(400).json({ error: emailCheck.error });
+    }
+
     const company = await prisma.company.findUnique({
       where: { id: req.user!.companyId! },
     });
@@ -57,7 +64,7 @@ router.post(
 
     const invitation = await prisma.invitation.create({
       data: {
-        email,
+        email: emailCheck.email,
         // Only the hash is stored (K2.1.4); the raw token goes into the
         // emailed link (and the inviteLink echoed in the response below).
         token: hashToken(token),
@@ -76,7 +83,7 @@ router.post(
     // from the response (the EmployeesPage UI already does this) even if
     // the email never lands.
     try {
-      await emailService.sendInvitationEmail(email, inviteLink, company.name);
+      await emailService.sendInvitationEmail(emailCheck.email, inviteLink, company.name);
     } catch (error) {
       console.error("[invites] invitation email failed", error);
     }

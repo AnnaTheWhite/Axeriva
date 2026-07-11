@@ -176,6 +176,43 @@ haveibeenpwned-integráció, maximum-hossz. Új szabály felvételéhez csak a
 `validatePassword()` és a `PASSWORD_POLICY_MESSAGE` módosítandó; minden
 flow automatikusan örökli.
 
+## Email Validation (K2.1.7)
+
+**Központi modul:**
+[server/src/utils/emailValidation.ts](../server/src/utils/emailValidation.ts)
+— `validateEmail()` + `normalizeEmail()`. Minden e-mailt fogadó végpont ezt
+hívja (register, login, forgot-password, invite-create); duplikált regex
+nincs. Az invite-accept és a resend-verification nem fogad e-mail inputot
+(a meghívó tárolt címét, ill. a bejelentkezett usert használja), így ott
+nincs mit validálni.
+
+**Normalizálás** (validálás előtt, és a tárolt/lookupolt forma is ez):
+- bevezető/záró whitespace trimmelése
+- a **domain-rész** kisbetűsítése — a local part érintetlen (RFC szerint
+  case-sensitive)
+- NINCS szolgáltató-specifikus átírás: a pontok és a `+aliasok` a local
+  partban megmaradnak
+
+**Validációs szabályok** (elutasítva): üres cím; hiányzó `@` vagy több `@`;
+hiányzó domain vagy TLD; whitespace / ASCII-vezérlőkarakter bárhol; 254
+karakternél hosszabb cím / 64-nél hosszabb local part; ponttal kezdődő/
+végződő vagy dupla-pontos local part; kötőjellel kezdődő/végződő
+domain-label. **Elfogadva:** Unicode local part (`árvíztűrő@example.com`)
+és nem-ASCII (IDN) domain-karakterek — a kompatibilitás nem csökkent.
+Hibánál minden végpont konzisztens `400 {"error":"Invalid email address."}`
+választ ad — a formátum-hiba semmit nem árul el arról, létezik-e a fiók,
+így a forgot-password enumeration-védelme érintetlen.
+
+**Known limitations:** a kvótázott local part (`"a@b"@x.com`, RFC 5321
+szerint legális, gyakorlatban nem használt) elutasításra kerül; punycode/IDN
+mélyebb ellenőrzés nincs (a nem-ASCII domain szintaktikailag átmegy, de nem
+konvertálódik); kézbesíthetőséget (MX-rekord, létező postafiók) a validáció
+nem ellenőriz — azt az e-mail-verifikációs kör fedi. A validáció előtti,
+DB-ben ülő címek változatlanul működnek (a login a normalizált formával
+keres; a korábbi register minden címet kisbetű-érzékenyen tárolt, ahogy
+gépelték — nagybetűs domainű örökölt rekord elvben elérhetetlenné válna,
+a meglévő adatbázisban ilyen nincs).
+
 ## Egyéb meglévő védelmek
 
 - Soft-deletelt user: login tiltva, middleware minden kérésnél kizárja,

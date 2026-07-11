@@ -8,6 +8,7 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { signAuthToken } from "../utils/authToken";
 import { hashToken } from "../utils/tokenHash";
 import { validatePassword } from "../utils/passwordPolicy";
+import { validateEmail } from "../utils/emailValidation";
 import { createRateLimiter, maskEmail } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { config } from "../config";
@@ -68,13 +69,21 @@ router.post("/register", registerLimiter, async (req, res) => {
     });
   }
 
+  const emailCheck = validateEmail(email);
+
+  if (!emailCheck.ok) {
+    return res.status(400).json({ error: emailCheck.error });
+  }
+
   const passwordCheck = validatePassword(password);
 
   if (!passwordCheck.ok) {
     return res.status(400).json({ error: passwordCheck.error });
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.user.findUnique({
+    where: { email: emailCheck.email },
+  });
 
   if (existing) {
     return res.status(409).json({ error: "Email already in use" });
@@ -90,7 +99,7 @@ router.post("/register", registerLimiter, async (req, res) => {
 
   const user = await prisma.user.create({
     data: {
-      email,
+      email: emailCheck.email,
       password: hashedPassword,
       role: ROLES.BUSINESS_OWNER,
       companyId: company.id,
@@ -136,8 +145,17 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
     return res.status(400).json({ error: "email and password are required" });
   }
 
+  // Format-only check — a malformed address can't match any account, and
+  // rejecting it early keeps the lookup below working with the same
+  // normalized form (trimmed, lowercased domain) that registration stores.
+  const emailCheck = validateEmail(email);
+
+  if (!emailCheck.ok) {
+    return res.status(400).json({ error: emailCheck.error });
+  }
+
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { email: emailCheck.email },
     include: { company: { select: { active: true } } },
   });
 
@@ -281,8 +299,17 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     message: "If an account with that email exists, a reset link has been sent.",
   };
 
+  // Malformed address: 400 on format only — reveals nothing about whether
+  // an account exists, so the enumeration protection of the generic
+  // response below is unaffected.
+  const emailCheck = validateEmail(email);
+
+  if (!emailCheck.ok) {
+    return res.status(400).json({ error: emailCheck.error });
+  }
+
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { email: emailCheck.email },
     include: { company: { select: { active: true } } },
   });
 
