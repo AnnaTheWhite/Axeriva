@@ -1,21 +1,29 @@
 import { Router } from "express";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import prisma from "../database/prisma";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { emailService } from "../services/email";
 import { isEmployeeLimitReached } from "../utils/planLimits";
+import { signAuthToken } from "../utils/authToken";
+import { hashToken } from "../utils/tokenHash";
+import { createRateLimiter } from "../middleware/rateLimit.middleware";
+import { RATE_LIMITS } from "../constants/rateLimits";
+import { config } from "../config";
 
 const router = Router();
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+const inviteAcceptLimiter = createRateLimiter({
+  name: "invite-accept",
+  ...RATE_LIMITS.INVITE_ACCEPT,
+});
+
 function buildInviteLink(token: string) {
-  const appUrl = process.env.APP_URL || "http://localhost:5173";
-  return `${appUrl}/invite/${token}`;
+  return `${config.frontendUrl}/invite/${token}`;
 }
 
 // Create an invitation for the caller's company. BUSINESS_OWNER only.
@@ -49,7 +57,9 @@ router.post(
     const invitation = await prisma.invitation.create({
       data: {
         email,
-        token,
+        // Only the hash is stored (K2.1.4); the raw token goes into the
+        // emailed link (and the inviteLink echoed in the response below).
+        token: hashToken(token),
         role: ROLES.EMPLOYEE,
         companyId: req.user!.companyId!,
         invitedByUserId: req.user!.userId,
@@ -70,7 +80,10 @@ router.post(
       console.error("[invites] invitation email failed", error);
     }
 
-    return res.status(201).json({ ...invitation, inviteLink });
+    // `invitation.token` is the stored hash — echo the RAW token instead,
+    // exactly as this endpoint responded before K2.1.4 (the owner UI builds
+    // on inviteLink; the response shape must not change).
+    return res.status(201).json({ ...invitation, token, inviteLink });
   }
 );
 
@@ -110,7 +123,7 @@ router.get("/:token", async (req, res) => {
   const { token } = req.params;
 
   const invitation = await prisma.invitation.findUnique({
-    where: { token },
+    where: { token: hashToken(token) },
     include: { company: true },
   });
 
@@ -125,7 +138,7 @@ router.get("/:token", async (req, res) => {
 });
 
 // Public — sets a password and activates the invited employee's account.
-router.post("/:token/accept", async (req, res) => {
+router.post("/:token/accept", inviteAcceptLimiter, async (req, res) => {
   const { token } = req.params;
   const { firstName, lastName, password } = req.body;
 
@@ -136,7 +149,7 @@ router.post("/:token/accept", async (req, res) => {
   }
 
   const invitation = await prisma.invitation.findUnique({
-    where: { token },
+    where: { token: hashToken(token) },
   });
 
   if (!invitation || invitation.acceptedAt || invitation.expiresAt < new Date()) {
@@ -181,16 +194,7 @@ router.post("/:token/accept", async (req, res) => {
     data: { acceptedAt: new Date() },
   });
 
-  const jwtToken = jwt.sign(
-    {
-      userId: user.id,
-      companyId: user.companyId,
-      role: user.role,
-      employeeId: user.employeeId,
-    },
-    process.env.JWT_SECRET as string,
-    { expiresIn: "7d" }
-  );
+  const jwtToken = signAuthToken(user);
 
   return res.status(201).json({
     token: jwtToken,

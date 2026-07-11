@@ -1,28 +1,64 @@
 import { Router } from "express";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import prisma from "../database/prisma";
 import { ROLES } from "../constants/roles";
 import { emailService } from "../services/email";
 import { authMiddleware } from "../middleware/auth.middleware";
+import { signAuthToken } from "../utils/authToken";
+import { hashToken } from "../utils/tokenHash";
+import { createRateLimiter, maskEmail } from "../middleware/rateLimit.middleware";
+import { RATE_LIMITS } from "../constants/rateLimits";
+import { config } from "../config";
 
 const router = Router();
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
+// Two independent login limiters (K2.1.3): a per-IP ceiling against bulk
+// credential stuffing, and a tighter per-IP+email limit against targeted
+// brute force. The email is masked in the key so a rate-limit log line
+// never carries the full address.
+const loginPerIpLimiter = createRateLimiter({
+  name: "login-ip",
+  ...RATE_LIMITS.LOGIN_PER_IP,
+});
+
+const loginPerEmailLimiter = createRateLimiter({
+  name: "login-email",
+  ...RATE_LIMITS.LOGIN_PER_EMAIL,
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? req.body.email : null;
+    // No email in the body — the route's own 400 validation handles it.
+    if (!email) return null;
+    return `${req.ip}:${maskEmail(email.toLowerCase())}`;
+  },
+});
+
+const registerLimiter = createRateLimiter({ name: "register", ...RATE_LIMITS.REGISTER });
+const forgotPasswordLimiter = createRateLimiter({
+  name: "forgot-password",
+  ...RATE_LIMITS.FORGOT_PASSWORD,
+});
+const resetPasswordLimiter = createRateLimiter({
+  name: "reset-password",
+  ...RATE_LIMITS.RESET_PASSWORD,
+});
+const verifyEmailLimiter = createRateLimiter({
+  name: "resend-verification",
+  ...RATE_LIMITS.VERIFY_EMAIL,
+});
+
 function buildVerifyLink(token: string) {
-  const appUrl = process.env.APP_URL || "http://localhost:5173";
-  return `${appUrl}/verify-email/${token}`;
+  return `${config.frontendUrl}/verify-email/${token}`;
 }
 
 function buildResetLink(token: string) {
-  const appUrl = process.env.APP_URL || "http://localhost:5173";
-  return `${appUrl}/reset-password/${token}`;
+  return `${config.frontendUrl}/reset-password/${token}`;
 }
 
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   const { companyName, email, password } = req.body;
 
   if (!companyName || !email || !password) {
@@ -51,21 +87,14 @@ router.post("/register", async (req, res) => {
       password: hashedPassword,
       role: ROLES.BUSINESS_OWNER,
       companyId: company.id,
-      emailVerificationToken: verificationToken,
+      // Only the hash hits the database (K2.1.4) — the raw token lives in
+      // the emailed link alone.
+      emailVerificationToken: hashToken(verificationToken),
       emailVerificationExpiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
     },
   });
 
-  const token = jwt.sign(
-    {
-      userId: user.id,
-      companyId: user.companyId,
-      role: user.role,
-      employeeId: user.employeeId,
-    },
-    process.env.JWT_SECRET as string,
-    { expiresIn: "7d" }
-  );
+  const token = signAuthToken(user);
 
   // Two separate emails, two separate concerns: the welcome email is just a
   // greeting, the verification email is the one with the actionable link.
@@ -93,7 +122,7 @@ router.post("/register", async (req, res) => {
   });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -118,16 +147,7 @@ router.post("/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  const token = jwt.sign(
-    {
-      userId: user.id,
-      companyId: user.companyId,
-      role: user.role,
-      employeeId: user.employeeId,
-    },
-    process.env.JWT_SECRET as string,
-    { expiresIn: "7d" }
-  );
+  const token = signAuthToken(user);
 
   return res.json({
     token,
@@ -142,12 +162,27 @@ router.post("/login", async (req, res) => {
   });
 });
 
+// Server-side logout (K2.1.2): bumping tokenVersion invalidates EVERY
+// outstanding JWT for this user, not just the one used here — with a single
+// integer per user there is no way to target one device, and that
+// trade-off is deliberate (no session table, no denylist). The current
+// frontend still only clears localStorage; this endpoint is the backend
+// support for a future "log out everywhere" / forced-logout feature.
+router.post("/logout", authMiddleware, async (req, res) => {
+  await prisma.user.update({
+    where: { id: req.user!.userId },
+    data: { tokenVersion: { increment: 1 } },
+  });
+
+  return res.json({ loggedOut: true });
+});
+
 // Public — the link sent in the verification email points here.
 router.get("/verify-email/:token", async (req, res) => {
   const { token } = req.params;
 
   const user = await prisma.user.findUnique({
-    where: { emailVerificationToken: token },
+    where: { emailVerificationToken: hashToken(token) },
   });
 
   if (
@@ -172,7 +207,7 @@ router.get("/verify-email/:token", async (req, res) => {
 
 // Re-sends the verification email for the logged-in user. Requires auth so
 // this can't be used to probe whether an arbitrary email is registered.
-router.post("/resend-verification", authMiddleware, async (req, res) => {
+router.post("/resend-verification", verifyEmailLimiter, authMiddleware, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.userId },
   });
@@ -190,7 +225,7 @@ router.post("/resend-verification", authMiddleware, async (req, res) => {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      emailVerificationToken: verificationToken,
+      emailVerificationToken: hashToken(verificationToken),
       emailVerificationExpiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
     },
   });
@@ -211,7 +246,7 @@ router.post("/resend-verification", authMiddleware, async (req, res) => {
 // Always returns a generic success message, regardless of whether the
 // email matches an account — this can't be used to probe which emails are
 // registered.
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   const { email } = req.body;
 
   if (!email) {
@@ -233,7 +268,7 @@ router.post("/forgot-password", async (req, res) => {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      passwordResetToken: resetToken,
+      passwordResetToken: hashToken(resetToken),
       passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
     },
   });
@@ -248,7 +283,7 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // Public — the link sent in the password reset email points here.
-router.post("/reset-password/:token", async (req, res) => {
+router.post("/reset-password/:token", resetPasswordLimiter, async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
@@ -257,7 +292,7 @@ router.post("/reset-password/:token", async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({
-    where: { passwordResetToken: token },
+    where: { passwordResetToken: hashToken(token) },
   });
 
   // Same generic message for "no such token", "expired", and
@@ -281,6 +316,11 @@ router.post("/reset-password/:token", async (req, res) => {
       password: hashedPassword,
       passwordResetToken: null,
       passwordResetExpiresAt: null,
+      // Kill every outstanding session: whoever just proved control of the
+      // email owns the account now — any previously issued JWT (including a
+      // potential attacker's) dies on its next request (see
+      // auth.middleware.ts tokenVersion check).
+      tokenVersion: { increment: 1 },
     },
   });
 
