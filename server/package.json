@@ -19,6 +19,12 @@
   },
   "dependencies": {
     "@prisma/client": "^6.15.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^24.0.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "date-fns": "^4.4.0",
@@ -30,17 +36,12 @@
     "prisma": "^6.15.0",
     "react-big-calendar": "^1.20.0",
     "resend": "^6.14.0",
-    "stripe": "^22.2.2"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/multer": "^2.1.0",
-    "@types/node": "^24.0.0",
-    "@types/react-big-calendar": "^1.16.3",
-    "ts-node-dev": "^2.0.0",
+    "stripe": "^22.2.2",
     "typescript": "^5.6.0"
+  },
+  "//": "typescript and the @types/* used by `npm run build` (tsc) live in dependencies, not devDependencies, on purpose: Render builds from source with NODE_ENV=production, under which `npm install` omits devDependencies. Keeping the build toolchain in dependencies makes the production build work regardless of NODE_ENV. ts-node-dev and @types/react-big-calendar stay dev-only (not needed by the prod build).",
+  "devDependencies": {
+    "@types/react-big-calendar": "^1.16.3",
+    "ts-node-dev": "^2.0.0"
   }
 }
