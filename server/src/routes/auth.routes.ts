@@ -64,6 +64,17 @@ const verifyEmailLimiter = createRateLimiter({
   ...RATE_LIMITS.VERIFY_EMAIL,
 });
 
+// Registration enumeration protection (K2.1.9): every valid registration
+// attempt gets this one response — new account or already-taken email alike.
+// It deliberately carries NO token/user object: an identical body is only
+// possible if neither case exposes account-specific data (a real session
+// token could never be minted for an existing account without takeover). The
+// frontend already logs in via a separate POST /auth/login after register,
+// so dropping the token here doesn't change the UX.
+const GENERIC_REGISTER_RESPONSE = {
+  message: "Registration received. Please check your email to verify your account.",
+};
+
 function buildVerifyLink(token: string) {
   return `${config.frontendUrl}/verify-email/${token}`;
 }
@@ -98,7 +109,20 @@ router.post("/register", registerLimiter, async (req, res) => {
   });
 
   if (existing) {
-    return res.status(409).json({ error: "Email already in use" });
+    // Duplicate email (K2.1.9): return the exact same generic success as a
+    // real signup — no 409, no distinct body — so registration can't be
+    // used to probe which emails are registered. Deliberately do NOT resend
+    // a verification email: that would both confirm the account exists to
+    // an off-channel observer and let registration be abused to spam an
+    // existing user's inbox. Burn one bcrypt cost against the shared dummy
+    // hash so this path matches the timing of the bcrypt.hash() below and
+    // no new timing side-channel replaces the removed status-code leak.
+    await bcrypt.compare(passwordCheck.password, DUMMY_PASSWORD_HASH);
+    // Internal-only signal; masked email, never returned to the client.
+    console.warn(
+      `[auth] duplicate registration attempt for ${maskEmail(emailCheck.email)}`
+    );
+    return res.status(201).json(GENERIC_REGISTER_RESPONSE);
   }
 
   const hashedPassword = await bcrypt.hash(passwordCheck.password, 10);
@@ -122,7 +146,9 @@ router.post("/register", registerLimiter, async (req, res) => {
     },
   });
 
-  const token = signAuthToken(user);
+  // No token is minted here anymore: registration returns the generic
+  // enumeration-safe body (no session), and the frontend logs in via a
+  // separate POST /auth/login right after — see GENERIC_REGISTER_RESPONSE.
 
   // Two separate emails, two separate concerns: the welcome email is just a
   // greeting, the verification email is the one with the actionable link.
@@ -137,17 +163,10 @@ router.post("/register", registerLimiter, async (req, res) => {
       console.error("[auth] verification email failed", error);
     });
 
-  return res.status(201).json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      companyId: user.companyId,
-      employeeId: user.employeeId,
-      emailVerified: user.emailVerified,
-    },
-  });
+  // Internal-only signal; masked email, never returned to the client.
+  console.log(`[auth] new registration for ${maskEmail(user.email)}`);
+
+  return res.status(201).json(GENERIC_REGISTER_RESPONSE);
 });
 
 router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) => {

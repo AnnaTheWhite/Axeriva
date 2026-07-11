@@ -248,6 +248,77 @@ loginokon van (+1 bcrypt-compare, ~46 ms) — sikeres és rossz-jelszavas
 loginok költsége változatlan. Ez a többlet a rate limittel (max 20
 login/IP/15 perc) együtt elhanyagolható terhelés.
 
+## Registration Enumeration Protection (K2.1.9)
+
+**Régi viselkedés:** új e-mail → `201` + session-token; létező e-mail →
+`409 "Email already in use"`. A státuszkód és a body közvetlenül elárulta,
+hogy egy cím regisztrált-e — tömegesen (rate limiten belül) fiók-enumerációra
+használható.
+
+**Új viselkedés:** minden érvényes (formátum + jelszó-policy átment)
+regisztrációs kísérlet **ugyanazt a generikus `201` választ** kapja:
+
+```json
+{ "message": "Registration received. Please check your email to verify your account." }
+```
+
+- Létező cím esetén **nincs 409, nincs eltérő body** — nem hozunk létre
+  semmit, és **nem küldünk verifikációs (sem welcome) e-mailt**.
+- Új cím esetén létrejön a Company + User, kimegy a welcome + verifikációs
+  e-mail, majd ugyanez a generikus válasz megy vissza.
+
+**Design-döntés — miért tűnik el a token a válaszból:** identikus body csak
+úgy lehetséges, ha egyik ág sem hordoz fiók-specifikus adatot. Egy létező
+fiókhoz nem lehet érvényes session-tokent kiállítani (az fiók-átvétel
+lenne), így a valódi regisztráció ágán is elhagyjuk a tokent. Ez a
+frontendet nem érinti: a `RegisterPage` a `register()` után amúgy is külön
+`POST /auth/login`-t hív a beírt jelszóval, és azzal jelentkezik be — a
+register válaszát eldobta eddig is. Egy visszatérő felhasználó, aki a saját,
+létező címével „újraregisztrál" a helyes jelszavával, a követő login révén
+egyszerűen belép; rossz jelszóval a login generikus hibát ad — egyik esetben
+sem szivárog a cím létezése.
+
+**Verifikációs e-mail — miért nincs újraküldés duplikátumnál:** ha a létező
+címre újraküldenénk verifikációt, azzal (a) egy off-channel megfigyelőnek
+megerősítenénk a fiók létezését, és (b) a regisztráció e-mail-bombázó
+vektorrá válna egy meglévő felhasználó postafiókja ellen. Ezért a
+duplikátum-ág néma.
+
+**Timing:** a duplikátum-ág egy `bcrypt.compare()`-t futtat a megosztott
+dummy hash ellen (ugyanaz a `DUMMY_PASSWORD_HASH`, mint a login timing-
+védelemnél, K2.1.8), hogy a költsége megegyezzen az új-fiók ágának
+`bcrypt.hash()`-ével — a státuszkód-szivárgás megszüntetése nem hoz be új,
+időzítés-alapú szivárgást. Mért különbség 100+100 kísérleten: **0,02 ms**
+(új: átlag 46,30 ms, duplikátum: átlag 46,28 ms) — az eloszlások teljesen
+átfednek.
+
+**Logging:** az új vs. duplikátum megkülönböztetés csak **belső** logban
+jelenik meg, maszkolt e-maillel (`[auth] new registration for k2***@…` /
+`[auth] duplicate registration attempt for k2***@…`); a kliens sosem látja.
+
+**Egyéb regisztrációs utak (átvizsgálva):**
+- **Invite-accept** (`POST /invites/:token/accept`): a létező-e-mail 409-e
+  megmarad, de ez **nem enumerációs vektor** — az útvonalat egy titkos, 24
+  bájtos meghívó-token védi (hash-elve tárolva, K2.1.4), és az e-mailt a
+  tulajdonos rögzítette a meghíváskor; támadó nem tud tetszőleges címet
+  próbálgatni. Szándékosan változatlan.
+- **Developer seed** (`scripts/seedDeveloper.ts`): CLI-parancs, nincs
+  hálózati kitettsége — nem enumerálható.
+
+**Threat model:** a login-végpont (K2.1.8) mellett a másik közvetlen
+fiók-enumerációs felület, a regisztráció, is lezárva — célzott phishing /
+credential-stuffing előkészítésére szolgáló cím-feltérképezés a publikus
+API-ból többé nem lehetséges.
+
+**Trade-offs:** a regisztráció válasz-body-ja és -szemantikája megváltozott
+(nincs token/user a válaszban) — ez szükségszerű következménye az identikus
+válasznak, és a jelenlegi frontendet nem töri. Egy létező, ismeretlen
+jelszavú címmel próbálkozó jóhiszemű felhasználó a UI-n „sikeres
+regisztráció, majd bukó login" élményt kap a korábbi explicit „Email already
+in use" helyett — ez tudatos csere: az enumeration-védelem fontosabb, mint a
+duplikátum azonnali jelzése (a felhasználó a login-oldalon a „forgot
+password" úton tud továbbmenni).
+
 ## Egyéb meglévő védelmek
 
 - Soft-deletelt user: login tiltva, middleware minden kérésnél kizárja,
