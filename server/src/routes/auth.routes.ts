@@ -129,7 +129,10 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
     return res.status(400).json({ error: "email and password are required" });
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { company: { select: { active: true } } },
+  });
 
   if (!user) {
     return res.status(401).json({ error: "Invalid credentials" });
@@ -144,6 +147,13 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
   // Soft-deleted account — don't reveal that distinction from "wrong
   // password", same as the unknown-email case above.
   if (!user.active) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  // Inactive company (K2.1.5) — its members must not sign in. Same generic
+  // error, so company status doesn't leak. DEVELOPER users have no company
+  // (company is null) and pass through.
+  if (user.company && !user.company.active) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
@@ -183,10 +193,17 @@ router.get("/verify-email/:token", async (req, res) => {
 
   const user = await prisma.user.findUnique({
     where: { emailVerificationToken: hashToken(token) },
+    include: { company: { select: { active: true } } },
   });
 
+  // Inactive user / inactive company (K2.1.5) get the same generic error as
+  // a bad token — verifying an email for a locked-out account would be
+  // harmless in itself, but consistent enforcement is cheaper to reason
+  // about than per-endpoint exceptions.
   if (
     !user ||
+    !user.active ||
+    (user.company && !user.company.active) ||
     !user.emailVerificationExpiresAt ||
     user.emailVerificationExpiresAt < new Date()
   ) {
@@ -257,9 +274,17 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     message: "If an account with that email exists, a reset link has been sent.",
   };
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { company: { select: { active: true } } },
+  });
 
-  if (!user || !user.active) {
+  // Inactive user OR inactive company (K2.1.5): no reset token is even
+  // generated — the most secure option, since a reset link would otherwise
+  // let a member of a deactivated company regain a working password (and a
+  // valid-looking session) for an account that must stay locked out.
+  // Response stays generic either way.
+  if (!user || !user.active || (user.company && !user.company.active)) {
     return res.json(genericResponse);
   }
 
@@ -293,15 +318,18 @@ router.post("/reset-password/:token", resetPasswordLimiter, async (req, res) => 
 
   const user = await prisma.user.findUnique({
     where: { passwordResetToken: hashToken(token) },
+    include: { company: { select: { active: true } } },
   });
 
-  // Same generic message for "no such token", "expired", and
-  // "soft-deleted" — mirrors forgot-password's existing !user.active
-  // check, so this endpoint can't be used to distinguish a deleted
-  // account from an expired link.
+  // Same generic message for "no such token", "expired", "soft-deleted"
+  // and "inactive company" (K2.1.5) — mirrors forgot-password's checks, so
+  // this endpoint can't be used to distinguish a locked-out account from
+  // an expired link. The company check also covers tokens issued BEFORE
+  // the company was deactivated.
   if (
     !user ||
     !user.active ||
+    (user.company && !user.company.active) ||
     !user.passwordResetExpiresAt ||
     user.passwordResetExpiresAt < new Date()
   ) {

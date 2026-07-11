@@ -127,7 +127,14 @@ router.get("/:token", async (req, res) => {
     include: { company: true },
   });
 
-  if (!invitation || invitation.acceptedAt || invitation.expiresAt < new Date()) {
+  // Inactive company (K2.1.5): its pending invites are dead — same generic
+  // 404 as an unknown/expired token, so company status doesn't leak.
+  if (
+    !invitation ||
+    invitation.acceptedAt ||
+    invitation.expiresAt < new Date() ||
+    !invitation.company.active
+  ) {
     return res.status(404).json({ error: "Invitation not found or expired" });
   }
 
@@ -150,9 +157,18 @@ router.post("/:token/accept", inviteAcceptLimiter, async (req, res) => {
 
   const invitation = await prisma.invitation.findUnique({
     where: { token: hashToken(token) },
+    include: { company: { select: { active: true } } },
   });
 
-  if (!invitation || invitation.acceptedAt || invitation.expiresAt < new Date()) {
+  // Same company-activity rule as the lookup above (K2.1.5) — accepting an
+  // invite into a deactivated company would create a user the middleware
+  // immediately locks out anyway.
+  if (
+    !invitation ||
+    invitation.acceptedAt ||
+    invitation.expiresAt < new Date() ||
+    !invitation.company.active
+  ) {
     return res.status(404).json({ error: "Invitation not found or expired" });
   }
 

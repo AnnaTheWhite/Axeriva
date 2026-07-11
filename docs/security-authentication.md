@@ -115,6 +115,36 @@ a fejlesztői MockEmailService (csak `RESEND_API_KEY` nélkül aktív), amelynek
 épp az a dolga, hogy lokálisan a konzolra írja a kiküldendő linket — éles
 környezetben nem fut.
 
+## Company activity enforcement (K2.1.5)
+
+**Aktiválási modell:** a `Company.active` mező a tenant-szintű kapcsoló —
+akkor vált `false`-ra, amikor a BUSINESS_OWNER törli a fiókját (soft-delete,
+lásd account.routes.ts). Inaktív cég **minden** tagja azonnal elveszti a
+hozzáférést, nem csak a törölt tulajdonos.
+
+**Auth-folyamat:** az autentikáció mindenhol KÉT feltételt ellenőriz:
+`User.active === true` ÉS (ha a usernek van cége) `Company.active === true`.
+
+| Útvonal | Viselkedés inaktív cégnél |
+|---|---|
+| Auth middleware (minden védett kérés) | generikus 401 — **meglévő JWT-k azonnal meghalnak**, nem kell lejáratot várni. A cég-státusz a middleware meglévő user-lekérdezésének nested selectjével jön (`company: { select: { active } }`) — nincs plusz Prisma-hívás. |
+| Login | generikus `401 "Invalid credentials"` — a cég státusza nem szivárog |
+| Forgot password | generikus válasz, de reset-token **nem is generálódik** — ez a legbiztonságosabb: a reset-link különben visszaadná a jelszót egy kizárandó fióknak; e-mail (Resend-költség) sem megy ki |
+| Reset password | generikus `400` — a cég deaktiválása ELŐTT kiállított tokenekre is |
+| Email verification | generikus `400` — önmagában ártalmatlan lenne, de a konzisztens szabály olcsóbban auditálható, mint a végpontonkénti kivétel |
+| Invite lookup + accept | generikus `404 "Invitation not found or expired"` — inaktív cégbe nem lehet belépni függő meghívóval |
+
+**Developer-kivétel:** a DEVELOPER usernek nincs cége (`companyId: null`) —
+a cég-ellenőrzés csak akkor fut, ha van kapcsolt cég (`user.company &&
+!user.company.active`), így a platform-operátor működése változatlan. Ez nem
+új szerep-logika: az RBAC érintetlen.
+
+**Threat model:** azt a rést zárja, hogy a tulajdonosi fiók-törlés (tenant
+offboarding) után a cég munkavállalói tovább hozzáfértek a cég adataihoz
+(K2.1.1 H5). Nem célja szerep-szintű jogosultság-változás kezelése (az az
+RBAC dolga), és nem fedi a Stripe-előfizetés lejártát — a `plan`/limit
+logika attól független.
+
 ## Egyéb meglévő védelmek
 
 - Soft-deletelt user: login tiltva, middleware minden kérésnél kizárja,
