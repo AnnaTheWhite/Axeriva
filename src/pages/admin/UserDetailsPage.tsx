@@ -80,11 +80,11 @@ export default function UserDetailsPage() {
       </Link>
       <PageHeader title={details.email} subtitle={details.role} />
 
-      {/* Usage cards */}
+      {/* Company resource usage cards — values are company-wide totals */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title={t("admin.analytics.projects")} value={details.usage.projects} />
-        <StatCard title={t("admin.analytics.employees")} value={details.usage.employees} />
-        <StatCard title={t("admin.analytics.customers")} value={details.usage.customers} />
+        <StatCard title={t("admin.analytics.companyProjects")} value={details.usage.projects} />
+        <StatCard title={t("admin.analytics.companyEmployees")} value={details.usage.employees} />
+        <StatCard title={t("admin.analytics.companyCustomers")} value={details.usage.customers} />
         <StatCard title={t("admin.analytics.storage")} value={formatBytes(details.usage.storageBytes)} />
       </div>
 

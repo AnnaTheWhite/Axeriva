@@ -22,6 +22,55 @@ function daysAgo(days: number): Date {
 }
 
 // ---------------------------------------------------------------------------
+// Shared where-clause builder used by /users and /users/export.
+// ---------------------------------------------------------------------------
+const SORTABLE = new Set(["createdAt", "lastLoginAt", "email", "role"]);
+
+function buildUsersWhere(query: Record<string, unknown>): Record<string, unknown> {
+  const where: Record<string, unknown> = {};
+  const search = typeof query.search === "string" ? query.search.trim() : "";
+  const role = typeof query.role === "string" ? query.role : "";
+  const status = typeof query.status === "string" ? query.status : "";
+  const plan = typeof query.plan === "string" ? query.plan : "";
+
+  if (search) {
+    // SQLite LIKE is case-insensitive for ASCII, so no `mode` needed.
+    where.email = { contains: search };
+  }
+  if (role) where.role = role;
+  if (plan) where.company = { plan };
+
+  // Status is derived from lastLoginAt: never (null), active (within the
+  // window), inactive (logged in but older than the window).
+  if (status === "never") {
+    where.lastLoginAt = null;
+  } else if (status === "active") {
+    where.lastLoginAt = { gte: daysAgo(ACTIVE_WINDOW_DAYS) };
+  } else if (status === "inactive") {
+    where.lastLoginAt = { not: null, lt: daysAgo(ACTIVE_WINDOW_DAYS) };
+  }
+
+  return where;
+}
+
+// Attach per-company resource counts (projects/employees/customers) for a
+// list of companyIds — one groupBy query per resource, no N+1.
+async function fetchCompanyCounts(companyIds: number[]) {
+  if (companyIds.length === 0) return { projectGroups: [], employeeGroups: [], customerGroups: [] };
+  const [projectGroups, employeeGroups, customerGroups] = await Promise.all([
+    prisma.project.groupBy({ by: ["companyId"], where: { companyId: { in: companyIds } }, _count: { _all: true } }),
+    prisma.employee.groupBy({ by: ["companyId"], where: { companyId: { in: companyIds } }, _count: { _all: true } }),
+    prisma.customer.groupBy({ by: ["companyId"], where: { companyId: { in: companyIds } }, _count: { _all: true } }),
+  ]);
+  return { projectGroups, employeeGroups, customerGroups };
+}
+
+const countFor = (
+  groups: { companyId: number | null; _count: { _all: number } }[],
+  companyId: number | null,
+) => (companyId === null ? 0 : groups.find((g) => g.companyId === companyId)?._count._all ?? 0);
+
+// ---------------------------------------------------------------------------
 // GET /overview — the dashboard's overview cards, all via aggregate queries.
 // ---------------------------------------------------------------------------
 router.get("/overview", async (_req, res) => {
@@ -34,10 +83,17 @@ router.get("/overview", async (_req, res) => {
     active7Days,
     active30Days,
     newRegistrations,
+    newRegistrationsToday,
     companies,
+    newCompaniesToday,
+    newCompanies30Days,
     projects,
+    newProjectsToday,
+    newProjects30Days,
     employees,
+    newEmployees30Days,
     customers,
+    newCustomers30Days,
     activeSubscriptions,
     planGroups,
   ] = await Promise.all([
@@ -46,16 +102,29 @@ router.get("/overview", async (_req, res) => {
     prisma.user.count({ where: { lastLoginAt: { gte: daysAgo(7) } } }),
     prisma.user.count({ where: { lastLoginAt: { gte: daysAgo(30) } } }),
     prisma.user.count({ where: { createdAt: { gte: daysAgo(30) } } }),
+    prisma.user.count({ where: { createdAt: { gte: today } } }),
     prisma.company.count(),
+    prisma.company.count({ where: { createdAt: { gte: today } } }),
+    prisma.company.count({ where: { createdAt: { gte: daysAgo(30) } } }),
     prisma.project.count(),
+    prisma.project.count({ where: { createdAt: { gte: today } } }),
+    prisma.project.count({ where: { createdAt: { gte: daysAgo(30) } } }),
     prisma.employee.count(),
+    prisma.employee.count({ where: { createdAt: { gte: daysAgo(30) } } }),
     prisma.customer.count(),
+    prisma.customer.count({ where: { createdAt: { gte: daysAgo(30) } } }),
     prisma.company.count({
       where: { subscriptionStatus: { in: ACTIVE_SUBSCRIPTION_STATUSES } },
     }),
     prisma.company.groupBy({ by: ["plan"], _count: { _all: true } }),
   ]);
 
+  // Dynamic plan breakdown — returns every plan actually in the DB.
+  const planBreakdown = planGroups
+    .map((g) => ({ plan: g.plan, count: g._count._all }))
+    .sort((a, b) => b.count - a.count);
+
+  // Legacy plan fields kept for backward compatibility.
   const planCount = (plan: string) =>
     planGroups.find((group) => group.plan === plan)?._count._all ?? 0;
 
@@ -63,11 +132,19 @@ router.get("/overview", async (_req, res) => {
     totalUsers,
     activeUsers: { today: activeToday, sevenDays: active7Days, thirtyDays: active30Days },
     newRegistrations,
+    newRegistrationsToday,
     companies,
+    newCompaniesToday,
+    newCompanies30Days,
     projects,
+    newProjectsToday,
+    newProjects30Days,
     employees,
+    newEmployees30Days,
     customers,
+    newCustomers30Days,
     activeSubscriptions,
+    planBreakdown,
     plans: {
       free: planCount("free"),
       pro: planCount("pro"),
@@ -77,44 +154,90 @@ router.get("/overview", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /charts — daily time-series data for the last 30 days (line charts).
+// Uses raw SQL with SQLite DATE() to group by calendar day without loading
+// all rows. BigInt values from COUNT(*) are serialized as numbers.
+// ---------------------------------------------------------------------------
+type RawDayRow = { date: string; count: bigint };
+
+router.get("/charts", async (_req, res) => {
+  const since = daysAgo(30);
+
+  const [userRegs, companyGrowth, projectCreations, activeUsers] = await Promise.all([
+    prisma.$queryRaw<RawDayRow[]>`
+      SELECT DATE(createdAt) as date, COUNT(*) as count
+      FROM "User" WHERE createdAt >= ${since}
+      GROUP BY DATE(createdAt) ORDER BY date ASC`,
+    prisma.$queryRaw<RawDayRow[]>`
+      SELECT DATE(createdAt) as date, COUNT(*) as count
+      FROM "Company" WHERE createdAt >= ${since}
+      GROUP BY DATE(createdAt) ORDER BY date ASC`,
+    prisma.$queryRaw<RawDayRow[]>`
+      SELECT DATE(createdAt) as date, COUNT(*) as count
+      FROM "Project" WHERE createdAt >= ${since}
+      GROUP BY DATE(createdAt) ORDER BY date ASC`,
+    prisma.$queryRaw<RawDayRow[]>`
+      SELECT DATE(lastLoginAt) as date, COUNT(*) as count
+      FROM "User" WHERE lastLoginAt IS NOT NULL AND lastLoginAt >= ${since}
+      GROUP BY DATE(lastLoginAt) ORDER BY date ASC`,
+  ]);
+
+  const toSeries = (rows: RawDayRow[]) =>
+    rows.map((r) => ({ date: r.date, count: Number(r.count) }));
+
+  return res.json({
+    userRegistrations: toSeries(userRegs),
+    companyGrowth: toSeries(companyGrowth),
+    projectCreations: toSeries(projectCreations),
+    activeUsers: toSeries(activeUsers),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /storage — platform-wide storage analytics derived from
+// ProjectAttachment.fileSize. No new columns needed.
+// ---------------------------------------------------------------------------
+type RawStorageRow = { companyId: number; companyName: string; totalBytes: bigint };
+
+router.get("/storage", async (_req, res) => {
+  const [totalResult, companyCount, topCompaniesRaw] = await Promise.all([
+    prisma.projectAttachment.aggregate({ _sum: { fileSize: true } }),
+    prisma.company.count(),
+    prisma.$queryRaw<RawStorageRow[]>`
+      SELECT c.id as companyId, c.name as companyName, SUM(pa.fileSize) as totalBytes
+      FROM "ProjectAttachment" pa
+      JOIN "Project" p ON pa.projectId = p.id
+      JOIN "Company" c ON p.companyId = c.id
+      GROUP BY c.id, c.name
+      ORDER BY totalBytes DESC
+      LIMIT 10`,
+  ]);
+
+  const totalBytes = totalResult._sum.fileSize ?? 0;
+
+  return res.json({
+    totalBytes,
+    avgBytesPerCompany: companyCount > 0 ? Math.round(totalBytes / companyCount) : 0,
+    topCompanies: topCompaniesRaw.map((r) => ({
+      companyId: r.companyId,
+      companyName: r.companyName,
+      totalBytes: Number(r.totalBytes),
+    })),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GET /users — paginated, searchable, filterable, sortable user table.
 // Per-user project/employee/customer counts are the user's COMPANY totals,
-// fetched with a handful of groupBy queries (not N+1) for the page's
-// companies.
+// fetched with groupBy queries (not N+1) for the page's companies.
 // ---------------------------------------------------------------------------
-const SORTABLE = new Set(["createdAt", "lastLoginAt", "email", "role"]);
-
 router.get("/users", async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
-  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
-  const role = typeof req.query.role === "string" ? req.query.role : "";
-  const status = typeof req.query.status === "string" ? req.query.status : "";
-  const plan = typeof req.query.plan === "string" ? req.query.plan : "";
   const sortBy = SORTABLE.has(String(req.query.sortBy)) ? String(req.query.sortBy) : "createdAt";
   const sortDir = req.query.sortDir === "asc" ? "asc" : "desc";
 
-  const where: Record<string, unknown> = {};
-
-  if (search) {
-    // SQLite LIKE is case-insensitive for ASCII, so no `mode` needed.
-    where.email = { contains: search };
-  }
-  if (role) {
-    where.role = role;
-  }
-  if (plan) {
-    where.company = { plan };
-  }
-  // Status is derived from lastLoginAt: never (null), active (within the
-  // window), inactive (logged in but older than the window).
-  if (status === "never") {
-    where.lastLoginAt = null;
-  } else if (status === "active") {
-    where.lastLoginAt = { gte: daysAgo(ACTIVE_WINDOW_DAYS) };
-  } else if (status === "inactive") {
-    where.lastLoginAt = { not: null, lt: daysAgo(ACTIVE_WINDOW_DAYS) };
-  }
+  const where = buildUsersWhere(req.query as Record<string, unknown>);
 
   const [total, users] = await Promise.all([
     prisma.user.count({ where }),
@@ -137,23 +260,11 @@ router.get("/users", async (req, res) => {
     }),
   ]);
 
-  // Company-level usage counts for just the companies on this page.
   const companyIds = [
     ...new Set(users.map((u) => u.companyId).filter((id): id is number => id !== null)),
   ];
 
-  const [projectGroups, employeeGroups, customerGroups] =
-    companyIds.length === 0
-      ? [[], [], []]
-      : await Promise.all([
-          prisma.project.groupBy({ by: ["companyId"], where: { companyId: { in: companyIds } }, _count: { _all: true } }),
-          prisma.employee.groupBy({ by: ["companyId"], where: { companyId: { in: companyIds } }, _count: { _all: true } }),
-          prisma.customer.groupBy({ by: ["companyId"], where: { companyId: { in: companyIds } }, _count: { _all: true } }),
-        ]);
-
-  const countFor = (groups: { companyId: number | null; _count: { _all: number } }[], companyId: number | null) =>
-    companyId === null ? 0 : groups.find((g) => g.companyId === companyId)?._count._all ?? 0;
-
+  const { projectGroups, employeeGroups, customerGroups } = await fetchCompanyCounts(companyIds);
   const activeThreshold = daysAgo(ACTIVE_WINDOW_DAYS);
 
   const rows = users.map((u) => ({
@@ -177,6 +288,64 @@ router.get("/users", async (req, res) => {
   }));
 
   return res.json({ page, pageSize, total, totalPages: Math.ceil(total / pageSize), users: rows });
+});
+
+// ---------------------------------------------------------------------------
+// GET /users/export — full result set for CSV/XLSX export. Applies the same
+// filters and sorting as /users but returns all rows (cap 10 000) without
+// pagination. Only non-sensitive fields.
+// ---------------------------------------------------------------------------
+router.get("/users/export", async (req, res) => {
+  const sortBy = SORTABLE.has(String(req.query.sortBy)) ? String(req.query.sortBy) : "createdAt";
+  const sortDir = req.query.sortDir === "asc" ? "asc" : "desc";
+
+  const where = buildUsersWhere(req.query as Record<string, unknown>);
+
+  const users = await prisma.user.findMany({
+    where,
+    orderBy: { [sortBy]: sortDir },
+    take: 10000,
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      emailVerified: true,
+      active: true,
+      createdAt: true,
+      lastLoginAt: true,
+      companyId: true,
+      company: { select: { id: true, name: true, plan: true, subscriptionStatus: true } },
+    },
+  });
+
+  const companyIds = [
+    ...new Set(users.map((u) => u.companyId).filter((id): id is number => id !== null)),
+  ];
+
+  const { projectGroups, employeeGroups, customerGroups } = await fetchCompanyCounts(companyIds);
+  const activeThreshold = daysAgo(ACTIVE_WINDOW_DAYS);
+
+  const rows = users.map((u) => ({
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    company: u.company?.name ?? "",
+    plan: u.company?.plan ?? "",
+    subscriptionStatus: u.company?.subscriptionStatus ?? "",
+    emailVerified: u.emailVerified,
+    projectCount: countFor(projectGroups, u.companyId),
+    employeeCount: countFor(employeeGroups, u.companyId),
+    customerCount: countFor(customerGroups, u.companyId),
+    createdAt: u.createdAt,
+    lastLoginAt: u.lastLoginAt,
+    status: !u.lastLoginAt
+      ? "never"
+      : u.active && u.lastLoginAt >= activeThreshold
+        ? "active"
+        : "inactive",
+  }));
+
+  return res.json({ users: rows, total: rows.length });
 });
 
 // ---------------------------------------------------------------------------

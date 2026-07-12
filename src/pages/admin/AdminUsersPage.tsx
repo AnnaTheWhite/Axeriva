@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
 import PageHeader from "../../components/PageHeader";
-import { getAnalyticsUsers } from "../../services/adminAnalytics.service";
-import type { AnalyticsUsersPage, UserStatus } from "../../services/adminAnalytics.service";
+import {
+  getAnalyticsUsers,
+  exportAnalyticsUsers,
+} from "../../services/adminAnalytics.service";
+import type { AnalyticsUsersPage, UserStatus, UsersQuery } from "../../services/adminAnalytics.service";
 import { useTranslation } from "../../i18n";
 
 const inputClass =
@@ -26,6 +30,31 @@ function StatusBadge({ status }: { status: UserStatus }) {
   );
 }
 
+// Builds a CSV string from an array of flat objects.
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  return [
+    headers.join(","),
+    ...rows.map((row) => headers.map((h) => escape(row[h])).join(",")),
+  ].join("\r\n");
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminUsersPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -37,6 +66,7 @@ export default function AdminUsersPage() {
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [data, setData] = useState<AnalyticsUsersPage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,7 +83,7 @@ export default function AdminUsersPage() {
 
   const query = useMemo(
     () => ({ page, pageSize: 20, search: debouncedSearch, role, status, plan, sortBy, sortDir }),
-    [page, debouncedSearch, role, status, plan, sortBy, sortDir]
+    [page, debouncedSearch, role, status, plan, sortBy, sortDir],
   );
 
   useEffect(() => {
@@ -76,11 +106,49 @@ export default function AdminUsersPage() {
 
   const sortArrow = (column: string) => (sortBy === column ? (sortDir === "asc" ? " ↑" : " ↓") : "");
 
+  // Build export query from current filter state (no page/pageSize).
+  const exportQuery: Omit<UsersQuery, "page" | "pageSize"> = {
+    search: debouncedSearch,
+    role,
+    status,
+    plan,
+    sortBy,
+    sortDir,
+  };
+
+  async function handleExportCsv() {
+    setIsExporting(true);
+    try {
+      const rows = await exportAnalyticsUsers(exportQuery);
+      const csv = toCsv(rows as unknown as Record<string, unknown>[]);
+      downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), "users.csv");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleExportXlsx() {
+    setIsExporting(true);
+    try {
+      const rows = await exportAnalyticsUsers(exportQuery);
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Users");
+      XLSX.writeFile(wb, "users.xlsx");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <div className="p-8">
       <PageHeader title={t("admin.users.title")} subtitle={t("admin.analytics.usersSubtitle")} />
 
-      {/* Filters */}
+      {/* Filters + Export */}
       <div className="mb-4 flex flex-wrap gap-3">
         <input
           className={`${inputClass} min-w-[220px] flex-1`}
@@ -106,6 +174,24 @@ export default function AdminUsersPage() {
           <option value="pro">pro</option>
           <option value="enterprise">enterprise</option>
         </select>
+
+        {/* Export buttons */}
+        <button
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-40"
+          onClick={handleExportCsv}
+          disabled={isExporting}
+          title={t("admin.analytics.exportCsvHint")}
+        >
+          {isExporting ? t("admin.analytics.exporting") : t("admin.analytics.exportCsv")}
+        </button>
+        <button
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-40"
+          onClick={handleExportXlsx}
+          disabled={isExporting}
+          title={t("admin.analytics.exportXlsxHint")}
+        >
+          {isExporting ? t("admin.analytics.exporting") : t("admin.analytics.exportXlsx")}
+        </button>
       </div>
 
       <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/5">
@@ -119,7 +205,12 @@ export default function AdminUsersPage() {
               <th className="cursor-pointer p-4" onClick={() => toggleSort("createdAt")}>{t("admin.analytics.registered")}{sortArrow("createdAt")}</th>
               <th className="cursor-pointer p-4" onClick={() => toggleSort("lastLoginAt")}>{t("admin.analytics.lastLogin")}{sortArrow("lastLoginAt")}</th>
               <th className="p-4 text-center">{t("admin.analytics.verified")}</th>
-              <th className="p-4 text-center" title={t("admin.analytics.companyTotalsHint")}>P / E / C</th>
+              <th
+                className="p-4 text-center"
+                title={t("admin.analytics.companyTotalsHint")}
+              >
+                {t("admin.analytics.companyTotalsHeader")}
+              </th>
               <th className="p-4">{t("table.status")}</th>
             </tr>
           </thead>

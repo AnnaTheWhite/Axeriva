@@ -8,12 +8,41 @@ export type AnalyticsOverview = {
   totalUsers: number;
   activeUsers: { today: number; sevenDays: number; thirtyDays: number };
   newRegistrations: number;
+  newRegistrationsToday: number;
   companies: number;
+  newCompaniesToday: number;
+  newCompanies30Days: number;
   projects: number;
+  newProjectsToday: number;
+  newProjects30Days: number;
   employees: number;
+  newEmployees30Days: number;
   customers: number;
+  newCustomers30Days: number;
   activeSubscriptions: number;
+  planBreakdown: { plan: string; count: number }[];
   plans: { free: number; pro: number; enterprise: number };
+};
+
+export type ChartDataPoint = { date: string; count: number };
+
+export type AnalyticsCharts = {
+  userRegistrations: ChartDataPoint[];
+  companyGrowth: ChartDataPoint[];
+  projectCreations: ChartDataPoint[];
+  activeUsers: ChartDataPoint[];
+};
+
+export type StorageCompany = {
+  companyId: number;
+  companyName: string;
+  totalBytes: number;
+};
+
+export type AnalyticsStorage = {
+  totalBytes: number;
+  avgBytesPerCompany: number;
+  topCompanies: StorageCompany[];
 };
 
 export type UserStatus = "active" | "inactive" | "never";
@@ -67,11 +96,43 @@ export type AnalyticsUserDetails = {
 
 export type ActivityEvent = { type: string; timestamp: string; label?: string };
 
+export type ExportUserRow = {
+  id: number;
+  email: string;
+  role: string;
+  company: string;
+  plan: string;
+  subscriptionStatus: string;
+  emailVerified: boolean;
+  projectCount: number;
+  employeeCount: number;
+  customerCount: number;
+  createdAt: string;
+  lastLoginAt: string | null;
+  status: string;
+};
+
 export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   const response = await apiFetch(`${API_URL}/admin/analytics/overview`, {
     headers: { ...authHeaders() },
   });
   if (!response.ok) throw new Error("Failed to load analytics overview");
+  return response.json();
+}
+
+export async function getAnalyticsCharts(): Promise<AnalyticsCharts> {
+  const response = await apiFetch(`${API_URL}/admin/analytics/charts`, {
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) throw new Error("Failed to load analytics charts");
+  return response.json();
+}
+
+export async function getAnalyticsStorage(): Promise<AnalyticsStorage> {
+  const response = await apiFetch(`${API_URL}/admin/analytics/storage`, {
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) throw new Error("Failed to load storage analytics");
   return response.json();
 }
 
@@ -97,6 +158,23 @@ export async function getAnalyticsUsers(query: UsersQuery): Promise<AnalyticsUse
   });
   if (!response.ok) throw new Error("Failed to load users");
   return response.json();
+}
+
+export async function exportAnalyticsUsers(
+  query: Omit<UsersQuery, "page" | "pageSize">,
+): Promise<ExportUserRow[]> {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  });
+
+  const response = await apiFetch(
+    `${API_URL}/admin/analytics/users/export?${params.toString()}`,
+    { headers: { ...authHeaders() } },
+  );
+  if (!response.ok) throw new Error("Failed to export users");
+  const data = await response.json();
+  return data.users;
 }
 
 export async function getAnalyticsUserDetails(id: number): Promise<AnalyticsUserDetails> {
