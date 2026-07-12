@@ -12,6 +12,8 @@ import { validateEmail } from "../utils/emailValidation";
 import { createRateLimiter, maskEmail } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
+import { logAudit } from "../services/audit/auditLog";
+import { AUDIT_ACTIONS } from "../constants/auditActions";
 import { config } from "../config";
 
 const router = Router();
@@ -271,6 +273,20 @@ router.post("/login", loginPerIpLimiter, loginPerEmailLimiter, async (req, res) 
 
   const token = signAuthToken(user);
 
+  // Record the sign-in time for the admin analytics dashboard (Active Users /
+  // Last Login / status), and persist a LOGIN audit row for the activity
+  // timeline. Both are additive to the existing console auth-audit below.
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  logAudit({
+    action: AUDIT_ACTIONS.USER_LOGIN,
+    userId: user.id,
+    companyId: user.companyId,
+  });
+
   logAuthEvent(AuthEvent.LOGIN_SUCCEEDED, {
     req,
     level: "INFO",
@@ -304,6 +320,12 @@ router.post("/logout", authMiddleware, async (req, res) => {
   await prisma.user.update({
     where: { id: req.user!.userId },
     data: { tokenVersion: { increment: 1 } },
+  });
+
+  logAudit({
+    action: AUDIT_ACTIONS.USER_LOGOUT,
+    userId: req.user!.userId,
+    companyId: req.user!.companyId,
   });
 
   logAuthEvent(AuthEvent.LOGOUT, {
@@ -348,6 +370,12 @@ router.get("/verify-email/:token", async (req, res) => {
       emailVerificationToken: null,
       emailVerificationExpiresAt: null,
     },
+  });
+
+  logAudit({
+    action: AUDIT_ACTIONS.EMAIL_VERIFIED,
+    userId: user.id,
+    companyId: user.companyId,
   });
 
   logAuthEvent(AuthEvent.EMAIL_VERIFIED, {

@@ -31,6 +31,7 @@ import ProfilePage from "../../pages/ProfilePage";
 import PlatformDashboardPage from "../../pages/admin/PlatformDashboardPage";
 import AdminCompaniesPage from "../../pages/admin/AdminCompaniesPage";
 import AdminUsersPage from "../../pages/admin/AdminUsersPage";
+import UserDetailsPage from "../../pages/admin/UserDetailsPage";
 import AdminBillingPage from "../../pages/admin/AdminBillingPage";
 import AdminLogsPage from "../../pages/admin/AdminLogsPage";
 
@@ -240,6 +241,16 @@ export default function AppRouter() {
             <ProtectedRoute roles={[ROLES.DEVELOPER]}>
               <DashboardLayout>
                 <AdminUsersPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users/:id"
+          element={
+            <ProtectedRoute roles={[ROLES.DEVELOPER]}>
+              <DashboardLayout>
+                <UserDetailsPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

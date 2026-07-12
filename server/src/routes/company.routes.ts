@@ -3,6 +3,8 @@ import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { companyScope } from "../utils/scope";
+import { logAudit } from "../services/audit/auditLog";
+import { AUDIT_ACTIONS } from "../constants/auditActions";
 
 const router = Router();
 
@@ -96,6 +98,12 @@ router.put("/settings", async (req, res) => {
       vatNumber,
     },
     select: SETTINGS_SELECT,
+  });
+
+  logAudit({
+    action: AUDIT_ACTIONS.SETTINGS_CHANGED,
+    userId: req.user?.userId ?? null,
+    companyId,
   });
 
   return res.json(company);

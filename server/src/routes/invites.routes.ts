@@ -14,6 +14,8 @@ import { validateEmail } from "../utils/emailValidation";
 import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
+import { logAudit } from "../services/audit/auditLog";
+import { AUDIT_ACTIONS } from "../constants/auditActions";
 import { config } from "../config";
 
 const router = Router();
@@ -88,6 +90,12 @@ router.post(
     } catch (error) {
       console.error("[invites] invitation email failed", error);
     }
+
+    logAudit({
+      action: AUDIT_ACTIONS.INVITATION_SENT,
+      userId: req.user!.userId,
+      companyId: req.user!.companyId,
+    });
 
     logAuthEvent(AuthEvent.INVITATION_CREATED, {
       req,
@@ -236,6 +244,12 @@ router.post("/:token/accept", inviteAcceptLimiter, async (req, res) => {
   });
 
   const jwtToken = signAuthToken(user);
+
+  logAudit({
+    action: AUDIT_ACTIONS.INVITATION_ACCEPTED,
+    userId: user.id,
+    companyId: user.companyId,
+  });
 
   logAuthEvent(AuthEvent.INVITATION_ACCEPTED, {
     req,

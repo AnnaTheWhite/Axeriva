@@ -18,6 +18,7 @@ import shiftsRoutes from "./routes/shifts.routes";
 import subscriptionRoutes from "./routes/subscription.routes";
 import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
 import adminRoutes from "./routes/admin.routes";
+import adminAnalyticsRoutes from "./routes/adminAnalytics.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import accountRoutes from "./routes/account.routes";
 import companyRoutes from "./routes/company.routes";
@@ -137,6 +138,9 @@ app.use("/customers", authMiddleware, customersRoutes);
 app.use("/companies", authMiddleware, companiesRoutes);
 app.use("/shifts", authMiddleware, shiftsRoutes);
 app.use("/subscription", authMiddleware, subscriptionRoutes);
+// More specific mount first so /admin/analytics/* is handled here and not
+// swallowed by the generic /admin router below.
+app.use("/admin/analytics", authMiddleware, adminAnalyticsRoutes);
 app.use("/admin", authMiddleware, adminRoutes);
 app.use("/dashboard", authMiddleware, dashboardRoutes);
 app.use("/account", authMiddleware, accountRoutes);

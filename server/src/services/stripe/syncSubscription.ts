@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 import prisma from "../../database/prisma";
+import { logAudit } from "../audit/auditLog";
+import { AUDIT_ACTIONS } from "../../constants/auditActions";
 
 function planForStatus(status: string): string {
   return status === "active" || status === "trialing" ? "pro" : "free";
@@ -30,6 +32,15 @@ export async function applySubscriptionUpdate(
       subscriptionStatus: subscription.status,
       plan: planForStatus(subscription.status),
       subscriptionEndsAt: currentPeriodEnd(subscription),
+    },
+  });
+
+  logAudit({
+    action: AUDIT_ACTIONS.SUBSCRIPTION_CHANGED,
+    companyId,
+    metadata: {
+      status: subscription.status,
+      plan: planForStatus(subscription.status),
     },
   });
 }

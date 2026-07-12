@@ -69,6 +69,11 @@ model User {
   passwordResetToken      String?   @unique
   passwordResetExpiresAt  DateTime?
 
+  // Set on every successful login (see auth.routes.ts). Drives the admin
+  // analytics dashboard's Active Users / Last Login / status columns; null
+  // means the account has never signed in.
+  lastLoginAt DateTime?
+
   // Session invalidation (K2.1.2) — every issued JWT carries the value
   // current at sign-in; the auth middleware rejects tokens whose claim no
   // longer matches. Incrementing this field therefore kills every
