@@ -1,29 +1,41 @@
 import prisma from "../database/prisma";
+import { getLimit, isUnlimited } from "../services/planAccess";
 
-export const FREE_PLAN_PROJECT_LIMIT = 1;
-export const FREE_PLAN_EMPLOYEE_LIMIT = 2;
+// Creation-time plan-limit checks. These now resolve entirely through the
+// centralized Limit Registry / plan-access service — no hardcoded plan
+// strings or per-plan numbers here. Limits are checked at creation time only,
+// not enforced retroactively (a downgrade never deletes existing
+// projects/employees over the limit).
+//
+// Public API (isProjectLimitReached / isEmployeeLimitReached) is unchanged, so
+// existing callers (projects.routes.ts, invites.routes.ts) keep working.
 
-// Free-tier ceilings — Pro (or any other non-"free" plan value) is
-// unlimited. Checked at creation time, not enforced retroactively (e.g. a
-// downgrade never deletes existing projects/employees over the limit).
+async function isLimitReached(
+  companyId: number,
+  limitId: "projects" | "employees",
+  count: () => Promise<number>,
+): Promise<boolean> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { plan: true },
+  });
+
+  // No company resolved → nothing to enforce (matches prior behavior).
+  if (!company) return false;
+  if (isUnlimited(company.plan, limitId)) return false;
+
+  const current = await count();
+  return current >= getLimit(company.plan, limitId);
+}
+
 export async function isProjectLimitReached(companyId: number): Promise<boolean> {
-  const company = await prisma.company.findUnique({ where: { id: companyId } });
-
-  if (company?.plan !== "free") {
-    return false;
-  }
-
-  const projectCount = await prisma.project.count({ where: { companyId } });
-  return projectCount >= FREE_PLAN_PROJECT_LIMIT;
+  return isLimitReached(companyId, "projects", () =>
+    prisma.project.count({ where: { companyId } }),
+  );
 }
 
 export async function isEmployeeLimitReached(companyId: number): Promise<boolean> {
-  const company = await prisma.company.findUnique({ where: { id: companyId } });
-
-  if (company?.plan !== "free") {
-    return false;
-  }
-
-  const employeeCount = await prisma.employee.count({ where: { companyId } });
-  return employeeCount >= FREE_PLAN_EMPLOYEE_LIMIT;
+  return isLimitReached(companyId, "employees", () =>
+    prisma.employee.count({ where: { companyId } }),
+  );
 }
