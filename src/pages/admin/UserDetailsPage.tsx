@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
+import EmptyState from "../../components/ui/EmptyState";
+import Tooltip from "../../components/ui/Tooltip";
+import { SkeletonBlock, SkeletonCardGrid } from "../../components/ui/Skeleton";
 import {
   getAnalyticsUserDetails,
   getAnalyticsUserActivity,
@@ -10,6 +13,7 @@ import type {
   AnalyticsUserDetails,
   ActivityEvent,
 } from "../../services/adminAnalytics.service";
+import { formatRelativeTime, formatExact } from "../../utils/relativeTime";
 import { useTranslation } from "../../i18n";
 
 function formatDateTime(value: string | null): string {
@@ -46,6 +50,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function UserDetailsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const userId = Number(id);
 
@@ -67,25 +72,45 @@ export default function UserDetailsPage() {
 
   if (isLoading || !details) {
     return (
-      <div className="p-8">
+      <div className="p-8" aria-busy="true">
         <PageHeader title={t("admin.analytics.userDetails")} />
+        <div className="mb-6">
+          <SkeletonCardGrid count={4} />
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className={cardClass}>
+            <SkeletonBlock className="mb-4 h-5 w-24" />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonBlock key={i} className="mb-3 h-4 w-full" />
+            ))}
+          </div>
+          <div className={cardClass}>
+            <SkeletonBlock className="mb-4 h-5 w-24" />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonBlock key={i} className="mb-3 h-4 w-full" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-8">
-      <Link to="/admin/users" className="mb-4 inline-block text-sm text-slate-400 hover:text-white">
+      <Link
+        to="/admin/users"
+        className="mb-4 inline-block rounded text-sm text-slate-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+      >
         ← {t("admin.analytics.backToUsers")}
       </Link>
       <PageHeader title={details.email} subtitle={details.role} />
 
       {/* Company resource usage cards — values are company-wide totals */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title={t("admin.analytics.companyProjects")} value={details.usage.projects} />
-        <StatCard title={t("admin.analytics.companyEmployees")} value={details.usage.employees} />
-        <StatCard title={t("admin.analytics.companyCustomers")} value={details.usage.customers} />
-        <StatCard title={t("admin.analytics.storage")} value={formatBytes(details.usage.storageBytes)} />
+        <StatCard title={t("admin.analytics.companyProjects")} value={details.usage.projects} tooltip={t("admin.analytics.tip.companyProjects")} />
+        <StatCard title={t("admin.analytics.companyEmployees")} value={details.usage.employees} tooltip={t("admin.analytics.tip.companyEmployees")} />
+        <StatCard title={t("admin.analytics.companyCustomers")} value={details.usage.customers} tooltip={t("admin.analytics.tip.companyCustomers")} />
+        <StatCard title={t("admin.analytics.storage")} value={formatBytes(details.usage.storageBytes)} tooltip={t("admin.analytics.tip.userStorage")} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -97,7 +122,14 @@ export default function UserDetailsPage() {
           <Row label={t("admin.analytics.verified")} value={details.emailVerified ? "✓" : "—"} />
           <Row label={t("table.status")} value={details.active ? t("admin.analytics.status.active") : t("admin.analytics.status.inactive")} />
           <Row label={t("admin.analytics.registered")} value={formatDateTime(details.createdAt)} />
-          <Row label={t("admin.analytics.lastLogin")} value={formatDateTime(details.lastLoginAt)} />
+          <Row
+            label={t("admin.analytics.lastLogin")}
+            value={
+              <Tooltip label={formatExact(details.lastLoginAt)} side="bottom">
+                <span className="cursor-help">{formatRelativeTime(details.lastLoginAt, t)}</span>
+              </Tooltip>
+            }
+          />
         </section>
 
         {/* Company + subscription */}
@@ -105,7 +137,18 @@ export default function UserDetailsPage() {
           <h2 className="mb-3 text-lg font-semibold">{t("admin.analytics.companyInfo")}</h2>
           {details.company ? (
             <>
-              <Row label={t("table.name")} value={details.company.name} />
+              <Row
+                label={t("table.name")}
+                value={
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/companies?focus=${details.company!.id}`)}
+                    className="text-indigo-300 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                  >
+                    {details.company.name}
+                  </button>
+                }
+              />
               <Row label={t("admin.analytics.contactEmail")} value={details.company.contactEmail ?? "—"} />
               <Row label={t("table.phone")} value={details.company.phone ?? "—"} />
               <Row label={t("admin.analytics.website")} value={details.company.website ?? "—"} />
@@ -127,12 +170,17 @@ export default function UserDetailsPage() {
       <section className={`${cardClass} mt-6`}>
         <h2 className="mb-4 text-lg font-semibold">{t("admin.analytics.activityTimeline")}</h2>
         {activity.length === 0 ? (
-          <p className="text-sm text-slate-400">{t("admin.analytics.noActivity")}</p>
+          <EmptyState
+            bare
+            icon="📋"
+            title={t("admin.analytics.empty.activity.title")}
+            description={t("admin.analytics.empty.activity.desc")}
+          />
         ) : (
           <ol className="space-y-3">
             {activity.map((event, index) => (
               <li key={index} className="flex items-start gap-3">
-                <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-white/40" />
+                <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-white/40" aria-hidden="true" />
                 <div>
                   <p className="text-sm text-white">
                     {(() => {
@@ -143,7 +191,9 @@ export default function UserDetailsPage() {
                     })()}
                     {event.label ? <span className="text-slate-400"> — {event.label}</span> : null}
                   </p>
-                  <p className="text-xs text-slate-500">{formatDateTime(event.timestamp)}</p>
+                  <Tooltip label={formatExact(event.timestamp)} side="bottom">
+                    <p className="cursor-help text-xs text-slate-500">{formatRelativeTime(event.timestamp, t)}</p>
+                  </Tooltip>
                 </div>
               </li>
             ))}

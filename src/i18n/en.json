@@ -19,6 +19,17 @@
     "myProjects": "My Projects",
     "profile": "Profile"
   },
+  "time": {
+    "justNow": "Just now",
+    "minuteAgo": "1 minute ago",
+    "minutesAgo": "{{count}} minutes ago",
+    "hourAgo": "1 hour ago",
+    "hoursAgo": "{{count}} hours ago",
+    "yesterday": "Yesterday",
+    "daysAgo": "{{count}} days ago",
+    "weekAgo": "1 week ago",
+    "weeksAgo": "{{count}} weeks ago"
+  },
   "common": {
     "save": "Save",
     "saveChanges": "Save changes",
@@ -541,7 +552,11 @@
     },
     "companies": {
       "title": "Companies",
-      "subtitle": "Every tenant on the platform."
+      "subtitle": "Every tenant on the platform.",
+      "empty": {
+        "title": "No companies yet",
+        "desc": "Companies will appear here as soon as they register on the platform."
+      }
     },
     "users": {
       "title": "Users",
@@ -603,6 +618,55 @@
       "totalStorage": "Total platform storage",
       "avgStorage": "Avg. storage per company",
       "topStorage": "Top 10 companies by storage",
+      "planBreakdown": "Plan breakdown",
+      "planStat": "{{count}} companies · {{active}} active · {{pct}}%",
+      "viewUser": "View {{email}}",
+      "pagination": "Pagination",
+      "tip": {
+        "totalUsers": "All registered user accounts on the platform, across every company.",
+        "activeToday": "Users who logged in during the last 24 hours.",
+        "active7Days": "Users who logged in during the last 7 days.",
+        "active30Days": "Users who logged in during the last 30 days.",
+        "newRegistrations": "New user accounts created in the last 30 days.",
+        "newRegistrationsToday": "New user accounts created today.",
+        "companies": "Registered companies (tenants) on the platform.",
+        "newCompaniesToday": "Companies that registered today.",
+        "newCompanies30Days": "Companies that registered in the last 30 days.",
+        "platformProjects": "All projects created across every company.",
+        "newProjectsToday": "Projects created today across all companies.",
+        "newProjects30Days": "Projects created in the last 30 days across all companies.",
+        "platformEmployees": "All employees across every company.",
+        "newEmployees30Days": "Employees added in the last 30 days across all companies.",
+        "platformCustomers": "All customers across every company.",
+        "newCustomers30Days": "Customers added in the last 30 days across all companies.",
+        "activeSubscriptions": "Companies with an active paid subscription (active, trialing or past due).",
+        "planBreakdown": "Companies grouped by their current plan, with the share that hold an active subscription.",
+        "totalStorage": "Total size of all files uploaded and stored by all companies.",
+        "avgStorage": "Average stored file size per company (total storage ÷ number of companies).",
+        "topStorage": "The 10 companies consuming the most storage, coloured by their share of total platform storage.",
+        "companyProjects": "Total projects owned by this user's company (shared across all its users).",
+        "companyEmployees": "Total employees in this user's company (shared across all its users).",
+        "companyCustomers": "Total customers of this user's company (shared across all its users).",
+        "userStorage": "Total size of files uploaded within this user's company."
+      },
+      "empty": {
+        "users": {
+          "title": "No users found",
+          "desc": "No users match the current search and filters. Try clearing them to see more results."
+        },
+        "activity": {
+          "title": "No activity yet",
+          "desc": "This user has no recorded actions or created records so far."
+        },
+        "subscriptions": {
+          "title": "No subscriptions yet",
+          "desc": "No companies have a plan assigned yet. Plan breakdown will appear here once they do."
+        },
+        "storage": {
+          "title": "No uploaded files",
+          "desc": "No company has uploaded any files yet. Storage usage will appear here once files exist."
+        }
+      },
       "usersSubtitle": "Registered users with usage and activity.",
       "searchPlaceholder": "Search by email…",
       "allRoles": "All roles",

@@ -96,6 +96,7 @@ router.get("/overview", async (_req, res) => {
     newCustomers30Days,
     activeSubscriptions,
     planGroups,
+    activePlanGroups,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { lastLoginAt: { gte: today } } }),
@@ -117,11 +118,23 @@ router.get("/overview", async (_req, res) => {
       where: { subscriptionStatus: { in: ACTIVE_SUBSCRIPTION_STATUSES } },
     }),
     prisma.company.groupBy({ by: ["plan"], _count: { _all: true } }),
+    // Active-subscription companies grouped by plan — one extra aggregate,
+    // no N+1. Powers the per-plan active count in the subscription breakdown.
+    prisma.company.groupBy({
+      by: ["plan"],
+      where: { subscriptionStatus: { in: ACTIVE_SUBSCRIPTION_STATUSES } },
+      _count: { _all: true },
+    }),
   ]);
 
-  // Dynamic plan breakdown — returns every plan actually in the DB.
+  const activeByPlan = (plan: string) =>
+    activePlanGroups.find((group) => group.plan === plan)?._count._all ?? 0;
+
+  // Dynamic plan breakdown — returns every plan actually in the DB, with both
+  // total companies and active-subscription companies per plan. Sorted by
+  // popularity (total companies). Unknown/future plans render automatically.
   const planBreakdown = planGroups
-    .map((g) => ({ plan: g.plan, count: g._count._all }))
+    .map((g) => ({ plan: g.plan, count: g._count._all, activeCount: activeByPlan(g.plan) }))
     .sort((a, b) => b.count - a.count);
 
   // Legacy plan fields kept for backward compatibility.

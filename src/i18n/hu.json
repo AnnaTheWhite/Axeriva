@@ -19,6 +19,17 @@
     "myProjects": "Projektjeim",
     "profile": "Profil"
   },
+  "time": {
+    "justNow": "Épp most",
+    "minuteAgo": "1 perce",
+    "minutesAgo": "{{count}} perce",
+    "hourAgo": "1 órája",
+    "hoursAgo": "{{count}} órája",
+    "yesterday": "Tegnap",
+    "daysAgo": "{{count}} napja",
+    "weekAgo": "1 hete",
+    "weeksAgo": "{{count}} hete"
+  },
   "common": {
     "save": "Mentés",
     "saveChanges": "Változások mentése",
@@ -541,7 +552,11 @@
     },
     "companies": {
       "title": "Cégek",
-      "subtitle": "A platform minden tenantja."
+      "subtitle": "A platform minden tenantja.",
+      "empty": {
+        "title": "Még nincs cég",
+        "desc": "A cégek itt jelennek meg, amint regisztrálnak a platformon."
+      }
     },
     "users": {
       "title": "Felhasználók",
@@ -603,6 +618,55 @@
       "totalStorage": "Teljes platform tárhely",
       "avgStorage": "Átlagos tárhely cégenként",
       "topStorage": "Top 10 cég tárhely szerint",
+      "planBreakdown": "Csomag-megoszlás",
+      "planStat": "{{count}} cég · {{active}} aktív · {{pct}}%",
+      "viewUser": "{{email}} megtekintése",
+      "pagination": "Lapozás",
+      "tip": {
+        "totalUsers": "A platform összes regisztrált felhasználói fiókja, minden cégnél.",
+        "activeToday": "Az elmúlt 24 órában bejelentkezett felhasználók.",
+        "active7Days": "Az elmúlt 7 napban bejelentkezett felhasználók.",
+        "active30Days": "Az elmúlt 30 napban bejelentkezett felhasználók.",
+        "newRegistrations": "Az elmúlt 30 napban létrehozott új fiókok.",
+        "newRegistrationsToday": "A ma létrehozott új fiókok.",
+        "companies": "A platformon regisztrált cégek (tenantok).",
+        "newCompaniesToday": "A ma regisztrált cégek.",
+        "newCompanies30Days": "Az elmúlt 30 napban regisztrált cégek.",
+        "platformProjects": "Az összes cégnél létrehozott összes projekt.",
+        "newProjectsToday": "A ma létrehozott projektek az összes cégnél.",
+        "newProjects30Days": "Az elmúlt 30 napban létrehozott projektek az összes cégnél.",
+        "platformEmployees": "Az összes cég összes munkavállalója.",
+        "newEmployees30Days": "Az elmúlt 30 napban hozzáadott munkavállalók az összes cégnél.",
+        "platformCustomers": "Az összes cég összes ügyfele.",
+        "newCustomers30Days": "Az elmúlt 30 napban hozzáadott ügyfelek az összes cégnél.",
+        "activeSubscriptions": "Aktív fizetős előfizetéssel rendelkező cégek (aktív, próbaidős vagy késedelmes).",
+        "planBreakdown": "Cégek az aktuális csomagjuk szerint csoportosítva, az aktív előfizetéssel rendelkezők arányával.",
+        "totalStorage": "Az összes cég által feltöltött és tárolt fájl teljes mérete.",
+        "avgStorage": "Átlagos tárolt fájlméret cégenként (teljes tárhely ÷ cégek száma).",
+        "topStorage": "A legtöbb tárhelyet fogyasztó 10 cég, a teljes platform tárhelyből való részesedésük szerint színezve.",
+        "companyProjects": "A felhasználó cégének összes projektje (a cég összes felhasználója között megosztva).",
+        "companyEmployees": "A felhasználó cégének összes munkavállalója (a cég összes felhasználója között megosztva).",
+        "companyCustomers": "A felhasználó cégének összes ügyfele (a cég összes felhasználója között megosztva).",
+        "userStorage": "A felhasználó cégén belül feltöltött fájlok teljes mérete."
+      },
+      "empty": {
+        "users": {
+          "title": "Nincs találat",
+          "desc": "Egyetlen felhasználó sem felel meg a jelenlegi keresésnek és szűrőknek. Töröld a szűrőket a több eredményhez."
+        },
+        "activity": {
+          "title": "Még nincs tevékenység",
+          "desc": "Ehhez a felhasználóhoz eddig nincs rögzített művelet vagy létrehozott rekord."
+        },
+        "subscriptions": {
+          "title": "Még nincs előfizetés",
+          "desc": "Egyetlen céghez sincs csomag rendelve. A csomag-megoszlás itt jelenik meg, amint lesz."
+        },
+        "storage": {
+          "title": "Nincs feltöltött fájl",
+          "desc": "Egyetlen cég sem töltött fel fájlt. A tárhelyhasználat itt jelenik meg, amint lesznek fájlok."
+        }
+      },
       "usersSubtitle": "Regisztrált felhasználók használattal és tevékenységgel.",
       "searchPlaceholder": "Keresés e-mail alapján…",
       "allRoles": "Minden szerep",

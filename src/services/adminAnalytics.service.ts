@@ -20,7 +20,7 @@ export type AnalyticsOverview = {
   customers: number;
   newCustomers30Days: number;
   activeSubscriptions: number;
-  planBreakdown: { plan: string; count: number }[];
+  planBreakdown: { plan: string; count: number; activeCount: number }[];
   plans: { free: number; pro: number; enterprise: number };
 };
 
