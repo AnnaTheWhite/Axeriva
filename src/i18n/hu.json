@@ -722,6 +722,140 @@
       }
     }
   },
+  "pricing": {
+    "title": "Egyszerű, átlátható árazás",
+    "subtitle": "Egy előfizetés cégenként. Minden munkatárs beleértve — soha nem felhasználónként fizetsz.",
+    "perCompanyTagline": "Egy ár cégenként — növeld a csapatod anélkül, hogy minden alkalmazottért fizetnél.",
+    "compareAll": "Összes csomag összehasonlítása",
+    "perMonth": "/ hó",
+    "contactSales": "Kapcsolatfelvétel",
+    "trialBadge": "{{days}} napos ingyenes próba",
+    "noCreditCard": "Bankkártya nem szükséges",
+    "enterpriseTagline": "Egyedi árazás nagyobb csapatoknak.",
+    "recommended": "Legnépszerűbb",
+    "labels": { "storage": "Tárhely", "support": "Támogatás" },
+    "support": {
+      "standardEmail": "Normál e-mail",
+      "priorityEmail": "Elsőbbségi e-mail",
+      "prioritySupport": "Elsőbbségi támogatás",
+      "dedicatedManager": "Dedikált ügyfélmenedzser"
+    },
+    "cta": { "startTrial": "Ingyenes próba indítása", "contactSales": "Kapcsolatfelvétel" },
+    "plans": {
+      "starter": {
+        "name": "Starter",
+        "description": "Minden, ami a vállalkozásod működtetéséhez kell.",
+        "highlights": {
+          "core": "Projektek, ügyfelek, munkatársak és beosztás",
+          "mobile": "Mobilalkalmazás az egész csapatnak",
+          "analyticsBasic": "Alap analitikai irányítópult",
+          "exportCsv": "CSV exportálás"
+        }
+      },
+      "professional": {
+        "name": "Professional",
+        "description": "Betekintés és integráció növekvő csapatoknak.",
+        "highlights": {
+          "everythingStarter": "Minden a Starter csomagból",
+          "analyticsAdvanced": "Haladó analitika és riportok",
+          "developerApi": "Fejlesztői API és API kulcsok",
+          "exports": "Excel és PDF exportálás",
+          "integrations": "Naptár és alap integrációk"
+        }
+      },
+      "business": {
+        "name": "Business",
+        "description": "Automatizálás és skálázhatóság érett működéshez.",
+        "highlights": {
+          "everythingPro": "Minden a Professional csomagból",
+          "automation": "Automatizálás és workflow-építő",
+          "ai": "AI funkciók",
+          "multiLocation": "Több telephely",
+          "webhooks": "Webhookok és haladó integrációk"
+        }
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "description": "Vállalati szintű kontroll és garancia.",
+        "highlights": {
+          "everythingBusiness": "Minden a Business csomagból",
+          "sso": "SSO és SAML",
+          "scim": "SCIM provisioning",
+          "whiteLabel": "White-label és egyedi domain",
+          "dedicatedManager": "Dedikált ügyfélmenedzser és SLA"
+        }
+      }
+    },
+    "marketing": {
+      "title": "Egy előfizetés cégenként — nem felhasználónként",
+      "subtitle": "Az Axeriva cégenként számláz, így úgy növelheted a csapatod, hogy a díjad nem nő vele.",
+      "points": {
+        "oneSubscription": "Egy előfizetés az egész cégedre",
+        "noPerUser": "Nincs felhasználónkénti, ülésalapú árazás — soha",
+        "growFreely": "Adj hozzá munkatársakat szabadon, ahogy a céged nő"
+      }
+    },
+    "compare": {
+      "title": "Hasonlítsd össze az összes funkciót",
+      "caption": "Funkciók elérhetősége a Starter, Professional, Business és Enterprise csomagokban",
+      "featureColumn": "Funkciók",
+      "included": "Tartalmazza",
+      "notIncluded": "Nem tartalmazza",
+      "custom": "Egyedi",
+      "soon": "Hamarosan",
+      "groups": {
+        "core": "Alap",
+        "analytics": "Analitika és riportok",
+        "developer": "Fejlesztői és integrációk",
+        "integrations": "Integrációk",
+        "ai": "AI (hamarosan)",
+        "enterprise": "Vállalati vezérlők",
+        "plan": "Csomag"
+      },
+      "rows": {
+        "dashboard": "Irányítópult",
+        "projects": "Projektek",
+        "customers": "Ügyfelek",
+        "employees": "Munkatársak",
+        "scheduling": "Beosztás",
+        "calendar": "Naptár",
+        "fileUploads": "Fájlfeltöltés",
+        "csvExport": "CSV exportálás",
+        "advancedAnalytics": "Haladó analitika",
+        "advancedReports": "Haladó riportok",
+        "excelExport": "Excel exportálás",
+        "developerApi": "Fejlesztői API",
+        "apiKeys": "API kulcsok",
+        "webhooks": "Webhookok",
+        "automation": "Automatizálás",
+        "googleCalendar": "Google Naptár",
+        "outlookCalendar": "Outlook Naptár",
+        "multiLocation": "Több telephely",
+        "branding": "Márkázás",
+        "aiAssistant": "AI Asszisztens",
+        "aiReports": "AI Riportok",
+        "aiScheduling": "AI Beosztás",
+        "sso": "SSO",
+        "scim": "SCIM",
+        "whiteLabel": "White label",
+        "dedicatedSupport": "Dedikált támogatás",
+        "sla": "SLA"
+      }
+    },
+    "faq": {
+      "title": "Gyakori kérdések",
+      "items": {
+        "creditCard": { "q": "Kell bankkártya a kezdéshez?", "a": "Nem. Minden csomag 14 napos ingyenes próbát tartalmaz, bankkártya nélkül. Fizetési adatokat csak akkor adsz meg, ha folytatni szeretnéd." },
+        "trial": { "q": "Hogyan működik az ingyenes próba?", "a": "14 napig teljes hozzáférést kapsz a választott csomagodhoz. Nincs elköteleződés — a próba alatt vagy után bármikor előfizethetsz." },
+        "cancel": { "q": "Bármikor lemondhatom?", "a": "Igen. Bármikor lemondhatod. A csomagod a számlázási időszak végéig aktív marad, az adataid pedig mindig megmaradnak." },
+        "upgrade": { "q": "Válthatok később magasabb csomagra?", "a": "Természetesen. Bármikor válthatsz feljebb, a változás azonnal életbe lép, a különbözet arányosítva." },
+        "downgrade": { "q": "Válthatok alacsonyabb csomagra?", "a": "Igen. Az alacsonyabb csomagra váltás a jelenlegi számlázási időszak végén lép életbe, a meglévő adataid megmaradnak." },
+        "perEmployee": { "q": "Munkatársanként számláztok?", "a": "Soha. Az Axeriva egy előfizetés cégenként. Annyi munkatársat adhatsz hozzá, amennyit a csomagod enged, ülésalapú díj nélkül." },
+        "afterTrial": { "q": "Mi történik a próba lejárta után?", "a": "Ha nem fizettél elő, a fiókod csak olvasható módba kerül — továbbra is beléphetsz, megtekintheted és exportálhatod az adataid, és bármikor előfizethetsz a teljes hozzáférés visszaállításához." },
+        "enterprise": { "q": "Hogyan működik az Enterprise?", "a": "Az Enterprise a szervezetedre szabott: egyedi limitek, SSO/SCIM, white-label, SLA és dedikált ügyfélmenedzser. Vedd fel a kapcsolatot az értékesítéssel a kezdéshez." }
+      }
+    }
+  },
   "landing": {
     "nav": {
       "whyAxeriva": "Miért Axeriva",

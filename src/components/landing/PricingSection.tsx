@@ -1,15 +1,9 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
+import PricingCards from "../pricing/PricingCards";
 
-const INCLUDED_IDS = [
-  "unlimitedEmployees",
-  "unlimitedProjects",
-  "customerManagement",
-  "shiftScheduling",
-  "timeTracking",
-  "futureAi",
-] as const;
-
+// Landing-page pricing block: the four public plan cards plus the per-company
+// value line and a link to the full /pricing page (comparison table + FAQ).
 export default function PricingSection() {
   const { t } = useTranslation();
   return (
@@ -17,40 +11,24 @@ export default function PricingSection() {
       <div className="mx-auto max-w-6xl">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-bold text-white sm:text-4xl">
-            {t("landing.pricing.title")}
+            {t("pricing.title")}
           </h2>
-          <p className="mt-3 text-slate-400">
-            {t("landing.pricing.subtitle")}
+          <p className="mt-3 text-slate-400">{t("pricing.subtitle")}</p>
+          <p className="mt-2 text-sm font-medium text-orange-300">
+            {t("pricing.perCompanyTagline")}
           </p>
         </div>
 
-        <div className="mx-auto mt-12 max-w-md rounded-3xl border border-orange-500/30 bg-white/5 p-10 text-center backdrop-blur-xl">
-          <h3 className="text-xl font-semibold text-white">{t("landing.pricing.planName")}</h3>
+        <div className="mt-12">
+          <PricingCards />
+        </div>
 
-          <p className="mt-4">
-            <span className="text-5xl font-bold text-white">€30</span>
-            <span className="text-slate-400"> {t("landing.pricing.perMonth")}</span>
-          </p>
-
-          <ul className="mt-8 space-y-3 text-left">
-            {INCLUDED_IDS.map((id) => (
-              <li
-                key={id}
-                className="flex items-center gap-3 text-sm text-slate-300"
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400">
-                  ✓
-                </span>
-                {t(`landing.pricing.included.${id}`)}
-              </li>
-            ))}
-          </ul>
-
+        <div className="mt-10 text-center">
           <Link
-            to="/register"
-            className="mt-10 block w-full rounded-xl bg-orange-500 px-6 py-3 text-base font-semibold text-white transition hover:bg-orange-600"
+            to="/pricing"
+            className="inline-block rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           >
-            {t("landing.pricing.subscribe")}
+            {t("pricing.compareAll")}
           </Link>
         </div>
       </div>

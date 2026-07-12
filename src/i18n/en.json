@@ -722,6 +722,140 @@
       }
     }
   },
+  "pricing": {
+    "title": "Simple, transparent pricing",
+    "subtitle": "One subscription per company. Every employee included — never pay per user.",
+    "perCompanyTagline": "One price per company — grow your team without paying for every employee.",
+    "compareAll": "Compare all plans",
+    "perMonth": "/ month",
+    "contactSales": "Contact Sales",
+    "trialBadge": "{{days}}-day free trial",
+    "noCreditCard": "No credit card required",
+    "enterpriseTagline": "Custom pricing for larger teams.",
+    "recommended": "Most popular",
+    "labels": { "storage": "Storage", "support": "Support" },
+    "support": {
+      "standardEmail": "Standard Email",
+      "priorityEmail": "Priority Email",
+      "prioritySupport": "Priority Support",
+      "dedicatedManager": "Dedicated Account Manager"
+    },
+    "cta": { "startTrial": "Start free trial", "contactSales": "Contact Sales" },
+    "plans": {
+      "starter": {
+        "name": "Starter",
+        "description": "Everything you need to run your business.",
+        "highlights": {
+          "core": "Projects, customers, employees & scheduling",
+          "mobile": "Mobile app for your whole team",
+          "analyticsBasic": "Basic analytics dashboard",
+          "exportCsv": "CSV export"
+        }
+      },
+      "professional": {
+        "name": "Professional",
+        "description": "Insight and integration for growing teams.",
+        "highlights": {
+          "everythingStarter": "Everything in Starter",
+          "analyticsAdvanced": "Advanced analytics & reports",
+          "developerApi": "Developer API & API keys",
+          "exports": "Excel & PDF export",
+          "integrations": "Calendar & basic integrations"
+        }
+      },
+      "business": {
+        "name": "Business",
+        "description": "Automation and scale for established operations.",
+        "highlights": {
+          "everythingPro": "Everything in Professional",
+          "automation": "Automation & workflow builder",
+          "ai": "AI features",
+          "multiLocation": "Multi-location",
+          "webhooks": "Webhooks & advanced integrations"
+        }
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "description": "Enterprise-grade control and assurance.",
+        "highlights": {
+          "everythingBusiness": "Everything in Business",
+          "sso": "SSO & SAML",
+          "scim": "SCIM provisioning",
+          "whiteLabel": "White-label & custom domain",
+          "dedicatedManager": "Dedicated account manager & SLA"
+        }
+      }
+    },
+    "marketing": {
+      "title": "One subscription per company — not per user",
+      "subtitle": "Axeriva is billed per company, so you can grow your team without your bill growing with it.",
+      "points": {
+        "oneSubscription": "One subscription covers your entire company",
+        "noPerUser": "No per-user, per-seat pricing — ever",
+        "growFreely": "Add employees freely as your business grows"
+      }
+    },
+    "compare": {
+      "title": "Compare every feature",
+      "caption": "Feature availability across Starter, Professional, Business and Enterprise plans",
+      "featureColumn": "Features",
+      "included": "Included",
+      "notIncluded": "Not included",
+      "custom": "Custom",
+      "soon": "Soon",
+      "groups": {
+        "core": "Core",
+        "analytics": "Analytics & reporting",
+        "developer": "Developer & integrations",
+        "integrations": "Integrations",
+        "ai": "AI (coming soon)",
+        "enterprise": "Enterprise controls",
+        "plan": "Plan"
+      },
+      "rows": {
+        "dashboard": "Dashboard",
+        "projects": "Projects",
+        "customers": "Customers",
+        "employees": "Employees",
+        "scheduling": "Scheduling",
+        "calendar": "Calendar",
+        "fileUploads": "File uploads",
+        "csvExport": "CSV export",
+        "advancedAnalytics": "Advanced analytics",
+        "advancedReports": "Advanced reports",
+        "excelExport": "Excel export",
+        "developerApi": "Developer API",
+        "apiKeys": "API keys",
+        "webhooks": "Webhooks",
+        "automation": "Automation",
+        "googleCalendar": "Google Calendar",
+        "outlookCalendar": "Outlook Calendar",
+        "multiLocation": "Multi-location",
+        "branding": "Branding",
+        "aiAssistant": "AI Assistant",
+        "aiReports": "AI Reports",
+        "aiScheduling": "AI Scheduling",
+        "sso": "SSO",
+        "scim": "SCIM",
+        "whiteLabel": "White label",
+        "dedicatedSupport": "Dedicated support",
+        "sla": "SLA"
+      }
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "items": {
+        "creditCard": { "q": "Do I need a credit card to start?", "a": "No. Every plan includes a 14-day free trial with no credit card required. You only add payment details if you decide to continue." },
+        "trial": { "q": "How does the free trial work?", "a": "You get full access to your chosen plan for 14 days. There's no commitment — subscribe anytime during or after the trial to keep going." },
+        "cancel": { "q": "Can I cancel anytime?", "a": "Yes. You can cancel whenever you like. Your plan stays active until the end of the billing period, and your data is always kept." },
+        "upgrade": { "q": "Can I upgrade later?", "a": "Absolutely. You can upgrade at any time and the change takes effect immediately, with any difference prorated." },
+        "downgrade": { "q": "Can I downgrade?", "a": "Yes. Downgrades take effect at the end of your current billing period, and your existing data is always preserved." },
+        "perEmployee": { "q": "Do you charge per employee?", "a": "Never. Axeriva is one subscription per company. Add as many employees as your plan allows without paying per seat." },
+        "afterTrial": { "q": "What happens after the trial ends?", "a": "If you haven't subscribed, your account becomes read-only — you can still sign in and view or export your data, and subscribe anytime to restore full access." },
+        "enterprise": { "q": "How does Enterprise work?", "a": "Enterprise is tailored to your organization with custom limits, SSO/SCIM, white-label, an SLA and a dedicated account manager. Contact our sales team to get started." }
+      }
+    }
+  },
   "landing": {
     "nav": {
       "whyAxeriva": "Why Axeriva",
