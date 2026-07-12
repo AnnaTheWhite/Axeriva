@@ -68,26 +68,32 @@ export default function PlanCard({ plan }: { plan: PlanPricing }) {
         {t(`pricing.plans.${plan.id}.description`)}
       </p>
 
-      {/* Price */}
-      <div className="mt-6">
+      {/* Price — fixed-height slot so every card reserves the same vertical
+          space; Enterprise's "Contact Sales" aligns with the numeric prices
+          instead of pushing the content below it downward. */}
+      <div className="mt-6 flex min-h-[2.75rem] items-baseline gap-1">
         {price ? (
-          <p className="flex items-baseline gap-1">
+          <>
             <span className="text-4xl font-bold text-white">{price}</span>
             <span className="text-sm text-slate-400">{t("pricing.perMonth")}</span>
-          </p>
+          </>
         ) : (
-          <p className="text-3xl font-bold text-white">{t("pricing.contactSales")}</p>
+          <span className="text-2xl font-bold text-white">{t("pricing.contactSales")}</span>
         )}
       </div>
 
-      {/* Trial line (self-serve checkout plans only) */}
-      {isCheckout ? (
-        <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-orange-300">
-          {trialLabel}
-        </p>
-      ) : (
-        <p className="mt-3 text-xs text-slate-500">{t("pricing.enterpriseTagline")}</p>
-      )}
+      {/* Trial / enterprise tagline — fixed-height slot so the CTA below (and
+          the storage/support/feature lists after it) start on the same line
+          across all four cards. */}
+      <div className="mt-3 min-h-[3.25rem]">
+        {isCheckout ? (
+          <p className="rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-orange-300">
+            {trialLabel}
+          </p>
+        ) : (
+          <p className="text-xs text-slate-500">{t("pricing.enterpriseTagline")}</p>
+        )}
+      </div>
 
       {/* CTA — rendered according to the plan's configured ctaType. */}
       {isCheckout ? (
@@ -110,7 +116,10 @@ export default function PlanCard({ plan }: { plan: PlanPricing }) {
             {plan.storageGb === null ? t("pricing.compare.custom") : formatStorageGb(plan.storageGb)}
           </dd>
         </div>
-        <div className="flex items-center justify-between gap-2">
+        {/* Support level can span two lines (e.g. "Dedicated Account
+            Manager"); reserve that height so the feature list below starts on
+            the same line across every card. */}
+        <div className="flex min-h-[2.5rem] items-center justify-between gap-2">
           <dt className="text-slate-400">{t("pricing.labels.support")}</dt>
           <dd className="text-right font-medium text-white">{t(`pricing.support.${plan.support}`)}</dd>
         </div>
