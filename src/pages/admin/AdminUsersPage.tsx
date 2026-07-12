@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx";
 import PageHeader from "../../components/PageHeader";
 import {
   getAnalyticsUsers,
@@ -132,6 +131,9 @@ export default function AdminUsersPage() {
   async function handleExportXlsx() {
     setIsExporting(true);
     try {
+      // Lazy-load xlsx so the ~290 kB SheetJS bundle is code-split out of the
+      // main chunk and only fetched when a user actually exports to Excel.
+      const XLSX = await import("xlsx");
       const rows = await exportAnalyticsUsers(exportQuery);
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
