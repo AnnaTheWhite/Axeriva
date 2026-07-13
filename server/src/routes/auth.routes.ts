@@ -14,6 +14,7 @@ import { RATE_LIMITS } from "../constants/rateLimits";
 import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { logAudit } from "../services/audit/auditLog";
 import { AUDIT_ACTIONS } from "../constants/auditActions";
+import { PLAN_TRIAL_DAYS } from "../config/stripePricing";
 import { config } from "../config";
 
 const router = Router();
@@ -132,8 +133,24 @@ router.post("/register", registerLimiter, async (req, res) => {
 
   const hashedPassword = await bcrypt.hash(passwordCheck.password, 10);
 
+  // Every new company starts on Starter with its trial already running — no
+  // Stripe interaction required to begin it (matches the pricing page's
+  // "14-day free trial, no credit card required"). Trial length comes from
+  // the centralized Stripe pricing config (PLAN_TRIAL_DAYS.starter), not a
+  // magic number here, so it can never drift from what Checkout itself would
+  // apply if the owner later subscribes for real. If a plan is ever
+  // configured with no trial, the company simply starts inactive instead of
+  // fabricating a trial that doesn't exist.
+  const starterTrialDays = PLAN_TRIAL_DAYS.starter;
+  const trialEndsAt =
+    starterTrialDays > 0 ? new Date(Date.now() + starterTrialDays * 24 * 60 * 60 * 1000) : null;
+
   const company = await prisma.company.create({
-    data: { name: companyName },
+    data: {
+      name: companyName,
+      plan: "starter",
+      ...(trialEndsAt ? { subscriptionStatus: "trialing", subscriptionEndsAt: trialEndsAt } : {}),
+    },
   });
 
   const verificationToken = crypto.randomBytes(32).toString("hex");
