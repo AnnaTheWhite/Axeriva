@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { stripe } from "../services/stripe/stripeClient";
 import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
+import { resolveCheckoutPrice } from "../config/stripePricing";
 import { config } from "../config";
 
 const router = Router();
@@ -29,14 +30,28 @@ router.get("/", async (req, res) => {
   return res.json(company);
 });
 
-// Starts a Stripe Checkout session for the Axeriva Pro plan (30 EUR/month).
-// Only the BUSINESS_OWNER who owns the company can subscribe — not
-// DEVELOPER (platform operator) and not EMPLOYEE.
+// Starts a Stripe Checkout session for a subscription. The target price is
+// resolved through the centralized Stripe pricing config from an optional
+// { plan, currency } body:
+//   - no plan            → legacy single-price flow (backward compatible with
+//                          the existing subscription page)
+//   - starter/pro/business → that plan's price for the chosen currency, with
+//                          Starter's 14-day trial applied
+//   - enterprise/founder → rejected (not self-serve purchasable)
+// Only the BUSINESS_OWNER who owns the company can subscribe — not DEVELOPER
+// (platform operator) and not EMPLOYEE.
+//
+// Trial scope (S2.3 vs S2.5): `trial_period_days` / `payment_method_collection`
+// below are Stripe Checkout Session PARAMETERS ONLY — they tell Stripe how to
+// run the session. This route does not implement any trial business logic:
+// no "has this company already had a trial" check, no app-side trial-state
+// tracking, no read-only/expiry enforcement. All of that is S2.5.
 router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
-  if (!config.stripe.priceId) {
-    return res.status(500).json({
-      error: "Stripe is not configured yet (missing STRIPE_PRICE_ID).",
-    });
+  const { plan, currency } = (req.body ?? {}) as { plan?: string; currency?: string };
+
+  const resolution = resolveCheckoutPrice(plan, currency);
+  if (!resolution.ok) {
+    return res.status(resolution.status).json({ error: resolution.error });
   }
 
   const company = await prisma.company.findUnique({
@@ -71,12 +86,17 @@ router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: stripeCustomerId,
-    line_items: [{ price: config.stripe.priceId, quantity: 1 }],
+    line_items: [{ price: resolution.priceId, quantity: 1 }],
     success_url: `${config.frontendUrl}/subscription?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${config.frontendUrl}/subscription?checkout=cancelled`,
     subscription_data: {
       metadata: { companyId: String(company.id) },
+      // Starter carries a 14-day trial (Stripe-side prep only; trial business
+      // logic is a later story).
+      ...(resolution.trialDays > 0 ? { trial_period_days: resolution.trialDays } : {}),
     },
+    // With a trial, don't force a card up front.
+    ...(resolution.trialDays > 0 ? { payment_method_collection: "if_required" as const } : {}),
     metadata: { companyId: String(company.id) },
   });
 

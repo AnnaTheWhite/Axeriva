@@ -33,6 +33,16 @@ const PRODUCTION_REQUIRED = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_ID",
   "STRIPE_WEBHOOK_SECRET",
+  // Commercial plan prices (S2.3) — required in production so a
+  // half-configured deploy fails at startup instead of checkout silently
+  // 500ing per-plan later. Development stays lenient (unset = null, and
+  // resolveCheckoutPrice() reports a clear per-request error).
+  "STRIPE_PRICE_STARTER_EUR",
+  "STRIPE_PRICE_STARTER_HUF",
+  "STRIPE_PRICE_PROFESSIONAL_EUR",
+  "STRIPE_PRICE_PROFESSIONAL_HUF",
+  "STRIPE_PRICE_BUSINESS_EUR",
+  "STRIPE_PRICE_BUSINESS_HUF",
   "RESEND_API_KEY",
   "RESEND_FROM_EMAIL",
   "UPLOAD_ROOT",
@@ -91,8 +101,32 @@ export const config = {
 
   stripe: {
     secretKey: readEnv("STRIPE_SECRET_KEY") ?? null,
+    // Legacy single price ("Axeriva Pro"). Kept for backward compatibility —
+    // still required in production and used by the legacy checkout path and as
+    // the legacy "pro" mapping in the webhook.
     priceId: readEnv("STRIPE_PRICE_ID") ?? null,
     webhookSecret: readEnv("STRIPE_WEBHOOK_SECRET") ?? null,
+    // Per-plan, per-currency Stripe Price IDs (S2.3). Required in production
+    // (see PRODUCTION_REQUIRED above — fails fast at startup if missing);
+    // optionally unset in development until `npm run stripe:setup` has been
+    // run against a test account. Test vs Live is selected by which
+    // STRIPE_SECRET_KEY (and therefore which price IDs) the deploy is
+    // configured with. Resolved via config/stripePricing.ts — no price IDs
+    // are referenced anywhere else.
+    prices: {
+      starter: {
+        eur: readEnv("STRIPE_PRICE_STARTER_EUR") ?? null,
+        huf: readEnv("STRIPE_PRICE_STARTER_HUF") ?? null,
+      },
+      professional: {
+        eur: readEnv("STRIPE_PRICE_PROFESSIONAL_EUR") ?? null,
+        huf: readEnv("STRIPE_PRICE_PROFESSIONAL_HUF") ?? null,
+      },
+      business: {
+        eur: readEnv("STRIPE_PRICE_BUSINESS_EUR") ?? null,
+        huf: readEnv("STRIPE_PRICE_BUSINESS_HUF") ?? null,
+      },
+    },
   },
 
   resend: {

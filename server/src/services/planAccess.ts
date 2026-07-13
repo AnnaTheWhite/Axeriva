@@ -28,6 +28,15 @@ export function isFounder(rawPlan: string | null | undefined): boolean {
   return rawPlan === FOUNDER_PLAN;
 }
 
+// Plans that are assigned manually (never driven by a self-serve Stripe
+// subscription): Founder (internal) and Enterprise (sales-led). Stripe
+// webhooks must never overwrite these. Once the `manualPlan`/`hidden` columns
+// exist (future migration) this can also consult those flags; until then the
+// plan value itself is the source of protection.
+export function isManuallyManaged(rawPlan: string | null | undefined): boolean {
+  return isFounder(rawPlan) || rawPlan === "enterprise";
+}
+
 // Maps any stored plan string to a canonical PlanId:
 //   - a canonical plan → itself
 //   - a legacy value ("free"/"pro") → its mapped canonical plan

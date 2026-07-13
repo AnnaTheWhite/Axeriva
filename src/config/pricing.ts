@@ -59,9 +59,10 @@ export type PlanPricing = {
   highlightIds: string[];
   // Which CTA the card renders (data-driven, see CtaType).
   ctaType: CtaType;
-  // Placeholder for future Stripe wiring (S2.3). Empty in S2.1 — declared now
-  // so the data model does not change when Stripe prices are introduced. Will
-  // hold the Stripe Price lookup key (currency handling lands in S2.3).
+  // Stripe lookup-key base for this plan (S2.3). The backend derives the
+  // per-currency Stripe lookup keys as `${stripeLookupKey}_<currency>_monthly`
+  // (see server/src/config/stripePricing.ts, the authoritative source).
+  // Empty string = not self-serve purchasable (Enterprise → Contact Sales).
   stripeLookupKey: string;
 };
 
@@ -81,7 +82,7 @@ export const PLANS: Record<PlanId, PlanPricing> = {
     support: "standardEmail",
     highlightIds: ["core", "mobile", "analyticsBasic", "exportCsv"],
     ctaType: "checkout",
-    stripeLookupKey: "",
+    stripeLookupKey: "axeriva_starter",
   },
   professional: {
     id: "professional",
@@ -91,7 +92,7 @@ export const PLANS: Record<PlanId, PlanPricing> = {
     support: "priorityEmail",
     highlightIds: ["everythingStarter", "analyticsAdvanced", "developerApi", "exports", "integrations"],
     ctaType: "checkout",
-    stripeLookupKey: "",
+    stripeLookupKey: "axeriva_professional",
   },
   business: {
     id: "business",
@@ -101,7 +102,7 @@ export const PLANS: Record<PlanId, PlanPricing> = {
     support: "prioritySupport",
     highlightIds: ["everythingPro", "automation", "ai", "multiLocation", "webhooks"],
     ctaType: "checkout",
-    stripeLookupKey: "",
+    stripeLookupKey: "axeriva_business",
   },
   enterprise: {
     id: "enterprise",
