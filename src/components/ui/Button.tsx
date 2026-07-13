@@ -8,6 +8,9 @@ type ButtonProps = {
   // existing call sites are unaffected.
   size?: "md" | "lg";
   className?: string;
+  // Non-interactive state (e.g. "Current Plan"). Omitting it keeps existing
+  // call sites unchanged.
+  disabled?: boolean;
 };
 
 export default function Button({
@@ -17,8 +20,9 @@ export default function Button({
   type = "button",
   size = "md",
   className = "",
+  disabled = false,
 }: ButtonProps) {
-  const base = "rounded-xl font-medium transition";
+  const base = "rounded-xl font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
 
   const sizes = {
     md: "px-4 py-2",
@@ -26,17 +30,18 @@ export default function Button({
   };
 
   const styles = {
-    primary: "bg-orange-500 text-white hover:bg-orange-600",
+    primary: "bg-orange-500 text-white hover:bg-orange-600 disabled:hover:bg-orange-500",
     danger:
-      "bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20",
+      "bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 disabled:hover:bg-red-500/10",
     secondary:
-      "bg-white/5 text-white border border-white/10 hover:bg-white/10",
+      "bg-white/5 text-white border border-white/10 hover:bg-white/10 disabled:hover:bg-white/5",
   };
 
   return (
     <button
       type={type}
       onClick={onClick}
+      disabled={disabled}
       className={`${base} ${sizes[size]} ${styles[variant]} ${className}`}
     >
       {children}

@@ -13,6 +13,15 @@ if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
   );
 }
 
+// Full-page navigation (e.g. to a Stripe-hosted Checkout/Portal URL). A
+// plain top-level function rather than an inline `window.location.href = …`
+// inside a component — the React Compiler's static analysis flags mutating
+// `window` from within component/hook scope, so callers that need this from
+// a component (see BillingPlansSection) call this helper instead.
+export function redirectTo(url: string): void {
+  window.location.href = url;
+}
+
 export function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("token");
 

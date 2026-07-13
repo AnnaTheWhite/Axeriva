@@ -1,145 +1,123 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
-import Button from "../components/ui/Button";
+import { SkeletonBlock, SkeletonCardGrid } from "../components/ui/Skeleton";
+import TrialBanner from "../components/billing/TrialBanner";
+import CurrentSubscriptionCard from "../components/billing/CurrentSubscriptionCard";
+import UsageCard from "../components/billing/UsageCard";
+import BillingPlansSection from "../components/billing/BillingPlansSection";
+import BillingInfoCard from "../components/billing/BillingInfoCard";
+import InvoiceHistoryCard from "../components/billing/InvoiceHistoryCard";
 import { useTranslation } from "../i18n";
 import {
   getSubscriptionStatus,
-  startCheckout,
-  startPortal,
   syncCheckoutSession,
   type SubscriptionStatus,
 } from "../services/subscription.service";
+import { getCompanySettings, type CompanySettings } from "../services/companySettings.service";
 
-const ACTIVE_STATUSES = ["active", "trialing"];
-
+// Billing Settings (S2.4) — replaces the legacy single-plan "Axeriva Pro"
+// page. Assembles the S2.1 pricing config, the S2.2 Feature/Limit Registry
+// (via the extended /subscription payload) and the S2.3 checkout endpoint
+// into a read-only billing overview. No trial engine, no read-only
+// enforcement, no upgrade/downgrade business logic, no Stripe Portal/invoice
+// sync — those are later stories; buttons here only call the existing S2.3
+// checkout endpoint.
 export default function SubscriptionPage() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
+  const [settings, setSettings] = useState<CompanySettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
 
   const checkoutResult = searchParams.get("checkout");
   const sessionId = searchParams.get("session_id");
 
-  const loadStatus = () => {
-    getSubscriptionStatus()
-      .then(setStatus)
-      .catch(() => setStatus(null));
-  };
+  function loadAll() {
+    Promise.all([getSubscriptionStatus(), getCompanySettings()])
+      .then(([s, c]) => {
+        setStatus(s);
+        setSettings(c);
+      })
+      .catch(() => {
+        setStatus(null);
+        setSettings(null);
+      })
+      .finally(() => setIsLoading(false));
+  }
 
   useEffect(() => {
-    loadStatus();
+    loadAll();
   }, []);
 
   useEffect(() => {
     if (checkoutResult === "success" && sessionId) {
       // Don't rely solely on the webhook having already landed — reconcile
-      // directly from the Checkout Session we just returned from, then
-      // refresh what's shown on screen.
+      // directly from the Checkout Session we just returned from (existing
+      // S2.3 sync endpoint), then refresh what's shown on screen.
       syncCheckoutSession(sessionId)
         .then(() => {
-          setMessage("Subscription activated.");
-          loadStatus();
+          setMessage(t("subscription.checkout.success"));
+          loadAll();
         })
-        .catch(() =>
-          setMessage(
-            "Payment succeeded, but we couldn't confirm it yet — refresh in a moment."
-          )
-        );
+        .catch(() => setMessage(t("subscription.checkout.syncFailed")));
     } else if (checkoutResult === "cancelled") {
-      setMessage("Checkout was cancelled — you have not been charged.");
+      setMessage(t("subscription.checkout.cancelled"));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkoutResult, sessionId]);
 
-  const isActive = status ? ACTIVE_STATUSES.includes(status.subscriptionStatus) : false;
-
-  async function handleSubscribe() {
-    setMessage(null);
-    setIsStarting(true);
-
-    try {
-      const url = await startCheckout();
-      window.location.href = url;
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Failed to start checkout"
-      );
-      setIsStarting(false);
-    }
+  if (isLoading) {
+    return (
+      <div className="p-4 sm:p-8" aria-busy="true">
+        <PageHeader title={t("subscription.title")} subtitle={t("subscription.subtitle")} />
+        <div className="mb-6">
+          <SkeletonBlock className="h-40 w-full rounded-3xl" />
+        </div>
+        <SkeletonCardGrid count={4} />
+      </div>
+    );
   }
 
-  async function handleManage() {
-    setMessage(null);
-    setIsStarting(true);
-
-    try {
-      const url = await startPortal();
-      window.location.href = url;
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Failed to open billing portal"
-      );
-      setIsStarting(false);
-    }
+  if (!status || !settings) {
+    return (
+      <div className="p-4 sm:p-8">
+        <PageHeader title={t("subscription.title")} subtitle={t("subscription.subtitle")} />
+        <p className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {t("subscription.loadError")}
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="p-4 sm:p-8">
-      <PageHeader
-        title={t("subscription.title")}
-        subtitle={t("subscription.subtitle")}
-      />
+      <PageHeader title={t("subscription.title")} subtitle={t("subscription.subtitle")} />
+
+      <TrialBanner subscriptionStatus={status.subscriptionStatus} />
+
+      {message && (
+        <p className="mb-6 rounded-lg bg-orange-500/10 px-4 py-3 text-sm text-orange-300">{message}</p>
+      )}
+
+      <div className="mb-8">
+        <CurrentSubscriptionCard status={status} />
+      </div>
+
+      <div className="mb-8">
+        <UsageCard usage={status.usage} limits={status.limits} />
+      </div>
+
+      <h2 className="mb-4 text-lg font-semibold text-white">{t("subscription.plans.title")}</h2>
+      <div className="mb-8">
+        <BillingPlansSection currentPlan={status.effectivePlan} onCheckoutError={setMessage} />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
-          <p className="text-sm text-slate-400">Current plan</p>
-          <h3 className="mt-2 text-2xl font-bold capitalize text-white">
-            {status?.plan ?? "—"}
-          </h3>
-
-          <p className="mt-4 text-sm text-slate-400">Status</p>
-          <p className="mt-1 capitalize text-white">
-            {status?.subscriptionStatus ?? "—"}
-          </p>
-
-          <p className="mt-4 text-sm text-slate-400">Next billing date</p>
-          <p className="mt-1 text-white">
-            {status?.subscriptionEndsAt
-              ? new Date(status.subscriptionEndsAt).toLocaleDateString()
-              : "—"}
-          </p>
-        </div>
-
-        <div className="rounded-3xl border border-orange-500/30 bg-white/5 p-8 backdrop-blur-xl">
-          <h3 className="text-xl font-semibold text-white">Axeriva Pro</h3>
-          <p className="mt-2 text-3xl font-bold text-white">
-            €30 <span className="text-base font-normal text-slate-400">/ month</span>
-          </p>
-          <p className="mt-3 text-sm text-slate-400">
-            Unlimited employees, projects, customers, scheduling, time
-            tracking and future AI features.
-          </p>
-
-          {message && (
-            <p className="mt-4 rounded-lg bg-orange-500/10 px-3 py-2 text-sm text-orange-400">
-              {message}
-            </p>
-          )}
-
-          <div className="mt-6">
-            {isActive ? (
-              <Button onClick={handleManage}>
-                {isStarting ? "Opening billing portal..." : "Manage Subscription"}
-              </Button>
-            ) : (
-              <Button onClick={handleSubscribe}>
-                {isStarting ? "Starting checkout..." : "Subscribe"}
-              </Button>
-            )}
-          </div>
-        </div>
+        <BillingInfoCard settings={settings} hasStripeCustomer={status.hasStripeCustomer} />
+        <InvoiceHistoryCard />
       </div>
     </div>
   );

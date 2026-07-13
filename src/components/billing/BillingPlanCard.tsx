@@ -1,0 +1,89 @@
+import Badge from "../ui/Badge";
+import Button from "../ui/Button";
+import { getPlanPrice, type PlanPricing } from "../../config/pricing";
+import { useTranslation } from "../../i18n";
+
+export type BillingPlanAction = "current" | "upgrade" | "downgrade" | "contact";
+
+type BillingPlanCardProps = {
+  plan: PlanPricing;
+  action: BillingPlanAction;
+  isCurrent: boolean;
+  onCheckout: () => void;
+  isCheckingOut: boolean;
+};
+
+// Enterprise-CTA target is a placeholder — a real sales flow is wired in a
+// later story, matching the same approach as the public pricing page.
+const CTA_CONTACT_HREF = "mailto:sales@axeriva.com";
+
+export default function BillingPlanCard({
+  plan,
+  action,
+  isCurrent,
+  onCheckout,
+  isCheckingOut,
+}: BillingPlanCardProps) {
+  const { t, language } = useTranslation();
+  const price = getPlanPrice(plan, language);
+
+  return (
+    <article
+      className={`flex flex-col rounded-3xl border p-6 backdrop-blur-xl ${
+        isCurrent ? "border-orange-500/50" : "border-white/10 bg-white/5"
+      }`}
+      aria-label={t(`pricing.plans.${plan.id}.name`)}
+    >
+      <div className="flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-white">{t(`pricing.plans.${plan.id}.name`)}</h3>
+        {isCurrent && <Badge variant="info">{t("subscription.plans.current")}</Badge>}
+        {plan.recommended && !isCurrent && (
+          <Badge variant="neutral">{t("pricing.recommended")}</Badge>
+        )}
+      </div>
+
+      <div className="mt-4">
+        {price ? (
+          <p className="flex items-baseline gap-1">
+            <span className="text-3xl font-bold text-white">{price}</span>
+            <span className="text-sm text-slate-400">{t("pricing.perMonth")}</span>
+          </p>
+        ) : (
+          <p className="text-2xl font-bold text-white">{t("pricing.contactSales")}</p>
+        )}
+      </div>
+
+      <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-300">
+        {plan.highlightIds.slice(0, 3).map((hid) => (
+          <li key={hid} className="flex items-center gap-2">
+            <span aria-hidden="true" className="text-orange-400">✓</span>
+            {t(`pricing.plans.${plan.id}.highlights.${hid}`)}
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-6">
+        {action === "contact" ? (
+          <a
+            href={CTA_CONTACT_HREF}
+            className="block w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+          >
+            {t("pricing.cta.contactSales")}
+          </a>
+        ) : action === "current" ? (
+          <Button variant="secondary" className="w-full" disabled>
+            {t("subscription.plans.current")}
+          </Button>
+        ) : action === "upgrade" ? (
+          <Button className="w-full" onClick={onCheckout} disabled={isCheckingOut}>
+            {isCheckingOut ? t("subscription.plans.redirecting") : t("subscription.plans.upgrade")}
+          </Button>
+        ) : (
+          <Button variant="secondary" className="w-full" onClick={onCheckout} disabled={isCheckingOut}>
+            {isCheckingOut ? t("subscription.plans.redirecting") : t("subscription.plans.downgrade")}
+          </Button>
+        )}
+      </div>
+    </article>
+  );
+}

@@ -5,21 +5,30 @@ import { ROLES } from "../constants/roles";
 import { stripe } from "../services/stripe/stripeClient";
 import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
 import { resolveCheckoutPrice } from "../config/stripePricing";
+import { getLimit, getEffectivePlan } from "../services/planAccess";
 import { config } from "../config";
 
 const router = Router();
 
 router.use(requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER));
 
-// Current plan / billing status for the logged-in company.
+// Current plan / billing status for the logged-in company, plus the usage
+// counts and S2.2 Limit Registry ceilings the Billing Settings page needs
+// (S2.4). No new endpoint — this is the existing status endpoint, extended.
+// Limits resolve through getLimit() (never hardcoded here); Infinity
+// (unlimited) serializes to `null` via JSON.stringify, which the frontend
+// already treats as "unlimited".
 router.get("/", async (req, res) => {
+  const companyId = req.user!.companyId!;
+
   const company = await prisma.company.findUnique({
-    where: { id: req.user!.companyId! },
+    where: { id: companyId },
     select: {
       plan: true,
       subscriptionStatus: true,
       subscriptionEndsAt: true,
       stripeSubscriptionId: true,
+      stripeCustomerId: true,
     },
   });
 
@@ -27,7 +36,42 @@ router.get("/", async (req, res) => {
     return res.status(404).json({ error: "Company not found" });
   }
 
-  return res.json(company);
+  const [projects, employees, customers, storage] = await Promise.all([
+    prisma.project.count({ where: { companyId } }),
+    prisma.employee.count({ where: { companyId } }),
+    prisma.customer.count({ where: { companyId } }),
+    prisma.projectAttachment.aggregate({
+      _sum: { fileSize: true },
+      where: { project: { companyId } },
+    }),
+  ]);
+
+  return res.json({
+    plan: company.plan,
+    // Canonical plan for display/comparison (legacy "free"/"pro" resolved to
+    // starter/professional, "founder" passed through) — the SAME S2.2
+    // normalization used for feature/limit gating (getEffectivePlan), so the
+    // frontend never re-implements the legacy-plan mapping itself.
+    effectivePlan: getEffectivePlan(company.plan),
+    subscriptionStatus: company.subscriptionStatus,
+    subscriptionEndsAt: company.subscriptionEndsAt,
+    stripeSubscriptionId: company.stripeSubscriptionId,
+    // Placeholder-friendly boolean only — never expose the raw Stripe
+    // customer ID to the billing UI.
+    hasStripeCustomer: Boolean(company.stripeCustomerId),
+    usage: {
+      projects,
+      employees,
+      customers,
+      storageBytes: storage._sum.fileSize ?? 0,
+    },
+    limits: {
+      projects: getLimit(company.plan, "projects"),
+      employees: getLimit(company.plan, "employees"),
+      customers: getLimit(company.plan, "customers"),
+      storageBytes: getLimit(company.plan, "storage"),
+    },
+  });
 });
 
 // Starts a Stripe Checkout session for a subscription. The target price is

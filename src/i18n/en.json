@@ -399,8 +399,67 @@
     }
   },
   "subscription": {
-    "title": "Subscription",
-    "subtitle": "Manage your Axeriva billing plan."
+    "title": "Billing Settings",
+    "subtitle": "Manage your Axeriva plan, usage and billing information.",
+    "loadError": "We couldn't load your billing information. Please try again later.",
+    "currentPlan": {
+      "title": "Current Plan",
+      "badge": "Active plan",
+      "trialStatus": "Trial status",
+      "trialStatusTip": "Full trial countdown and expiry details are coming in a later update.",
+      "onTrial": "On trial",
+      "notOnTrial": "Not on trial",
+      "renewalDate": "Renewal / expiration date",
+      "renewalDateTip": "Detailed renewal information is coming in a later update.",
+      "currency": "Currency",
+      "storageUsage": "Storage usage"
+    },
+    "status": {
+      "active": "Active",
+      "trialing": "Trialing",
+      "past_due": "Past due",
+      "canceled": "Canceled",
+      "inactive": "Inactive"
+    },
+    "usage": {
+      "title": "Usage",
+      "storage": "Storage",
+      "employees": "Employees",
+      "projects": "Projects",
+      "customers": "Customers",
+      "unlimited": "Unlimited"
+    },
+    "plans": {
+      "title": "Available Plans",
+      "current": "Current Plan",
+      "upgrade": "Upgrade",
+      "downgrade": "Downgrade",
+      "redirecting": "Redirecting…"
+    },
+    "billingInfo": {
+      "title": "Billing Information",
+      "companyName": "Company name",
+      "billingEmail": "Billing email",
+      "vatNumber": "VAT number",
+      "billingCountry": "Billing country",
+      "currency": "Currency",
+      "stripeCustomer": "Stripe customer",
+      "stripeConnected": "Connected",
+      "stripeNotConnected": "Not connected yet"
+    },
+    "invoices": {
+      "title": "Invoice History",
+      "emptyTitle": "No invoices yet",
+      "emptyDesc": "Your invoices will appear here after your first payment."
+    },
+    "trial": {
+      "bannerMessage": "You're currently on a trial. Full trial details will be available in a future update."
+    },
+    "checkout": {
+      "success": "Subscription updated.",
+      "syncFailed": "Payment succeeded, but we couldn't confirm it yet — refresh in a moment.",
+      "cancelled": "Checkout was cancelled — you have not been charged."
+    }
   },
   "auth": {
     "loggedOut": "You have been logged out.",

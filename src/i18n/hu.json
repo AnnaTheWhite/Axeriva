@@ -399,8 +399,67 @@
     }
   },
   "subscription": {
-    "title": "Előfizetés",
-    "subtitle": "Kezelje az Axeriva előfizetési csomagját."
+    "title": "Számlázási beállítások",
+    "subtitle": "Kezelje az Axeriva csomagját, használatát és számlázási adatait.",
+    "loadError": "Nem sikerült betölteni a számlázási adatokat. Kérjük, próbálja újra később.",
+    "currentPlan": {
+      "title": "Jelenlegi csomag",
+      "badge": "Aktív csomag",
+      "trialStatus": "Próbaidőszak állapota",
+      "trialStatusTip": "A teljes próbaidőszak-visszaszámláló és lejárati részletek egy későbbi frissítésben érkeznek.",
+      "onTrial": "Próbaidőszakban",
+      "notOnTrial": "Nincs próbaidőszakban",
+      "renewalDate": "Megújítás / lejárat dátuma",
+      "renewalDateTip": "A részletes megújítási információk egy későbbi frissítésben érkeznek.",
+      "currency": "Pénznem",
+      "storageUsage": "Tárhely-használat"
+    },
+    "status": {
+      "active": "Aktív",
+      "trialing": "Próbaidőszak",
+      "past_due": "Lejárt fizetés",
+      "canceled": "Lemondva",
+      "inactive": "Inaktív"
+    },
+    "usage": {
+      "title": "Használat",
+      "storage": "Tárhely",
+      "employees": "Munkatársak",
+      "projects": "Projektek",
+      "customers": "Ügyfelek",
+      "unlimited": "Korlátlan"
+    },
+    "plans": {
+      "title": "Elérhető csomagok",
+      "current": "Jelenlegi csomag",
+      "upgrade": "Csomagváltás felfelé",
+      "downgrade": "Csomagváltás lefelé",
+      "redirecting": "Átirányítás…"
+    },
+    "billingInfo": {
+      "title": "Számlázási adatok",
+      "companyName": "Cégnév",
+      "billingEmail": "Számlázási e-mail",
+      "vatNumber": "Adószám",
+      "billingCountry": "Számlázási ország",
+      "currency": "Pénznem",
+      "stripeCustomer": "Stripe ügyfél",
+      "stripeConnected": "Csatlakoztatva",
+      "stripeNotConnected": "Még nincs csatlakoztatva"
+    },
+    "invoices": {
+      "title": "Számlaelőzmények",
+      "emptyTitle": "Még nincs számla",
+      "emptyDesc": "A számláid az első fizetés után itt fognak megjelenni."
+    },
+    "trial": {
+      "bannerMessage": "Jelenleg próbaidőszakban vagy. A teljes próbaidőszak-részletek egy későbbi frissítésben lesznek elérhetők."
+    },
+    "checkout": {
+      "success": "Az előfizetés frissült.",
+      "syncFailed": "A fizetés sikeres volt, de még nem tudtuk megerősíteni — frissítsd az oldalt egy pillanat múlva.",
+      "cancelled": "A fizetési folyamat megszakadt — nem történt terhelés."
+    }
   },
   "auth": {
     "loggedOut": "Sikeresen kijelentkezett.",
