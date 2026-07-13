@@ -25,18 +25,26 @@ export function currencyForLanguage(language: Language): Currency {
   return language === "hu" ? "HUF" : "EUR";
 }
 
-// Trial terms — the UI reads these instead of hardcoding "14 days" / "no card"
-// anywhere. Static in S2.1; a later story can source them from the backend
-// without touching any component.
+// Trial terms, per plan — the UI reads these instead of hardcoding "14 days" /
+// "no card" anywhere. Mirrors the backend's Stripe trial config
+// (server/src/config/stripePricing.ts PLAN_TRIAL_DAYS) so both sides agree:
+// only Starter has a trial; Professional/Business bill immediately;
+// Enterprise has no self-serve checkout at all (Contact Sales).
 export type TrialConfig = {
   trialDays: number;
   requiresCreditCard: boolean;
 };
 
-export const TRIAL: TrialConfig = {
-  trialDays: 14,
-  requiresCreditCard: false,
-};
+export const PLAN_TRIAL: Readonly<Record<PlanId, TrialConfig>> = Object.freeze({
+  starter: { trialDays: 14, requiresCreditCard: false },
+  professional: { trialDays: 0, requiresCreditCard: false },
+  business: { trialDays: 0, requiresCreditCard: false },
+  enterprise: { trialDays: 0, requiresCreditCard: false },
+});
+
+export function hasTrial(planId: PlanId): boolean {
+  return PLAN_TRIAL[planId].trialDays > 0;
+}
 
 // How a plan's primary CTA behaves. Kept as data (not branched inside the
 // component) so a new CTA behavior is a config change:

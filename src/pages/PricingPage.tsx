@@ -4,7 +4,7 @@ import PricingCards from "../components/pricing/PricingCards";
 import PricingMarketing from "../components/pricing/PricingMarketing";
 import PlanComparisonTable from "../components/pricing/PlanComparisonTable";
 import PricingFAQ from "../components/pricing/PricingFAQ";
-import { TRIAL } from "../config/pricing";
+import { PLAN_LIST, PLAN_TRIAL, hasTrial } from "../config/pricing";
 import { useTranslation } from "../i18n";
 
 // Public /pricing page: marketing hero + per-company advantage banner + four
@@ -13,9 +13,16 @@ import { useTranslation } from "../i18n";
 export default function PricingPage() {
   const { t } = useTranslation();
 
-  const trialLabel =
-    t("pricing.trialBadge", { days: TRIAL.trialDays }) +
-    (TRIAL.requiresCreditCard ? "" : ` · ${t("pricing.noCreditCard")}`);
+  // Only one plan currently has a trial (Starter) — resolved from the
+  // centralized config rather than hardcoded here, so the hero banner can
+  // never drift out of sync with what the plan cards / checkout actually do.
+  const trialPlan = PLAN_LIST.find((plan) => hasTrial(plan.id));
+  const trialLabel = trialPlan
+    ? t("pricing.heroTrialBadge", {
+        plan: t(`pricing.plans.${trialPlan.id}.name`),
+        days: PLAN_TRIAL[trialPlan.id].trialDays,
+      }) + (PLAN_TRIAL[trialPlan.id].requiresCreditCard ? "" : ` · ${t("pricing.noCreditCard")}`)
+    : null;
 
   return (
     <div className="min-h-screen bg-[#0f172a]">
@@ -28,9 +35,11 @@ export default function PricingPage() {
             {t("pricing.title")}
           </h1>
           <p className="mt-4 text-slate-400">{t("pricing.subtitle")}</p>
-          <p className="mt-3 inline-flex rounded-full bg-orange-500/10 px-4 py-1.5 text-sm font-medium text-orange-300">
-            {trialLabel}
-          </p>
+          {trialLabel && (
+            <p className="mt-3 inline-flex rounded-full bg-orange-500/10 px-4 py-1.5 text-sm font-medium text-orange-300">
+              {trialLabel}
+            </p>
+          )}
         </header>
 
         {/* Per-company competitive advantage */}

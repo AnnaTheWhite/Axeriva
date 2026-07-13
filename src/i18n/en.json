@@ -789,7 +789,9 @@
     "perMonth": "/ month",
     "contactSales": "Contact Sales",
     "trialBadge": "{{days}}-day free trial",
+    "heroTrialBadge": "{{plan}}: {{days}}-day free trial",
     "noCreditCard": "No credit card required",
+    "noTrialTagline": "No trial — billed immediately.",
     "enterpriseTagline": "Custom pricing for larger teams.",
     "recommended": "Most popular",
     "labels": { "storage": "Storage", "support": "Support" },
@@ -799,7 +801,7 @@
       "prioritySupport": "Priority Support",
       "dedicatedManager": "Dedicated Account Manager"
     },
-    "cta": { "startTrial": "Start free trial", "contactSales": "Contact Sales" },
+    "cta": { "startTrial": "Start free trial", "subscribe": "Subscribe", "contactSales": "Contact Sales" },
     "plans": {
       "starter": {
         "name": "Starter",

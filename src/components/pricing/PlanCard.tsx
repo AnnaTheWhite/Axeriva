@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import { getPlanPrice, formatStorageGb, TRIAL, type PlanPricing } from "../../config/pricing";
+import { getPlanPrice, formatStorageGb, PLAN_TRIAL, hasTrial, type PlanPricing } from "../../config/pricing";
 
 // A single pricing plan card. Purely presentational — reads prices, trial
 // terms, recommended flag and CTA behavior from the centralized pricing config
@@ -42,13 +42,16 @@ export default function PlanCard({ plan }: { plan: PlanPricing }) {
     : "mt-8 block w-full rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-center text-base font-semibold text-white transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900";
 
   const isCheckout = plan.ctaType === "checkout";
+  const trial = PLAN_TRIAL[plan.id];
+  const planHasTrial = hasTrial(plan.id);
 
-  // Trial line composed from the central TRIAL config (never hardcoded here):
-  // "14-day free trial" plus "· No credit card required" when no card is
-  // needed.
+  // Trial line composed from the per-plan PLAN_TRIAL config (never
+  // hardcoded here): "14-day free trial" plus "· No credit card required"
+  // when no card is needed. Only plans with trialDays > 0 show this —
+  // currently Starter only.
   const trialLabel =
-    t("pricing.trialBadge", { days: TRIAL.trialDays }) +
-    (TRIAL.requiresCreditCard ? "" : ` · ${t("pricing.noCreditCard")}`);
+    t("pricing.trialBadge", { days: trial.trialDays }) +
+    (trial.requiresCreditCard ? "" : ` · ${t("pricing.noCreditCard")}`);
 
   return (
     <article
@@ -82,23 +85,28 @@ export default function PlanCard({ plan }: { plan: PlanPricing }) {
         )}
       </div>
 
-      {/* Trial / enterprise tagline — fixed-height slot so the CTA below (and
-          the storage/support/feature lists after it) start on the same line
-          across all four cards. */}
+      {/* Trial / no-trial / enterprise tagline — fixed-height slot so the CTA
+          below (and the storage/support/feature lists after it) start on the
+          same line across all four cards. */}
       <div className="mt-3 min-h-[3.25rem]">
         {isCheckout ? (
-          <p className="rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-orange-300">
-            {trialLabel}
-          </p>
+          planHasTrial ? (
+            <p className="rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-orange-300">
+              {trialLabel}
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">{t("pricing.noTrialTagline")}</p>
+          )
         ) : (
           <p className="text-xs text-slate-500">{t("pricing.enterpriseTagline")}</p>
         )}
       </div>
 
-      {/* CTA — rendered according to the plan's configured ctaType. */}
+      {/* CTA — rendered according to the plan's configured ctaType and
+          whether the plan has a trial. */}
       {isCheckout ? (
         <Link to={CTA_CHECKOUT_HREF} className={ctaClass}>
-          {t("pricing.cta.startTrial")}
+          {planHasTrial ? t("pricing.cta.startTrial") : t("pricing.cta.subscribe")}
         </Link>
       ) : (
         // contact-sales: placeholder button (no real target yet). The sales

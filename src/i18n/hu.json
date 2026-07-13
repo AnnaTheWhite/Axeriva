@@ -789,7 +789,9 @@
     "perMonth": "/ hó",
     "contactSales": "Kapcsolatfelvétel",
     "trialBadge": "{{days}} napos ingyenes próba",
+    "heroTrialBadge": "{{plan}}: {{days}} napos ingyenes próba",
     "noCreditCard": "Bankkártya nem szükséges",
+    "noTrialTagline": "Nincs próbaidőszak — azonnal számlázunk.",
     "enterpriseTagline": "Egyedi árazás nagyobb csapatoknak.",
     "recommended": "Legnépszerűbb",
     "labels": { "storage": "Tárhely", "support": "Támogatás" },
@@ -799,7 +801,7 @@
       "prioritySupport": "Elsőbbségi támogatás",
       "dedicatedManager": "Dedikált ügyfélmenedzser"
     },
-    "cta": { "startTrial": "Ingyenes próba indítása", "contactSales": "Kapcsolatfelvétel" },
+    "cta": { "startTrial": "Ingyenes próba indítása", "subscribe": "Előfizetés", "contactSales": "Kapcsolatfelvétel" },
     "plans": {
       "starter": {
         "name": "Starter",
