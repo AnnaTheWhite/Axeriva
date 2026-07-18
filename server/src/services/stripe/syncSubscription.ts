@@ -42,7 +42,7 @@ export async function applySubscriptionUpdate(
 ): Promise<void> {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
-    select: { plan: true },
+    select: { plan: true, pendingPlan: true },
   });
 
   if (company && isManuallyManaged(company.plan)) {
@@ -58,6 +58,16 @@ export async function applySubscriptionUpdate(
     subscription.status === "active" || subscription.status === "trialing";
   const nextPlan = isPositive ? resolvedPlan ?? company?.plan ?? "starter" : "free";
 
+  // Pending-downgrade bookkeeping (S2.6). The pendingPlan marker only means
+  // anything while a Subscription Schedule is still attached and hasn't
+  // switched the price yet. Once the schedule flips the phase (Stripe now
+  // reports the downgrade target as the live price) or the schedule is gone
+  // (released/cancelled), the marker is cleared — the sync layer self-heals
+  // instead of trusting the service to have cleaned up.
+  const hasSchedule = Boolean(subscription.schedule);
+  const pendingStillApplies =
+    hasSchedule && company?.pendingPlan != null && resolvedPlan !== company.pendingPlan;
+
   await prisma.company.update({
     where: { id: companyId },
     data: {
@@ -66,6 +76,8 @@ export async function applySubscriptionUpdate(
       subscriptionStatus: subscription.status,
       plan: nextPlan,
       subscriptionEndsAt: currentPeriodEnd(subscription),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      pendingPlan: pendingStillApplies ? company!.pendingPlan : null,
     },
   });
 
@@ -75,6 +87,7 @@ export async function applySubscriptionUpdate(
     metadata: {
       status: subscription.status,
       plan: nextPlan,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
     },
   });
 }
@@ -96,6 +109,10 @@ export async function markSubscriptionCanceled(companyId: number, subscription: 
       subscriptionStatus: "canceled",
       plan: "free",
       subscriptionEndsAt: currentPeriodEnd(subscription),
+      // A fully-ended subscription has nothing pending and nothing left to
+      // cancel — reset the S2.6 flags so the billing UI reads clean.
+      cancelAtPeriodEnd: false,
+      pendingPlan: null,
     },
   });
 }

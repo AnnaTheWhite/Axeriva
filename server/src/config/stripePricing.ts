@@ -23,6 +23,15 @@ export function isStripeCurrency(value: unknown): value is StripeCurrency {
   return typeof value === "string" && (STRIPE_CURRENCIES as readonly string[]).includes(value);
 }
 
+// Accepts the currency in either the frontend's display form ("HUF"/"EUR",
+// see src/config/pricing.ts) or Stripe's lowercase form; anything else falls
+// back to EUR. Centralized so checkout and plan changes can never disagree
+// on how a request's currency is interpreted.
+export function normalizeCurrency(value: unknown): StripeCurrency {
+  const lowered = typeof value === "string" ? value.toLowerCase() : "";
+  return isStripeCurrency(lowered) ? lowered : "eur";
+}
+
 // Plans that can be bought self-serve via Checkout. Enterprise (contact sales)
 // and Founder (internal) are deliberately excluded.
 export const PURCHASABLE_PLANS = ["starter", "professional", "business"] as const;
@@ -145,7 +154,7 @@ export function resolveCheckoutPrice(
     };
   }
 
-  const resolvedCurrency: StripeCurrency = isStripeCurrency(currency) ? currency : "eur";
+  const resolvedCurrency: StripeCurrency = normalizeCurrency(currency);
   const priceId = priceIdFor(plan, resolvedCurrency);
   if (!priceId) {
     return {

@@ -30,6 +30,14 @@ model Company {
   stripeSubscriptionId String?
   subscriptionEndsAt   DateTime?
 
+  // S2.6 upgrade/downgrade engine — both maintained exclusively by the
+  // Stripe sync layer (services/stripe/syncSubscription.ts) and the plan
+  // change service. `cancelAtPeriodEnd` mirrors Stripe's flag of the same
+  // name; `pendingPlan` holds the canonical plan a scheduled (period-end)
+  // downgrade will land on, null when no downgrade is pending.
+  cancelAtPeriodEnd Boolean @default(false)
+  pendingPlan       String?
+
   // Soft-delete — set together when the owning BUSINESS_OWNER deletes their
   // account. Existing rows/relations are kept for history, nothing is
   // physically removed.

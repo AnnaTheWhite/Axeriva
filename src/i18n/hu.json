@@ -411,8 +411,11 @@
       "notOnTrial": "Nincs próbaidőszakban",
       "renewalDate": "Megújítás / lejárat dátuma",
       "renewalDateTip": "A részletes megújítási információk egy későbbi frissítésben érkeznek.",
+      "billingPeriod": "Aktuális számlázási időszak",
+      "billingPeriodUntil": "Eddig: {{date}}",
       "currency": "Pénznem",
-      "storageUsage": "Tárhely-használat"
+      "storageUsage": "Tárhely-használat",
+      "upgraded": "Csomagváltás sikeres — az új limitek azonnal érvényesek."
     },
     "status": {
       "active": "Aktív",
@@ -432,9 +435,36 @@
     "plans": {
       "title": "Elérhető csomagok",
       "current": "Jelenlegi csomag",
-      "upgrade": "Csomagváltás felfelé",
-      "downgrade": "Csomagváltás lefelé",
-      "redirecting": "Átirányítás…"
+      "upgradeTo": "Váltás erre: {{plan}}",
+      "downgradeTo": "Visszaváltás erre: {{plan}}",
+      "pendingTarget": "Ütemezve",
+      "managed": "Az Axeriva kezeli",
+      "processing": "Feldolgozás…"
+    },
+    "downgrade": {
+      "confirmTitle": "Visszaváltás erre: {{plan}}?",
+      "confirmMessage": "A jelenlegi csomagod a számlázási időszak végéig aktív marad, utána az előfizetésed átvált erre: {{plan}}. Semmi nem törlődik — az adataid megmaradnak.",
+      "confirmCta": "Visszaváltás ütemezése",
+      "keepCurrent": "Maradok a jelenlegi csomagon",
+      "pendingBadge": "Visszaváltás erre: {{plan}}",
+      "nextPlan": "Következő csomag",
+      "pendingLine": "Visszaváltás erre: {{plan}} az időszak végén",
+      "scheduled": "A visszaváltás a számlázási időszak végére ütemezve.",
+      "cancelled": "A függő visszaváltás törölve — a jelenlegi csomagodon maradsz."
+    },
+    "cancellation": {
+      "pendingBadge": "Lemondás folyamatban",
+      "cancellationDate": "Lemondás dátuma",
+      "endsOn": "Az előfizetésed ekkor ér véget: {{date}}.",
+      "hint": "Bármikor lemondhatod — a hozzáférés a számlázási időszak végéig megmarad.",
+      "cancel": "Előfizetés lemondása",
+      "resume": "Előfizetés folytatása",
+      "confirmTitle": "Lemondod az előfizetést?",
+      "confirmMessage": "A csomagod eddig marad aktív: {{date}}. Addig bármikor folytathatod, az adataid pedig mindig megmaradnak.",
+      "confirmCta": "Lemondás",
+      "keepSubscription": "Megtartom az előfizetést",
+      "cancelled": "A lemondás ütemezve — a hozzáférés a számlázási időszak végéig megmarad.",
+      "resumed": "Az előfizetés folytatódik."
     },
     "billingInfo": {
       "title": "Számlázási adatok",

@@ -3,14 +3,26 @@ import Button from "../ui/Button";
 import { getPlanPrice, type PlanPricing } from "../../config/pricing";
 import { useTranslation } from "../../i18n";
 
-export type BillingPlanAction = "current" | "upgrade" | "downgrade" | "contact";
+export type BillingPlanAction =
+  | "current"
+  | "upgrade"
+  | "downgrade"
+  | "contact"
+  // Founder/Enterprise companies: catalog is visible, self-serve changes are
+  // not offered (operator-managed).
+  | "managed";
 
 type BillingPlanCardProps = {
   plan: PlanPricing;
   action: BillingPlanAction;
   isCurrent: boolean;
-  onCheckout: () => void;
-  isCheckingOut: boolean;
+  // This plan is the target of a scheduled period-end downgrade.
+  isPendingDowngradeTarget: boolean;
+  onAction: () => void;
+  // This card's own request is in flight.
+  isProcessing: boolean;
+  // Some other change is in flight — every action stays disabled meanwhile.
+  disabled: boolean;
 };
 
 // Enterprise-CTA target is a placeholder — a real sales flow is wired in a
@@ -21,11 +33,15 @@ export default function BillingPlanCard({
   plan,
   action,
   isCurrent,
-  onCheckout,
-  isCheckingOut,
+  isPendingDowngradeTarget,
+  onAction,
+  isProcessing,
+  disabled,
 }: BillingPlanCardProps) {
   const { t, language } = useTranslation();
   const price = getPlanPrice(plan, language);
+
+  const actionDisabled = disabled || isProcessing;
 
   return (
     <article
@@ -34,9 +50,12 @@ export default function BillingPlanCard({
       }`}
       aria-label={t(`pricing.plans.${plan.id}.name`)}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-semibold text-white">{t(`pricing.plans.${plan.id}.name`)}</h3>
         {isCurrent && <Badge variant="info">{t("subscription.plans.current")}</Badge>}
+        {isPendingDowngradeTarget && (
+          <Badge variant="warning">{t("subscription.plans.pendingTarget")}</Badge>
+        )}
         {plan.recommended && !isCurrent && (
           <Badge variant="neutral">{t("pricing.recommended")}</Badge>
         )}
@@ -70,17 +89,25 @@ export default function BillingPlanCard({
           >
             {t("pricing.cta.contactSales")}
           </a>
+        ) : action === "managed" ? (
+          <Button variant="secondary" className="w-full" disabled>
+            {t("subscription.plans.managed")}
+          </Button>
         ) : action === "current" ? (
           <Button variant="secondary" className="w-full" disabled>
             {t("subscription.plans.current")}
           </Button>
         ) : action === "upgrade" ? (
-          <Button className="w-full" onClick={onCheckout} disabled={isCheckingOut}>
-            {isCheckingOut ? t("subscription.plans.redirecting") : t("subscription.plans.upgrade")}
+          <Button className="w-full" onClick={onAction} disabled={actionDisabled}>
+            {isProcessing
+              ? t("subscription.plans.processing")
+              : t("subscription.plans.upgradeTo", { plan: t(`pricing.plans.${plan.id}.name`) })}
           </Button>
         ) : (
-          <Button variant="secondary" className="w-full" onClick={onCheckout} disabled={isCheckingOut}>
-            {isCheckingOut ? t("subscription.plans.redirecting") : t("subscription.plans.downgrade")}
+          <Button variant="secondary" className="w-full" onClick={onAction} disabled={actionDisabled}>
+            {isProcessing
+              ? t("subscription.plans.processing")
+              : t("subscription.plans.downgradeTo", { plan: t(`pricing.plans.${plan.id}.name`) })}
           </Button>
         )}
       </div>

@@ -12,17 +12,17 @@ import { useTranslation } from "../i18n";
 import {
   getSubscriptionStatus,
   syncCheckoutSession,
+  cancelSubscription,
+  resumeSubscription,
   type SubscriptionStatus,
 } from "../services/subscription.service";
 import { getCompanySettings, type CompanySettings } from "../services/companySettings.service";
 
-// Billing Settings (S2.4) — replaces the legacy single-plan "Axeriva Pro"
-// page. Assembles the S2.1 pricing config, the S2.2 Feature/Limit Registry
-// (via the extended /subscription payload) and the S2.3 checkout endpoint
-// into a read-only billing overview. No trial engine, no read-only
-// enforcement, no upgrade/downgrade business logic, no Stripe Portal/invoice
-// sync — those are later stories; buttons here only call the existing S2.3
-// checkout endpoint.
+// Billing Settings (S2.4 + S2.6). Assembles the S2.1 pricing config, the
+// S2.2 Feature/Limit Registry (via the extended /subscription payload) and
+// the S2.3/S2.6 billing endpoints. Plan-change/cancel/resume business rules
+// live server-side in services/stripe/subscriptionChange.ts — this page only
+// invokes them and re-fetches state.
 export default function SubscriptionPage() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -31,6 +31,8 @@ export default function SubscriptionPage() {
   const [settings, setSettings] = useState<CompanySettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [isActionInFlight, setIsActionInFlight] = useState(false);
+  const [isPlanChangeInFlight, setIsPlanChangeInFlight] = useState(false);
 
   const checkoutResult = searchParams.get("checkout");
   const sessionId = searchParams.get("session_id");
@@ -69,6 +71,28 @@ export default function SubscriptionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkoutResult, sessionId]);
 
+  // Cancel / resume (S2.6): fire the endpoint, surface the outcome, refetch.
+  // isActionInFlight also disables the plan-change buttons below so only one
+  // billing mutation can run at a time.
+  async function runCancellationAction(action: "cancel" | "resume") {
+    setMessage(null);
+    setIsActionInFlight(true);
+    try {
+      if (action === "cancel") {
+        await cancelSubscription();
+        setMessage(t("subscription.cancellation.cancelled"));
+      } else {
+        await resumeSubscription();
+        setMessage(t("subscription.cancellation.resumed"));
+      }
+      loadAll();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("subscription.loadError"));
+    } finally {
+      setIsActionInFlight(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="p-4 sm:p-8" aria-busy="true">
@@ -103,7 +127,12 @@ export default function SubscriptionPage() {
       )}
 
       <div className="mb-8">
-        <CurrentSubscriptionCard status={status} />
+        <CurrentSubscriptionCard
+          status={status}
+          onCancel={() => void runCancellationAction("cancel")}
+          onResume={() => void runCancellationAction("resume")}
+          isProcessing={isActionInFlight || isPlanChangeInFlight}
+        />
       </div>
 
       <div className="mb-8">
@@ -112,7 +141,24 @@ export default function SubscriptionPage() {
 
       <h2 className="mb-4 text-lg font-semibold text-white">{t("subscription.plans.title")}</h2>
       <div className="mb-8">
-        <BillingPlansSection currentPlan={status.effectivePlan} onCheckoutError={setMessage} />
+        <BillingPlansSection
+          currentPlan={status.effectivePlan}
+          pendingPlan={status.pendingPlan}
+          isManaged={status.effectivePlan === "founder" || status.effectivePlan === "enterprise"}
+          disabled={isActionInFlight}
+          onCheckoutError={setMessage}
+          onChanged={(kind) => {
+            setMessage(
+              kind === "upgraded"
+                ? t("subscription.currentPlan.upgraded")
+                : kind === "downgrade_scheduled"
+                  ? t("subscription.downgrade.scheduled")
+                  : t("subscription.downgrade.cancelled")
+            );
+            loadAll();
+          }}
+          onProcessingChange={setIsPlanChangeInFlight}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

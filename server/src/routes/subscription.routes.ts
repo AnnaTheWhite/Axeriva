@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { stripe } from "../services/stripe/stripeClient";
 import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
+import { changePlan, setCancelAtPeriodEnd } from "../services/stripe/subscriptionChange";
 import { resolveCheckoutPrice } from "../config/stripePricing";
 import { getLimit, getEffectivePlan } from "../services/planAccess";
 import { config } from "../config";
@@ -29,6 +30,8 @@ router.get("/", async (req, res) => {
       subscriptionEndsAt: true,
       stripeSubscriptionId: true,
       stripeCustomerId: true,
+      cancelAtPeriodEnd: true,
+      pendingPlan: true,
     },
   });
 
@@ -56,6 +59,11 @@ router.get("/", async (req, res) => {
     subscriptionStatus: company.subscriptionStatus,
     subscriptionEndsAt: company.subscriptionEndsAt,
     stripeSubscriptionId: company.stripeSubscriptionId,
+    // S2.6 — mirrors Stripe's cancel_at_period_end; pendingPlan is the
+    // canonical plan a scheduled period-end downgrade will land on (null
+    // when nothing is pending). Both maintained by the sync layer.
+    cancelAtPeriodEnd: company.cancelAtPeriodEnd,
+    pendingPlan: company.pendingPlan,
     // Placeholder-friendly boolean only — never expose the raw Stripe
     // customer ID to the billing UI.
     hasStripeCustomer: Boolean(company.stripeCustomerId),
@@ -190,6 +198,44 @@ router.post("/sync", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
   );
 
   return res.json({ synced: true });
+});
+
+// S2.6 — change the company's plan. Upgrades apply immediately on the
+// existing Stripe subscription (prorated); downgrades are scheduled for the
+// end of the current billing period; selecting the current plan while a
+// downgrade is pending cancels that downgrade. Returns `requires_checkout`
+// when there is no live subscription to modify (the frontend then falls back
+// to the existing /checkout flow — no duplicate subscription is ever
+// created). All business rules live in services/stripe/subscriptionChange.ts.
+router.post("/change-plan", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
+  const { plan, currency } = (req.body ?? {}) as { plan?: string; currency?: string };
+
+  const result = await changePlan(req.user!.companyId!, plan, currency);
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error });
+  }
+
+  return res.json(result);
+});
+
+// S2.6 — cancel at period end. Access continues until the paid period ends;
+// the Stripe subscription is never deleted here.
+router.post("/cancel", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
+  const result = await setCancelAtPeriodEnd(req.user!.companyId!, true);
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error });
+  }
+  return res.json(result);
+});
+
+// S2.6 — resume a subscription whose cancellation is pending (reuses the
+// same, still-live Stripe subscription).
+router.post("/resume", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
+  const result = await setCancelAtPeriodEnd(req.user!.companyId!, false);
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error });
+  }
+  return res.json(result);
 });
 
 // Opens the Stripe Billing Portal so the owner can manage/cancel the

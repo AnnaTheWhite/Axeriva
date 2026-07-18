@@ -411,8 +411,11 @@
       "notOnTrial": "Not on trial",
       "renewalDate": "Renewal / expiration date",
       "renewalDateTip": "Detailed renewal information is coming in a later update.",
+      "billingPeriod": "Current billing period",
+      "billingPeriodUntil": "Until {{date}}",
       "currency": "Currency",
-      "storageUsage": "Storage usage"
+      "storageUsage": "Storage usage",
+      "upgraded": "Plan upgraded — the new limits apply immediately."
     },
     "status": {
       "active": "Active",
@@ -432,9 +435,36 @@
     "plans": {
       "title": "Available Plans",
       "current": "Current Plan",
-      "upgrade": "Upgrade",
-      "downgrade": "Downgrade",
-      "redirecting": "Redirecting…"
+      "upgradeTo": "Upgrade to {{plan}}",
+      "downgradeTo": "Downgrade to {{plan}}",
+      "pendingTarget": "Scheduled",
+      "managed": "Managed by Axeriva",
+      "processing": "Processing…"
+    },
+    "downgrade": {
+      "confirmTitle": "Downgrade to {{plan}}?",
+      "confirmMessage": "Your current plan stays active until the end of the billing period, then your subscription switches to {{plan}}. Nothing is deleted — your data is kept.",
+      "confirmCta": "Schedule downgrade",
+      "keepCurrent": "Keep current plan",
+      "pendingBadge": "Downgrading to {{plan}}",
+      "nextPlan": "Next plan",
+      "pendingLine": "Downgrading to {{plan}} at period end",
+      "scheduled": "Downgrade scheduled for the end of the billing period.",
+      "cancelled": "Pending downgrade cancelled — you stay on your current plan."
+    },
+    "cancellation": {
+      "pendingBadge": "Cancellation pending",
+      "cancellationDate": "Cancellation date",
+      "endsOn": "Your subscription ends on {{date}}.",
+      "hint": "Cancel anytime — access continues until the end of the billing period.",
+      "cancel": "Cancel subscription",
+      "resume": "Resume subscription",
+      "confirmTitle": "Cancel subscription?",
+      "confirmMessage": "Your plan stays active until {{date}}. You can resume any time before then, and your data is always kept.",
+      "confirmCta": "Cancel plan",
+      "keepSubscription": "Keep subscription",
+      "cancelled": "Cancellation scheduled — access continues until the end of the billing period.",
+      "resumed": "Subscription resumed."
     },
     "billingInfo": {
       "title": "Billing Information",
