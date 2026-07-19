@@ -7,6 +7,7 @@ import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
 import { changePlan, setCancelAtPeriodEnd } from "../services/stripe/subscriptionChange";
 import { resolveCheckoutPrice } from "../config/stripePricing";
 import { getLimit, getEffectivePlan } from "../services/planAccess";
+import { isReadOnly } from "../services/readOnly";
 import { config } from "../config";
 
 const router = Router();
@@ -64,6 +65,10 @@ router.get("/", async (req, res) => {
     // when nothing is pending). Both maintained by the sync layer.
     cancelAtPeriodEnd: company.cancelAtPeriodEnd,
     pendingPlan: company.pendingPlan,
+    // S2.7 — read-only state, computed by the single services/readOnly.ts
+    // rule (same one the write-guard enforces), so the billing page never
+    // re-derives it.
+    readOnly: isReadOnly(company),
     // Placeholder-friendly boolean only — never expose the raw Stripe
     // customer ID to the billing UI.
     hasStripeCustomer: Boolean(company.stripeCustomerId),

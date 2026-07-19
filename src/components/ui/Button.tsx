@@ -11,6 +11,9 @@ type ButtonProps = {
   // Non-interactive state (e.g. "Current Plan"). Omitting it keeps existing
   // call sites unchanged.
   disabled?: boolean;
+  // Native tooltip — used e.g. to explain why a control is disabled in
+  // read-only mode. Optional; existing call sites are unaffected.
+  title?: string;
 };
 
 export default function Button({
@@ -21,6 +24,7 @@ export default function Button({
   size = "md",
   className = "",
   disabled = false,
+  title,
 }: ButtonProps) {
   const base = "rounded-xl font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -42,6 +46,7 @@ export default function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`${base} ${sizes[size]} ${styles[variant]} ${className}`}
     >
       {children}

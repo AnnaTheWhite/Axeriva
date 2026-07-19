@@ -6,6 +6,7 @@ import {
   type CompanySettings,
 } from "../../services/companySettings.service";
 import { useTranslation } from "../../i18n";
+import { useWriteGuard } from "../../hooks/useWriteGuard";
 
 type FormState = {
   name: string;
@@ -55,6 +56,7 @@ const FIELDS: Array<{ key: keyof FormState; labelKey: string; type?: string }> =
 
 export default function CompanyProfileSection() {
   const { t } = useTranslation();
+  const { readOnly } = useWriteGuard();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -113,7 +115,9 @@ export default function CompanyProfileSection() {
       {message && <p className="mt-4 text-sm text-slate-400">{message}</p>}
 
       <div className="mt-6">
-        <Button onClick={handleSave}>{isSaving ? t("common.saving") : t("common.save")}</Button>
+        <Button onClick={handleSave} disabled={readOnly} title={readOnly ? t("readOnly.tooltip") : undefined}>
+          {isSaving ? t("common.saving") : t("common.save")}
+        </Button>
       </div>
     </div>
   );

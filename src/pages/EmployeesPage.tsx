@@ -6,6 +6,7 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 
 import { useToast } from "../hooks/useToast";
+import { useWriteGuard } from "../hooks/useWriteGuard";
 import { useTranslation } from "../i18n";
 
 import {
@@ -20,6 +21,7 @@ import type { Invitation } from "../services/invites.service";
 
 export default function EmployeesPage() {
   const { t } = useTranslation();
+  const { guardProps } = useWriteGuard();
 
   const [employees, setEmployees] =
     useState<Employee[]>([]);
@@ -171,7 +173,8 @@ export default function EmployeesPage() {
         <div className="flex gap-3">
           <button
             onClick={() => setIsInviteModalOpen(true)}
-            className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 sm:w-auto"
+            {...guardProps}
+            className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             {t("employees.inviteEmployee")}
           </button>

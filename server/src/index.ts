@@ -25,7 +25,9 @@ import companyRoutes from "./routes/company.routes";
 import projectActivityRoutes from "./routes/projectActivity.routes";
 import attachmentsRoutes from "./routes/attachments.routes";
 import ownerNotesRoutes from "./routes/ownerNotes.routes";
+import accessRoutes from "./routes/access.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
+import { blockWritesWhenReadOnly } from "./middleware/readOnly.middleware";
 import { UPLOAD_ROOT } from "./middleware/upload.middleware";
 import {
   httpSecurity,
@@ -132,11 +134,25 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRoutes);
 app.use("/invites", invitesRoutes);
 
-app.use("/employees", authMiddleware, employeesRoutes);
-app.use("/projects", authMiddleware, projectsRoutes);
-app.use("/customers", authMiddleware, customersRoutes);
-app.use("/companies", authMiddleware, companiesRoutes);
-app.use("/shifts", authMiddleware, shiftsRoutes);
+// S2.7 Read-only Mode — the shared middleware chain for every router that
+// lets a company MODIFY its own tenant data. blockWritesWhenReadOnly ignores
+// GET/HEAD/OPTIONS (viewing/exporting is always allowed) and only refuses
+// writes when the company is read-only, so mounting a router through
+// `tenantWrite` is all a current or FUTURE module needs to inherit
+// enforcement — no per-controller checks. Deliberately NOT applied to:
+//   - /subscription (must stay writable so an owner can upgrade/resume out
+//     of read-only)
+//   - /account (profile + logout stay available)
+//   - /admin, /admin/analytics, /dashboard (DEVELOPER-only or read-only)
+//   - /invites (mixes public accept routes with per-route auth — the two
+//     authenticated invite WRITE routes carry the guard inline instead)
+const tenantWrite = [authMiddleware, blockWritesWhenReadOnly];
+
+app.use("/employees", tenantWrite, employeesRoutes);
+app.use("/projects", tenantWrite, projectsRoutes);
+app.use("/customers", tenantWrite, customersRoutes);
+app.use("/companies", tenantWrite, companiesRoutes);
+app.use("/shifts", tenantWrite, shiftsRoutes);
 app.use("/subscription", authMiddleware, subscriptionRoutes);
 // More specific mount first so /admin/analytics/* is handled here and not
 // swallowed by the generic /admin router below.
@@ -144,10 +160,11 @@ app.use("/admin/analytics", authMiddleware, adminAnalyticsRoutes);
 app.use("/admin", authMiddleware, adminRoutes);
 app.use("/dashboard", authMiddleware, dashboardRoutes);
 app.use("/account", authMiddleware, accountRoutes);
-app.use("/company", authMiddleware, companyRoutes);
-app.use("/projects", authMiddleware, projectActivityRoutes);
-app.use("/attachments", authMiddleware, attachmentsRoutes);
-app.use("/owner-notes", authMiddleware, ownerNotesRoutes);
+app.use("/access", authMiddleware, accessRoutes);
+app.use("/company", tenantWrite, companyRoutes);
+app.use("/projects", tenantWrite, projectActivityRoutes);
+app.use("/attachments", tenantWrite, attachmentsRoutes);
+app.use("/owner-notes", tenantWrite, ownerNotesRoutes);
 
 // JSON 404 for unknown routes — without this Express falls through to its
 // default HTML "Cannot GET ..." page, which is wrong for a JSON API.

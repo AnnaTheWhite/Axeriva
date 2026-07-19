@@ -3,6 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import prisma from "../database/prisma";
 import { authMiddleware } from "../middleware/auth.middleware";
+import { blockWritesWhenReadOnly } from "../middleware/readOnly.middleware";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { emailService } from "../services/email";
@@ -31,10 +32,13 @@ function buildInviteLink(token: string) {
   return `${config.frontendUrl}/invite/${token}`;
 }
 
-// Create an invitation for the caller's company. BUSINESS_OWNER only.
+// Create an invitation for the caller's company (= "add an employee").
+// BUSINESS_OWNER only; blocked in read-only mode (S2.7 — auth is per-route
+// here rather than at the mount, so the shared guard is applied inline).
 router.post(
   "/",
   authMiddleware,
+  blockWritesWhenReadOnly,
   requireRole(ROLES.BUSINESS_OWNER),
   async (req, res) => {
     const { email } = req.body;
@@ -129,10 +133,11 @@ router.get(
   }
 );
 
-// Revoke a pending invitation. BUSINESS_OWNER only.
+// Revoke a pending invitation. BUSINESS_OWNER only; blocked in read-only.
 router.delete(
   "/:id",
   authMiddleware,
+  blockWritesWhenReadOnly,
   requireRole(ROLES.BUSINESS_OWNER),
   async (req, res) => {
     const { id } = req.params;

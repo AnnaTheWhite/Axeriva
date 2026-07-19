@@ -5,6 +5,7 @@ import {
   updateCompanySettings,
 } from "../../services/companySettings.service";
 import { useTranslation } from "../../i18n";
+import { useWriteGuard } from "../../hooks/useWriteGuard";
 
 // No file-storage backend exists yet (no S3/multer setup) — the logo is
 // stored as a base64 data URL directly in Company.logoUrl. Good enough for
@@ -20,6 +21,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 export default function BrandingSection() {
   const { t } = useTranslation();
+  const { readOnly } = useWriteGuard();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -94,11 +96,13 @@ export default function BrandingSection() {
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="block text-sm text-slate-400 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/20"
+            disabled={readOnly}
+            title={readOnly ? t("readOnly.tooltip") : undefined}
+            className="block text-sm text-slate-400 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
           />
 
           {previewUrl && (
-            <Button onClick={handleSave}>
+            <Button onClick={handleSave} disabled={readOnly} title={readOnly ? t("readOnly.tooltip") : undefined}>
               {isSaving ? t("settings.branding.uploading") : t("settings.branding.saveLogo")}
             </Button>
           )}

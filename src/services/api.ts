@@ -50,6 +50,13 @@ export function clearSession(): void {
 // attempt, which is a normal form-validation outcome, not a
 // session-invalidity signal, and redirecting/reloading there would wipe
 // the on-screen error message before the user ever saw it.
+// S2.7 — standard error code a write endpoint returns when the company is in
+// read-only mode. Also the name of the window event apiFetch fires so the
+// global ReadOnly context can flip to read-only even if a control wasn't
+// disabled client-side (defense in depth — the server is the real gate).
+export const READ_ONLY_MODE = "READ_ONLY_MODE";
+export const READ_ONLY_EVENT = "axeriva:read-only";
+
 export async function apiFetch(
   input: string,
   init?: RequestInit
@@ -59,6 +66,25 @@ export async function apiFetch(
   if (response.status === 401) {
     clearSession();
     window.location.href = "/login";
+    return response;
+  }
+
+  // A write rejected because the company is read-only: notify the app so the
+  // global banner appears and controls disable, without every caller needing
+  // to special-case it. The response is still returned so the caller's own
+  // error handling runs. Cloned so reading the body here doesn't consume it.
+  if (response.status === 403) {
+    response
+      .clone()
+      .json()
+      .then((body) => {
+        if (body?.error === READ_ONLY_MODE) {
+          window.dispatchEvent(new CustomEvent(READ_ONLY_EVENT));
+        }
+      })
+      .catch(() => {
+        /* non-JSON 403 — not a read-only signal */
+      });
   }
 
   return response;

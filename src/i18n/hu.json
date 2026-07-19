@@ -398,6 +398,12 @@
       "logoAlt": "Cég-logó előnézet"
     }
   },
+  "readOnly": {
+    "bannerTitle": "A céged csak olvasható módban van.",
+    "bannerBody": "A próbaidőszakod vagy előfizetésed lejárt. Válts magasabb csomagra vagy folytasd az előfizetést a szerkesztés folytatásához.",
+    "bannerCta": "Ugrás a számlázáshoz",
+    "tooltip": "Válts magasabb csomagra a folytatáshoz."
+  },
   "subscription": {
     "title": "Számlázási beállítások",
     "subtitle": "Kezelje az Axeriva csomagját, használatát és számlázási adatait.",

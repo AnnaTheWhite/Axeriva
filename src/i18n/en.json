@@ -398,6 +398,12 @@
       "logoAlt": "Company logo preview"
     }
   },
+  "readOnly": {
+    "bannerTitle": "Your company is in read-only mode.",
+    "bannerBody": "Your trial or subscription has ended. Upgrade or resume your subscription to continue editing.",
+    "bannerCta": "Go to Billing",
+    "tooltip": "Upgrade your subscription to continue."
+  },
   "subscription": {
     "title": "Billing Settings",
     "subtitle": "Manage your Axeriva plan, usage and billing information.",

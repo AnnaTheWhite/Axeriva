@@ -9,12 +9,14 @@ import Toast from "../components/ui/Toast";
 
 import { useToast } from "../hooks/useToast";
 import { useTranslation } from "../i18n";
+import { useWriteGuard } from "../hooks/useWriteGuard";
 import { getProjects, deleteProject } from "../services/project.service";
 
 import type { Project } from "../types/project";
 
 export default function ProjectsPage() {
   const { t } = useTranslation();
+  const { guardProps } = useWriteGuard();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +90,8 @@ export default function ProjectsPage() {
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 sm:w-auto"
+          {...guardProps}
+          className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {t("projects.addProject")}
         </button>

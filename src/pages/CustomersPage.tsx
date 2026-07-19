@@ -14,11 +14,13 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 import { useToast } from "../hooks/useToast";
 import { useTranslation } from "../i18n";
+import { useWriteGuard } from "../hooks/useWriteGuard";
 
 import type { Customer } from "../types/customer";
 
 export default function CustomersPage() {
   const { t } = useTranslation();
+  const { guardProps } = useWriteGuard();
 
   const COMMUNICATION_TYPE_LABEL: Record<CustomerCommunicationLog["type"], string> = {
     PhoneCall: t("customers.commType.PhoneCall"),
@@ -185,7 +187,8 @@ export default function CustomersPage() {
             resetForm();
             setIsAddModalOpen(true);
           }}
-          className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 sm:w-auto"
+          {...guardProps}
+          className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {t("customers.addCustomer")}
         </button>

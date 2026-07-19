@@ -6,12 +6,14 @@ import Toast from "../components/ui/Toast";
 
 import { useToast } from "../hooks/useToast";
 import { useTranslation } from "../i18n";
+import { useWriteGuard } from "../hooks/useWriteGuard";
 import { getShifts, deleteShift } from "../services/shift.service";
 
 import type { Shift } from "../types/shifts";
 
 export default function SchedulePage() {
   const { t, language } = useTranslation();
+  const { guardProps } = useWriteGuard();
   const dateLocale = language === "hu" ? "hu-HU" : "en-US";
 
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -64,7 +66,8 @@ export default function SchedulePage() {
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600 sm:w-auto"
+          {...guardProps}
+          className="w-full rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {t("schedule.addShift")}
         </button>
