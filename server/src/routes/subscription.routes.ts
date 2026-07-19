@@ -7,7 +7,7 @@ import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
 import { changePlan, setCancelAtPeriodEnd } from "../services/stripe/subscriptionChange";
 import { resolveCheckoutPrice } from "../config/stripePricing";
 import { getLimit, getEffectivePlan } from "../services/planAccess";
-import { isReadOnly } from "../services/readOnly";
+import { isReadOnly, hasActiveSubscription } from "../services/readOnly";
 import { config } from "../config";
 
 const router = Router();
@@ -69,6 +69,11 @@ router.get("/", async (req, res) => {
     // rule (same one the write-guard enforces), so the billing page never
     // re-derives it.
     readOnly: isReadOnly(company),
+    // Hotfix — whether the company currently has a LIVE subscription/trial,
+    // distinct from its assigned `plan`. The billing UI uses this to tell
+    // "on this plan, active" (disabled "Current plan") apart from "assigned
+    // this plan but expired" (an active "Subscribe" button).
+    hasActiveSubscription: hasActiveSubscription(company),
     // Placeholder-friendly boolean only — never expose the raw Stripe
     // customer ID to the billing UI.
     hasStripeCustomer: Boolean(company.stripeCustomerId),

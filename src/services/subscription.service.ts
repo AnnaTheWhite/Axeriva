@@ -31,6 +31,10 @@ export type SubscriptionStatus = {
   cancelAtPeriodEnd: boolean;
   // S2.6 — canonical plan a scheduled period-end downgrade lands on, or null.
   pendingPlan: PlanId | null;
+  // Hotfix — whether a LIVE subscription/trial is in effect right now,
+  // distinct from the assigned `effectivePlan`. Drives "Current plan"
+  // (active) vs "Subscribe" (assigned but expired) on the billing cards.
+  hasActiveSubscription: boolean;
   hasStripeCustomer: boolean;
   usage: SubscriptionUsage;
   limits: SubscriptionLimits;

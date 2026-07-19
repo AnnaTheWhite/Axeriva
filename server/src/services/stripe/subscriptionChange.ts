@@ -9,6 +9,7 @@ import {
   type StripeCurrency,
 } from "../../config/stripePricing";
 import { canUpgrade, canDowngrade, isManuallyManaged, getEffectivePlan } from "../planAccess";
+import { hasActiveSubscription } from "../readOnly";
 
 // S2.6 — the ONE place plan-change (upgrade / downgrade / cancel / resume)
 // business logic lives. Routes are thin wrappers; the frontend only renders
@@ -49,6 +50,7 @@ type CompanyBilling = {
   pendingPlan: string | null;
   stripeSubscriptionId: string | null;
   subscriptionStatus: string;
+  subscriptionEndsAt: Date | null;
 };
 
 async function loadCompany(companyId: number): Promise<CompanyBilling | null> {
@@ -60,6 +62,7 @@ async function loadCompany(companyId: number): Promise<CompanyBilling | null> {
       pendingPlan: true,
       stripeSubscriptionId: true,
       subscriptionStatus: true,
+      subscriptionEndsAt: true,
     },
   });
 }
@@ -111,10 +114,10 @@ export async function changePlan(
 
   const currentEffective = getEffectivePlan(company.plan);
 
-  // Re-selecting the current plan: meaningful only as "cancel my pending
-  // downgrade"; otherwise there is nothing to do. Checked before price
-  // resolution — neither outcome needs a configured price.
+  // Re-selecting the ASSIGNED plan. Checked before price resolution — none of
+  // these outcomes need a configured price.
   if (targetPlan === currentEffective) {
+    // (a) Cancel a pending period-end downgrade back to the current plan.
     if (company.pendingPlan && company.stripeSubscriptionId) {
       const subscription = await stripe.subscriptions.retrieve(company.stripeSubscriptionId);
       await releaseScheduleIfAny(subscription);
@@ -123,6 +126,16 @@ export async function changePlan(
         data: { pendingPlan: null },
       });
       return { ok: true, kind: "downgrade_cancelled" };
+    }
+    // (b) Hotfix — assigned to this plan but with NO active subscription/trial
+    // (expired trial, or a subscription that ended). Re-selecting it means
+    // "subscribe again", so hand off to Checkout instead of rejecting it as
+    // "already the current plan". Uses the same status/expiry rule
+    // (hasActiveSubscription) the billing UI uses to choose "Subscribe" vs
+    // the disabled "Current plan", so the two never disagree. A company that
+    // IS actively subscribed/trialing still gets the 400 below.
+    if (!hasActiveSubscription(company)) {
+      return { ok: true, kind: "requires_checkout" };
     }
     return { ok: false, status: 400, error: "This is already the current plan." };
   }

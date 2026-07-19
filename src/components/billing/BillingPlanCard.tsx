@@ -7,6 +7,9 @@ export type BillingPlanAction =
   | "current"
   | "upgrade"
   | "downgrade"
+  // Assigned this plan but no active subscription/trial (expired) → subscribe
+  // again via a fresh Checkout session.
+  | "subscribe"
   | "contact"
   // Founder/Enterprise companies: catalog is visible, self-serve changes are
   // not offered (operator-managed).
@@ -96,6 +99,12 @@ export default function BillingPlanCard({
         ) : action === "current" ? (
           <Button variant="secondary" className="w-full" disabled>
             {t("subscription.plans.current")}
+          </Button>
+        ) : action === "subscribe" ? (
+          <Button className="w-full" onClick={onAction} disabled={actionDisabled}>
+            {isProcessing
+              ? t("subscription.plans.processing")
+              : t("subscription.plans.subscribeTo", { plan: t(`pricing.plans.${plan.id}.name`) })}
           </Button>
         ) : action === "upgrade" ? (
           <Button className="w-full" onClick={onAction} disabled={actionDisabled}>

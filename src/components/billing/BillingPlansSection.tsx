@@ -12,6 +12,10 @@ type BillingPlansSectionProps = {
   // "free"/"pro" already normalized by the backend's S2.2 plan-access
   // service, so this component never re-derives that mapping itself.
   currentPlan: PlanId | "founder";
+  // Whether a LIVE subscription/trial is in effect. The assigned plan alone
+  // does NOT make a card "current" — a company assigned Starter with an
+  // expired trial/subscription must be able to subscribe to Starter again.
+  hasActiveSubscription: boolean;
   // Pending period-end downgrade target (SubscriptionStatus.pendingPlan).
   pendingPlan: PlanId | null;
   // Founder/Enterprise are operator-managed — self-serve changes disabled.
@@ -35,6 +39,7 @@ type BillingPlansSectionProps = {
 // over. No pricing/tier business rules live here.
 export default function BillingPlansSection({
   currentPlan,
+  hasActiveSubscription,
   pendingPlan,
   isManaged,
   disabled,
@@ -88,7 +93,11 @@ export default function BillingPlansSection({
     <>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
         {PLAN_LIST.map((plan) => {
-          const isCurrent = plan.id === currentPlan;
+          const isAssigned = plan.id === currentPlan;
+          // "Current" (disabled) only when this is the assigned plan AND a
+          // live subscription/trial is actually in effect. Assigned-but-
+          // expired falls through to "subscribe" below.
+          const isCurrent = isAssigned && hasActiveSubscription;
           let action: BillingPlanAction;
           if (plan.ctaType === "contact-sales") {
             action = "contact";
@@ -98,6 +107,10 @@ export default function BillingPlansSection({
             action = "managed";
           } else if (isCurrent) {
             action = "current";
+          } else if (isAssigned) {
+            // Assigned this plan but no active subscription/trial → let the
+            // owner subscribe again (creates a fresh Checkout session).
+            action = "subscribe";
           } else {
             action = displayPlanTier(plan.id) > currentTier ? "upgrade" : "downgrade";
           }

@@ -442,6 +442,7 @@
       "title": "Elérhető csomagok",
       "current": "Jelenlegi csomag",
       "upgradeTo": "Váltás erre: {{plan}}",
+      "subscribeTo": "Előfizetés erre: {{plan}}",
       "downgradeTo": "Visszaváltás erre: {{plan}}",
       "pendingTarget": "Ütemezve",
       "managed": "Az Axeriva kezeli",

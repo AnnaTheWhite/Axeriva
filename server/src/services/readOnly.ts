@@ -25,26 +25,33 @@ export type ReadOnlyCompany = {
 // Stripe statuses that grant write access — while still within their period.
 const WRITABLE_STATUSES = new Set(["active", "trialing"]);
 
+// Does the company have a LIVE subscription or trial right now? True only for
+// an "active"/"trialing" status whose period has not yet elapsed. This is the
+// "active subscription" half of the eligibility rule — deliberately separate
+// from the "assigned plan" (company.plan), so the billing UI and the
+// plan-change service can tell "on Starter, actively subscribed" apart from
+// "assigned Starter but the trial/subscription has ended" (the re-subscribe
+// case). Ignores the plan value, so it is meaningful for founder/enterprise
+// too (their status is managed separately via isManuallyManaged).
+export function hasActiveSubscription(company: ReadOnlyCompany): boolean {
+  if (!WRITABLE_STATUSES.has(company.subscriptionStatus)) {
+    return false;
+  }
+  // No end date means "no known expiry" → still live. An elapsed end date
+  // means the trial/subscription has expired (e.g. a registration trial that
+  // lapsed with no Stripe subscription to transition it).
+  return !(company.subscriptionEndsAt && company.subscriptionEndsAt.getTime() < Date.now());
+}
+
 export function isReadOnly(company: ReadOnlyCompany): boolean {
   // Founder / Enterprise never enter read-only.
   if (isManuallyManaged(company.plan)) {
     return false;
   }
 
-  if (WRITABLE_STATUSES.has(company.subscriptionStatus)) {
-    // An active/trialing company whose period has already elapsed is expired
-    // (a registration trial that lapsed with no Stripe subscription to
-    // transition it, or a subscription that somehow ran past its end without
-    // renewing) → read-only. No end date means "no known expiry" → writable.
-    if (company.subscriptionEndsAt && company.subscriptionEndsAt.getTime() < Date.now()) {
-      return true;
-    }
-    return false;
-  }
-
-  // inactive / canceled / past_due / incomplete / unpaid / … → no active paid
-  // subscription and no live trial → read-only.
-  return true;
+  // Read-only exactly when there is no active paid subscription and no live
+  // trial. (Same rule as before, expressed through the shared helper.)
+  return !hasActiveSubscription(company);
 }
 
 // Minimal Prisma select for the fields isReadOnly() needs — shared so callers

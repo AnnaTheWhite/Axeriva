@@ -143,6 +143,7 @@ export default function SubscriptionPage() {
       <div className="mb-8">
         <BillingPlansSection
           currentPlan={status.effectivePlan}
+          hasActiveSubscription={status.hasActiveSubscription}
           pendingPlan={status.pendingPlan}
           isManaged={status.effectivePlan === "founder" || status.effectivePlan === "enterprise"}
           disabled={isActionInFlight}

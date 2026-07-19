@@ -442,6 +442,7 @@
       "title": "Available Plans",
       "current": "Current Plan",
       "upgradeTo": "Upgrade to {{plan}}",
+      "subscribeTo": "Subscribe to {{plan}}",
       "downgradeTo": "Downgrade to {{plan}}",
       "pendingTarget": "Scheduled",
       "managed": "Managed by Axeriva",

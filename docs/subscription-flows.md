@@ -38,6 +38,23 @@ sync layer and the change engine.
    `requires_checkout` and the frontend falls back to the existing
    `/subscription/checkout` flow — a duplicate subscription is never created.
 
+### Re-subscribing to the assigned plan (Hotfix)
+
+The billing UI and `changePlan()` distinguish the company's **assigned**
+plan (`Company.plan` / `effectivePlan`) from whether it has an **active**
+subscription/trial right now (`hasActiveSubscription()`, shared with the
+S2.7 read-only rule). Selecting the assigned plan again:
+
+- **With** an active subscription/trial → `400 "This is already the current
+  plan."` (nothing to buy) — the Billing card shows a disabled **"Current
+  plan"**.
+- **Without** one (expired trial, or a subscription that ended) →
+  `requires_checkout`, same as picking any other plan with no live
+  subscription — the Billing card shows an active **"Subscribe to
+  {plan}"** button that starts a fresh Checkout session. This is what lets a
+  company assigned Starter with a lapsed trial/subscription buy Starter
+  again instead of being stuck behind a disabled "current plan" button.
+
 ## Downgrade flow (period end)
 
 Same endpoint, `canDowngrade()` direction:
