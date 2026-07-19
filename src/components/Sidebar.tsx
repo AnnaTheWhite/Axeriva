@@ -30,6 +30,7 @@ const menusByRole: Record<Role, { labelKey: string; path: string }[]> = {
     { labelKey: "nav.myTime", path: "/my-time" },
     { labelKey: "nav.myProjects", path: "/my-projects" },
     { labelKey: "nav.profile", path: "/profile" },
+    { labelKey: "nav.settings", path: "/settings" },
   ],
 };
 

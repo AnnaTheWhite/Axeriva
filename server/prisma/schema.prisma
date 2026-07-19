@@ -23,6 +23,41 @@ model Company {
   taxNumber    String?
   vatNumber    String?
 
+  // C1.1 — extended profile fields. All optional/additive; existing rows
+  // default to null (blank) with no backfill required.
+  legalName          String?
+  registrationNumber String?
+  postalCode         String?
+  city               String?
+  country            String?
+
+  // C1.3 — branding colors. Hex strings ("#rrggbb"), validated server-side
+  // in services/companyValidation.ts. logoUrl (above) is the third branding
+  // input; centralized consumption is documented in docs/company-management.md.
+  primaryColor String?
+  accentColor  String?
+
+  // C1.4 — localization preferences. `language`/`currency` are DISPLAY
+  // defaults for this company only — they do NOT affect the S2.1-S2.3
+  // subscription/checkout currency, which stays governed by the website
+  // language at checkout time (never touched by this module).
+  language   String?
+  currency   String?
+  timezone   String?
+  dateFormat String?
+  timeFormat String?
+
+  // C1.5 — preferences. `firstDayOfWeek`: 0=Sunday..6=Saturday (ISO-ish,
+  // matches JS Date#getDay()). Working-hours/shift-length are "HH:mm" /
+  // minutes, validated server-side.
+  firstDayOfWeek             Int?
+  defaultWorkStart           String?
+  defaultWorkEnd             String?
+  defaultShiftMinutes        Int?
+  notificationsEnabled       Boolean @default(true)
+  emailNotificationsEnabled  Boolean @default(true)
+  desktopNotificationsEnabled Boolean @default(true)
+
   // Subscription / billing — Stripe Checkout + webhook keep these in sync.
   plan                 String    @default("free")
   subscriptionStatus   String    @default("inactive")
@@ -38,9 +73,14 @@ model Company {
   cancelAtPeriodEnd Boolean @default(false)
   pendingPlan       String?
 
-  // Soft-delete — set together when the owning BUSINESS_OWNER deletes their
-  // account. Existing rows/relations are kept for history, nothing is
-  // physically removed.
+  // Soft-delete / archive — set together either when the owning
+  // BUSINESS_OWNER deletes their account (account.routes.ts) or explicitly
+  // archives the company (C1.7, companyArchive.routes.ts). Both paths reuse
+  // the SAME flag: auth.middleware.ts already refuses login for any user
+  // whose company is inactive, which is exactly Archive's "disable login for
+  // company users" requirement — no separate archive mechanism needed.
+  // Existing rows/relations (including Stripe fields and invoices) are kept
+  // for history; nothing is ever physically removed.
   active    Boolean   @default(true)
   deletedAt DateTime?
 

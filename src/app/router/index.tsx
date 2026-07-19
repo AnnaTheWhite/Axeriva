@@ -154,7 +154,9 @@ export default function AppRouter() {
         <Route
           path="/settings"
           element={
-            <ProtectedRoute roles={[ROLES.BUSINESS_OWNER]}>
+            // C1 — EMPLOYEE gets read-only access (each section disables its
+            // own controls via useIsOwner); BUSINESS_OWNER can edit.
+            <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.EMPLOYEE]}>
               <DashboardLayout>
                 <SettingsPage />
               </DashboardLayout>

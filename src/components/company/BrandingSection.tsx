@@ -3,36 +3,48 @@ import Button from "../ui/Button";
 import {
   getCompanySettings,
   updateCompanySettings,
+  uploadCompanyLogo,
+  removeCompanyLogo,
+  companyLogoUrl,
+  type CompanySettings,
 } from "../../services/companySettings.service";
 import { useTranslation } from "../../i18n";
 import { useWriteGuard } from "../../hooks/useWriteGuard";
+import { useIsOwner } from "../../hooks/useIsOwner";
 
-// No file-storage backend exists yet (no S3/multer setup) — the logo is
-// stored as a base64 data URL directly in Company.logoUrl. Good enough for
-// a small company logo; index.ts raises the JSON body limit to 5mb to fit it.
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+const DEFAULT_PRIMARY = "#F97316";
+const DEFAULT_ACCENT = "#F97316";
 
+// C1.2/C1.3 — logo upload/replace/remove now goes through the real
+// server-side upload pipeline (multer + sharp, see
+// server/src/middleware/upload.middleware.ts + services/companyLogo.ts) —
+// no more base64-in-JSON. Primary/accent colors are the other two branding
+// inputs; centralized consumption of all three (logo + colors) is
+// documented in docs/company-management.md.
 export default function BrandingSection() {
   const { t } = useTranslation();
   const { readOnly } = useWriteGuard();
+  const isOwner = useIsOwner();
+  const disabled = readOnly || !isOwner;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [primaryColor, setPrimaryColor] = useState(DEFAULT_PRIMARY);
+  const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingColors, setIsSavingColors] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  function applySettings(settings: CompanySettings) {
+    setLogoUrl(settings.logoUrl);
+    setPrimaryColor(settings.primaryColor ?? DEFAULT_PRIMARY);
+    setAccentColor(settings.accentColor ?? DEFAULT_ACCENT);
+  }
 
   useEffect(() => {
     getCompanySettings()
-      .then((settings) => setLogoUrl(settings.logoUrl))
+      .then(applySettings)
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -41,22 +53,26 @@ export default function BrandingSection() {
     if (!file) return;
 
     setMessage(null);
-    const dataUrl = await readFileAsDataUrl(file);
-    setPreviewUrl(dataUrl);
+    setIsSaving(true);
+    try {
+      const updated = await uploadCompanyLogo(file);
+      applySettings(updated);
+      setMessage(t("settings.branding.logoUpdated"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("settings.branding.uploadFailed"));
+    } finally {
+      setIsSaving(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
-  async function handleSave() {
-    if (!previewUrl) return;
-
+  async function handleRemoveLogo() {
     setMessage(null);
     setIsSaving(true);
-
     try {
-      const updated = await updateCompanySettings({ logoUrl: previewUrl });
-      setLogoUrl(updated.logoUrl);
-      setPreviewUrl(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setMessage(t("settings.branding.logoUpdated"));
+      const updated = await removeCompanyLogo();
+      applySettings(updated);
+      setMessage(t("settings.branding.logoRemoved"));
     } catch {
       setMessage(t("settings.branding.uploadFailed"));
     } finally {
@@ -64,11 +80,25 @@ export default function BrandingSection() {
     }
   }
 
+  async function handleSaveColors() {
+    setMessage(null);
+    setIsSavingColors(true);
+    try {
+      const updated = await updateCompanySettings({ primaryColor, accentColor });
+      applySettings(updated);
+      setMessage(t("settings.branding.colorsSaved"));
+    } catch {
+      setMessage(t("settings.branding.uploadFailed"));
+    } finally {
+      setIsSavingColors(false);
+    }
+  }
+
   if (isLoading) {
     return null;
   }
 
-  const displayUrl = previewUrl ?? logoUrl;
+  const displayUrl = companyLogoUrl(logoUrl);
 
   return (
     <div className="mt-8 max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
@@ -94,22 +124,79 @@ export default function BrandingSection() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/svg+xml"
             onChange={handleFileChange}
-            disabled={readOnly}
+            disabled={disabled || isSaving}
             title={readOnly ? t("readOnly.tooltip") : undefined}
             className="block text-sm text-slate-400 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
           />
+          <p className="text-xs text-slate-500">{t("settings.branding.formatHint")}</p>
 
-          {previewUrl && (
-            <Button onClick={handleSave} disabled={readOnly} title={readOnly ? t("readOnly.tooltip") : undefined}>
-              {isSaving ? t("settings.branding.uploading") : t("settings.branding.saveLogo")}
+          {logoUrl && (
+            <Button
+              variant="secondary"
+              onClick={handleRemoveLogo}
+              disabled={disabled || isSaving}
+              title={readOnly ? t("readOnly.tooltip") : undefined}
+            >
+              {isSaving ? t("settings.branding.uploading") : t("settings.branding.removeLogo")}
             </Button>
           )}
         </div>
       </div>
 
+      {isOwner && (
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="block text-sm text-white/70">{t("settings.branding.primaryColor")}</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={primaryColor}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                disabled={disabled}
+                className="h-10 w-14 shrink-0 cursor-pointer rounded-lg border border-white/10 bg-transparent disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <input
+                type="text"
+                value={primaryColor}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                disabled={disabled}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm text-white/70">{t("settings.branding.accentColor")}</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+                disabled={disabled}
+                className="h-10 w-14 shrink-0 cursor-pointer rounded-lg border border-white/10 bg-transparent disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <input
+                type="text"
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+                disabled={disabled}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {message && <p className="mt-4 text-sm text-slate-400">{message}</p>}
+
+      {isOwner && (
+        <div className="mt-6">
+          <Button onClick={handleSaveColors} disabled={disabled || isSavingColors} title={readOnly ? t("readOnly.tooltip") : undefined}>
+            {isSavingColors ? t("common.saving") : t("settings.branding.saveColors")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

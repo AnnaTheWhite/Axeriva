@@ -373,29 +373,103 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Manage your company profile.",
+    "readOnlyForRole": "You have read-only access to company settings. Only the owner can make changes.",
     "companyProfile": {
       "title": "Company Profile",
       "description": "Used on email templates, PDFs, quotes, and invoices.",
       "companyName": "Company Name",
+      "legalName": "Legal Company Name",
       "billingEmail": "Billing Email",
       "contactEmail": "Contact Email",
       "phoneNumber": "Phone Number",
       "website": "Website",
       "address": "Address",
+      "postalCode": "Postal Code",
+      "city": "City",
+      "country": "Country",
       "taxNumber": "Tax Number",
       "vatNumber": "VAT Number",
+      "registrationNumber": "Registration Number",
       "saved": "Saved.",
       "saveFailed": "Failed to save changes."
     },
     "branding": {
       "title": "Branding",
-      "description": "Your logo appears on emails, PDFs, quotes, and invoices.",
+      "description": "Your logo and colors appear on the dashboard, PDFs, quotes, invoices, and emails.",
       "noLogo": "No logo",
       "saveLogo": "Save logo",
+      "removeLogo": "Remove logo",
       "uploading": "Uploading...",
       "logoUpdated": "Logo updated.",
+      "logoRemoved": "Logo removed.",
       "uploadFailed": "Failed to upload logo.",
-      "logoAlt": "Company logo preview"
+      "logoAlt": "Company logo preview",
+      "formatHint": "PNG, JPG or SVG, up to 2 MB.",
+      "primaryColor": "Primary Color",
+      "accentColor": "Accent Color",
+      "saveColors": "Save colors",
+      "colorsSaved": "Colors saved."
+    },
+    "localization": {
+      "title": "Localization",
+      "description": "Controls how dates, times and currency are displayed across Axeriva.",
+      "language": "Language",
+      "languages": {
+        "en": "English",
+        "hu": "Hungarian"
+      },
+      "currency": "Currency",
+      "currencyPlaceholder": "Select a currency",
+      "timezone": "Timezone",
+      "timezonePlaceholder": "Select a timezone",
+      "dateFormat": "Date Format",
+      "timeFormat": "Time Format",
+      "timeFormat24h": "24-hour",
+      "timeFormat12h": "12-hour",
+      "saved": "Saved.",
+      "saveFailed": "Failed to save changes."
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "Default scheduling values and notification behavior for your company.",
+      "firstDayOfWeek": "First Day of Week",
+      "weekdays": {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday"
+      },
+      "defaultShiftLength": "Default Shift Length (minutes)",
+      "shiftMinutesError": "Enter a whole number of minutes between 1 and 1440.",
+      "defaultWorkStart": "Default Work Start",
+      "defaultWorkEnd": "Default Work End",
+      "notificationsEnabled": "Notifications enabled",
+      "emailNotifications": "Email notifications",
+      "desktopNotifications": "Desktop notifications",
+      "saved": "Saved.",
+      "saveFailed": "Failed to save changes."
+    },
+    "export": {
+      "button": "Export as JSON",
+      "exporting": "Exporting...",
+      "failed": "Failed to export settings."
+    },
+    "archiveModal": {
+      "title": "Archive Company",
+      "description": "Archiving disables login for every user in your company and hides it from active use. All data, invoices and billing history are preserved and nothing is deleted. This can be undone by contacting support.",
+      "password": "Password",
+      "confirmPrefix": "Type",
+      "confirmSuffix": "to confirm",
+      "submit": "Archive company",
+      "submitting": "Archiving...",
+      "failed": "Failed to archive company.",
+      "missingFields": "Enter your password and type ARCHIVE to confirm."
+    },
+    "dangerZone": {
+      "archiveCompany": "Archive company"
     }
   },
   "readOnly": {
@@ -578,7 +652,8 @@
     "dangerZone": {
       "title": "Danger Zone",
       "description": "Deleting your account deactivates it immediately. This can't be undone from the app.",
-      "deleteAccount": "Delete account"
+      "deleteAccount": "Delete account",
+      "activeSubscriptionWarning": "You have an active subscription. You'll need to cancel it from the Subscription page before you can delete your account."
     },
     "deleteModal": {
       "title": "Delete account",

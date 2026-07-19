@@ -22,6 +22,7 @@ import adminAnalyticsRoutes from "./routes/adminAnalytics.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import accountRoutes from "./routes/account.routes";
 import companyRoutes from "./routes/company.routes";
+import companyArchiveRoutes from "./routes/companyArchive.routes";
 import projectActivityRoutes from "./routes/projectActivity.routes";
 import attachmentsRoutes from "./routes/attachments.routes";
 import ownerNotesRoutes from "./routes/ownerNotes.routes";
@@ -161,6 +162,11 @@ app.use("/admin", authMiddleware, adminRoutes);
 app.use("/dashboard", authMiddleware, dashboardRoutes);
 app.use("/account", authMiddleware, accountRoutes);
 app.use("/access", authMiddleware, accessRoutes);
+// C1.7 — mounted BEFORE /company (more specific path first, same pattern as
+// /admin/analytics before /admin) and deliberately WITHOUT tenantWrite: a
+// read-only company must still be archivable, exactly like /subscription
+// stays writable so an owner can upgrade/resume out of read-only.
+app.use("/company/archive", authMiddleware, companyArchiveRoutes);
 app.use("/company", tenantWrite, companyRoutes);
 app.use("/projects", tenantWrite, projectActivityRoutes);
 app.use("/attachments", tenantWrite, attachmentsRoutes);

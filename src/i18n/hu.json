@@ -373,29 +373,103 @@
   "settings": {
     "title": "Beállítások",
     "subtitle": "Kezelje cége profilját.",
+    "readOnlyForRole": "Önnek csak olvasási joga van a cégbeállításokhoz. Csak a tulajdonos módosíthatja azokat.",
     "companyProfile": {
       "title": "Cégprofil",
       "description": "Email-sablonokon, PDF-eken, ajánlatokon és számlákon jelenik meg.",
       "companyName": "Cégnév",
+      "legalName": "Cég teljes (jogi) neve",
       "billingEmail": "Számlázási e-mail",
       "contactEmail": "Kapcsolattartási e-mail",
       "phoneNumber": "Telefonszám",
       "website": "Weboldal",
       "address": "Cím",
+      "postalCode": "Irányítószám",
+      "city": "Város",
+      "country": "Ország",
       "taxNumber": "Adószám",
       "vatNumber": "Közösségi adószám",
+      "registrationNumber": "Cégjegyzékszám",
       "saved": "Mentve.",
       "saveFailed": "A változások mentése sikertelen."
     },
     "branding": {
       "title": "Márkajelzés",
-      "description": "A logója megjelenik az emaileken, PDF-eken, ajánlatokon és számlákon.",
+      "description": "A logója és a színei megjelennek az irányítópulton, a PDF-eken, ajánlatokon, számlákon és emaileken.",
       "noLogo": "Nincs logó",
       "saveLogo": "Logó mentése",
+      "removeLogo": "Logó eltávolítása",
       "uploading": "Feltöltés...",
       "logoUpdated": "Logó frissítve.",
+      "logoRemoved": "Logó eltávolítva.",
       "uploadFailed": "A logó feltöltése sikertelen.",
-      "logoAlt": "Cég-logó előnézet"
+      "logoAlt": "Cég-logó előnézet",
+      "formatHint": "PNG, JPG vagy SVG, legfeljebb 2 MB.",
+      "primaryColor": "Elsődleges szín",
+      "accentColor": "Kiemelő szín",
+      "saveColors": "Színek mentése",
+      "colorsSaved": "Színek elmentve."
+    },
+    "localization": {
+      "title": "Lokalizáció",
+      "description": "Meghatározza a dátumok, időpontok és a pénznem megjelenítését az Axeriva egészében.",
+      "language": "Nyelv",
+      "languages": {
+        "en": "Angol",
+        "hu": "Magyar"
+      },
+      "currency": "Pénznem",
+      "currencyPlaceholder": "Válasszon pénznemet",
+      "timezone": "Időzóna",
+      "timezonePlaceholder": "Válasszon időzónát",
+      "dateFormat": "Dátumformátum",
+      "timeFormat": "Időformátum",
+      "timeFormat24h": "24 órás",
+      "timeFormat12h": "12 órás",
+      "saved": "Mentve.",
+      "saveFailed": "A változások mentése sikertelen."
+    },
+    "preferences": {
+      "title": "Beállítások és alapértelmezések",
+      "description": "Alapértelmezett ütemezési értékek és értesítési viselkedés a cége számára.",
+      "firstDayOfWeek": "A hét első napja",
+      "weekdays": {
+        "0": "Vasárnap",
+        "1": "Hétfő",
+        "2": "Kedd",
+        "3": "Szerda",
+        "4": "Csütörtök",
+        "5": "Péntek",
+        "6": "Szombat"
+      },
+      "defaultShiftLength": "Alapértelmezett műszakhossz (perc)",
+      "shiftMinutesError": "Adjon meg egy egész számot 1 és 1440 perc között.",
+      "defaultWorkStart": "Alapértelmezett munkakezdés",
+      "defaultWorkEnd": "Alapértelmezett munkavégzés vége",
+      "notificationsEnabled": "Értesítések engedélyezve",
+      "emailNotifications": "Email értesítések",
+      "desktopNotifications": "Asztali értesítések",
+      "saved": "Mentve.",
+      "saveFailed": "A változások mentése sikertelen."
+    },
+    "export": {
+      "button": "Exportálás JSON-ként",
+      "exporting": "Exportálás...",
+      "failed": "A beállítások exportálása sikertelen."
+    },
+    "archiveModal": {
+      "title": "Cég archiválása",
+      "description": "Az archiválás minden céges felhasználó bejelentkezését letiltja, és aktív használatból eltávolítja a céget. Minden adat, számla és számlázási előzmény megmarad, semmi nem törlődik. Ez az ügyfélszolgálat segítségével visszavonható.",
+      "password": "Jelszó",
+      "confirmPrefix": "Írja be, hogy",
+      "confirmSuffix": "a megerősítéshez",
+      "submit": "Cég archiválása",
+      "submitting": "Archiválás...",
+      "failed": "A cég archiválása sikertelen.",
+      "missingFields": "Adja meg jelszavát, és írja be, hogy ARCHIVE a megerősítéshez."
+    },
+    "dangerZone": {
+      "archiveCompany": "Cég archiválása"
     }
   },
   "readOnly": {
@@ -578,7 +652,8 @@
     "dangerZone": {
       "title": "Veszélyes zóna",
       "description": "A fiók törlése azonnal deaktiválja azt. Ez az appból nem vonható vissza.",
-      "deleteAccount": "Fiók törlése"
+      "deleteAccount": "Fiók törlése",
+      "activeSubscriptionWarning": "Önnek aktív előfizetése van. A fiók törlése előtt le kell mondania azt az Előfizetés oldalon."
     },
     "deleteModal": {
       "title": "Fiók törlése",

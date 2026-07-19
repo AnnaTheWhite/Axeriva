@@ -14,4 +14,7 @@ export const AUDIT_ACTIONS = {
   INVITATION_ACCEPTED: "INVITATION_ACCEPTED",
   // Already written by account.routes.ts before this constant existed.
   ACCOUNT_DELETED: "ACCOUNT_DELETED",
+  // C1.7 — company archived by its owner. Never paired with deleting any
+  // User row (unlike ACCOUNT_DELETED); see companyArchive.routes.ts.
+  COMPANY_ARCHIVED: "COMPANY_ARCHIVED",
 } as const;
