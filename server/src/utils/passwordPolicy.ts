@@ -6,6 +6,11 @@
 // The policy applies ONLY when a password is being set — existing hashes are
 // untouched and login never validates strength (backward compatibility).
 
+// Mirrored by the frontend in src/utils/passwordPolicy.ts (UX-only copy —
+// no shared module exists between server/ and src/). If this value or the
+// rules change, update that mirror and the common.passwordRequirements /
+// common.passwordPolicyError i18n keys with it; the tripwire in
+// src/tests/passwordPolicy.test.ts fails loudly to remind you.
 export const PASSWORD_MIN_LENGTH = 12;
 
 // One consistent, user-facing message for every flow. Deliberately lists the

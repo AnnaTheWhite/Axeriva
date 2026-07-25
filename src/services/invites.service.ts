@@ -79,7 +79,11 @@ export async function acceptInvite(
   });
 
   if (!response.ok) {
-    throw new Error("Failed to accept invitation");
+    // Surface the server's { error } body (B3) — it carries the exact
+    // password-policy text the user needs to fix their input. (Named
+    // errorBody because `data` is already this function's parameter.)
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.error || "Failed to accept invitation");
   }
 
   return response.json();

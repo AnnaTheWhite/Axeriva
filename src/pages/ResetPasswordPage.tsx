@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import PasswordInput from "../components/ui/PasswordInput";
+import PasswordRequirements from "../components/ui/PasswordRequirements";
+import { meetsPasswordPolicy, PASSWORD_MIN_LENGTH } from "../utils/passwordPolicy";
 import { resetPassword } from "../services/auth.service";
 import { useTranslation } from "../i18n";
 
@@ -24,6 +26,15 @@ export default function ResetPasswordPage() {
 
     if (password !== confirmPassword) {
       setError(t("auth.resetPassword.mismatch"));
+      return;
+    }
+
+    // Client-side mirror of the server's password policy (B3). A plain
+    // inline error — deliberately NOT setStatus("error"), which would swap
+    // the form for the dead-end "Request a new link" screen and lose the
+    // user's input over a fixable password.
+    if (!meetsPasswordPolicy(password)) {
+      setError(t("common.passwordPolicyError", { min: PASSWORD_MIN_LENGTH }));
       return;
     }
 
@@ -63,11 +74,13 @@ export default function ResetPasswordPage() {
               </label>
               <PasswordInput
                 required
+                minLength={PASSWORD_MIN_LENGTH}
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 showStrength
               />
+              <PasswordRequirements />
             </div>
 
             <div className="space-y-2">
@@ -76,6 +89,7 @@ export default function ResetPasswordPage() {
               </label>
               <PasswordInput
                 required
+                minLength={PASSWORD_MIN_LENGTH}
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

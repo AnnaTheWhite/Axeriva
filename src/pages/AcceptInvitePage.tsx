@@ -3,6 +3,9 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { getInviteByToken, acceptInvite } from "../services/invites.service";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
+import PasswordInput from "../components/ui/PasswordInput";
+import PasswordRequirements from "../components/ui/PasswordRequirements";
+import { meetsPasswordPolicy, PASSWORD_MIN_LENGTH } from "../utils/passwordPolicy";
 import { useTranslation } from "../i18n";
 
 export default function AcceptInvitePage() {
@@ -37,14 +40,27 @@ export default function AcceptInvitePage() {
     if (!token) return;
 
     setError(null);
+
+    // Client-side mirror of the server's password policy (B3) — instant,
+    // localized feedback only; the server stays the authority. Must run
+    // BEFORE setIsSubmitting(true): this early return skips the finally
+    // block, so flipping the flag first would strand the button on
+    // "Activating...".
+    if (!meetsPasswordPolicy(password)) {
+      setError(t("common.passwordPolicyError", { min: PASSWORD_MIN_LENGTH }));
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const data = await acceptInvite(token, { firstName, lastName, password });
       setSession(data.token, data.user);
       navigate("/");
-    } catch {
-      setError(t("auth.acceptInvite.failed"));
+    } catch (err) {
+      // The service surfaces the server's { error } text (e.g. the exact
+      // password-policy message) — the i18n key is only the fallback.
+      setError(err instanceof Error ? err.message : t("auth.acceptInvite.failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -111,14 +127,15 @@ export default function AcceptInvitePage() {
 
         <div className="space-y-2">
           <label className="block text-sm text-white/70">{t("auth.acceptInvite.password")}</label>
-          <input
-            type="password"
+          <PasswordInput
             required
-            minLength={6}
+            minLength={PASSWORD_MIN_LENGTH}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none focus:border-orange-500"
+            showStrength
           />
+          <PasswordRequirements />
         </div>
 
         <Button type="submit">

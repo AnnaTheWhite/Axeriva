@@ -35,7 +35,10 @@ export async function register(
   });
 
   if (!response.ok) {
-    throw new Error("Failed to register");
+    // Surface the server's { error } body (B3) — it carries the exact
+    // password-policy text the user needs to fix their input.
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to register");
   }
 
   return response.json();

@@ -4,6 +4,8 @@ import { register } from "../services/auth.service";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
 import PasswordInput from "../components/ui/PasswordInput";
+import PasswordRequirements from "../components/ui/PasswordRequirements";
+import { meetsPasswordPolicy, PASSWORD_MIN_LENGTH } from "../utils/passwordPolicy";
 import { useTranslation } from "../i18n";
 
 export default function RegisterPage() {
@@ -20,14 +22,27 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // Client-side mirror of the server's password policy (B3) — instant,
+    // localized feedback only; the server stays the authority. Must run
+    // BEFORE setIsSubmitting(true): this early return skips the finally
+    // block, so flipping the flag first would strand the button on
+    // "Signing up...".
+    if (!meetsPasswordPolicy(password)) {
+      setError(t("common.passwordPolicyError", { min: PASSWORD_MIN_LENGTH }));
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       await register(companyName, email, password);
       await login(email, password);
       navigate("/");
-    } catch {
-      setError(t("auth.register.failed"));
+    } catch (err) {
+      // The service surfaces the server's { error } text (e.g. the exact
+      // password-policy message) — the i18n key is only the fallback.
+      setError(err instanceof Error ? err.message : t("auth.register.failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -75,12 +90,13 @@ export default function RegisterPage() {
           <label className="block text-sm text-white/70">{t("auth.register.password")}</label>
           <PasswordInput
             required
-            minLength={6}
+            minLength={PASSWORD_MIN_LENGTH}
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             showStrength
           />
+          <PasswordRequirements />
         </div>
 
         <Button type="submit">

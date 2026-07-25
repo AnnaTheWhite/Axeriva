@@ -51,6 +51,8 @@
       "medium": "Medium",
       "strong": "Strong"
     },
+    "passwordRequirements": "At least {{min}} characters, with an uppercase letter, a lowercase letter and a number.",
+    "passwordPolicyError": "Your password doesn't meet the requirements: at least {{min}} characters, with an uppercase letter, a lowercase letter and a number.",
     "search": "Search",
     "clearFilters": "Clear filters",
     "all": "All",
@@ -595,7 +597,7 @@
       "submit": "Sign up",
       "haveAccount": "Already have an account?",
       "logIn": "Log in",
-      "failed": "Registration failed. Try a different email address."
+      "failed": "Registration failed. Please check the form and try again."
     },
     "forgotPassword": {
       "title": "Forgot password",
@@ -639,7 +641,7 @@
       "password": "Password",
       "submitting": "Activating...",
       "submit": "Activate account",
-      "failed": "Failed to activate your account."
+      "failed": "Couldn't activate your account. Please check the form and try again."
     }
   },
   "emailBanner": {

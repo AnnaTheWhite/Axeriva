@@ -51,6 +51,8 @@
       "medium": "Közepes",
       "strong": "Erős"
     },
+    "passwordRequirements": "Legalább {{min}} karakter, nagybetűvel, kisbetűvel és számmal.",
+    "passwordPolicyError": "A jelszó nem felel meg a követelményeknek: legalább {{min}} karakter, nagybetűvel, kisbetűvel és számmal.",
     "search": "Keresés",
     "clearFilters": "Szűrők törlése",
     "all": "Mind",
@@ -595,7 +597,7 @@
       "submit": "Regisztráció",
       "haveAccount": "Már van fiókja?",
       "logIn": "Bejelentkezés",
-      "failed": "A regisztráció sikertelen. Próbáljon másik e-mail-címet."
+      "failed": "A regisztráció sikertelen. Kérjük, ellenőrizze az űrlapot, és próbálja újra."
     },
     "forgotPassword": {
       "title": "Elfelejtett jelszó",
@@ -639,7 +641,7 @@
       "password": "Jelszó",
       "submitting": "Aktiválás...",
       "submit": "Fiók aktiválása",
-      "failed": "A fiók aktiválása sikertelen."
+      "failed": "A fiók aktiválása sikertelen. Kérjük, ellenőrizze az űrlapot, és próbálja újra."
     }
   },
   "emailBanner": {
