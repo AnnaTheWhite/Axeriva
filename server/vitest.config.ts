@@ -32,9 +32,9 @@ export default defineConfig({
     // bcrypt hashing (cost 10) runs for real in the auth tests — the default
     // 5s timeout is tight once a test does several logins.
     testTimeout: 20_000,
-    // The global setup runs `prisma migrate reset`, which drops the schema and
-    // replays 2 migrations; on a cold CI container that is slower than the
-    // 10s default.
+    // The global setup runs `prisma migrate deploy`, which on a blank CI
+    // container applies both migrations from scratch; that is slower than the
+    // 10s default, and slower again against a remote managed database.
     hookTimeout: 60_000,
 
     env: {

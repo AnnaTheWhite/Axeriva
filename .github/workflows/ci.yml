@@ -52,7 +52,7 @@ jobs:
           POSTGRES_DB: axeriva_test
         ports:
           - 5432:5432
-        # Without the health check the first `prisma migrate reset` can race
+        # Without the health check the first `prisma migrate deploy` can race
         # the container and fail on a connection refused.
         options: >-
           --health-cmd pg_isready
@@ -88,10 +88,13 @@ jobs:
         working-directory: server
         run: npm run build
 
-      # globalSetup.ts runs `prisma migrate reset` against the service
-      # container above, so the suite proves the migration history applies
-      # cleanly to an empty PostgreSQL before a single test runs. Every other
-      # variable it needs is set in vitest.config.ts — no secrets, no network.
+      # globalSetup.ts runs `prisma migrate deploy` against the service
+      # container above, which starts empty — so every CI run proves the
+      # migration history applies cleanly to a blank PostgreSQL before a
+      # single test executes. That is also the first half of the production
+      # start command, so this exercises the real deploy path. Every other
+      # variable the suite needs is set in vitest.config.ts — no secrets, no
+      # network.
       - name: Run integration tests
         working-directory: server
         run: npm test
