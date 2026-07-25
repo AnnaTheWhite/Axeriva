@@ -68,9 +68,11 @@
 
 ## Backups
 
-- [ ] Deploy előtti manuális DB-mentés: `pg_dump "$DATABASE_URL" > backup-$(date +%F).sql` (vagy a DB-szolgáltató snapshotja)
-- [ ] Rendszeres (pl. napi) mentési rutin kijelölve és dokumentálva *(automatizálása jövőbeli feladat)*
-- [ ] Visszaállítás egyszer kipróbálva (backup fájl visszamásolása + restart)
+*(A teljes eljárás, a verifikáció és a drill: [backup-restore.md](backup-restore.md).)*
+
+- [ ] Deploy előtti manuális DB-mentés: `pg_dump --format=custom --no-owner --no-privileges --file="axeriva-$(date +%F-%H%M).dump" "$DATABASE_URL"` — PowerShell-változat a backup-restore.md-ben
+- [ ] Rendszeres mentés: a szolgáltatói napi backup a mechanizmus (a tier képessége a render-deployment.md 0. pontjában dokumentálva); saját ütemezett dump-job **tudatosan nincs** (indoklás: backup-restore.md 6. pont)
+- [ ] Visszaállítás egyszer kipróbálva (`pg_restore --clean` **nem üres** adatbázisba, verifikációval — a backup-restore.md drillje, dátummal naplózva)
 
 ## Security
 

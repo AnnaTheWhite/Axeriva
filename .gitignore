@@ -35,3 +35,20 @@ dist-ssr
 # Local SQLite database (contains real user data) and TS build cache
 server/prisma/axeriva.db
 server/tsconfig.tsbuildinfo
+
+# Adatbázis-dumpok és uploads-archívumok — érzékeny adat (bcrypt hashek,
+# ügyféladat, Stripe-azonosítók), soha nem kerülhet a repóba. A minták
+# szándékosan fájlnév-specifikusak: egy csupasz `backup-*` a
+# docs/backup-restore.md-t is elnyelné.
+*.dump
+backup-*.sql
+backup-*.dump
+axeriva-*.sql
+uploads-*.tar.gz
+
+# Belt-and-braces: a Prisma migrációk .sql fájljai KÖVETETTEK és azok is
+# maradnak. Blanket `*.sql` mintát ezért tilos felvenni: egy új
+# `prisma migrate dev` által generált migration.sql némán kimaradna a
+# commitból, és sem a CI globalSetup.ts `migrate deploy`-a, sem a production
+# Start Command nem látná a migrációt.
+!server/prisma/migrations/**/*.sql

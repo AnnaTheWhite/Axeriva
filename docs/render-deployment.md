@@ -71,6 +71,16 @@ to the database` hibával kilép.
 > regisztrációs űrlapon keresztül jön létre, a platform-admin pedig az 1.9
 > pontban leírt seed-scripttel.
 
+**Az instance adatai és backup-képessége** *(a dashboardról töltendő ki — enélkül
+a mentési terv ellenőrizhetetlen; lásd [backup-restore.md](backup-restore.md))*:
+
+| Tétel | Érték |
+|---|---|
+| Render PostgreSQL plan/tier | *(kitöltendő)* |
+| PostgreSQL major verzió | *(kitöltendő — ehhez kell illeszkedő `pg_dump` kliens)* |
+| Napi automatikus backup | van / nincs — retention: *(nap)* |
+| Point-in-time recovery (PITR) | van / nincs — ablak: *(nap)* |
+
 ## 1. Backend — Web Service
 
 1. Render Dashboard → **New → Web Service**, kösd be a GitHub repót.
@@ -117,8 +127,11 @@ azonnal, láthatóan bukik, nem félkészen üzemel.
 ### Perzisztens tárolás — miért így
 
 - Az **adatbázis** a Postgres-migráció óta külön managed szolgáltatás: a
-  `DATABASE_URL` connection string, nem fájlút. Backup/PITR a DB-szolgáltató
-  dolga, nem a diszk-mentésé.
+  `DATABASE_URL` connection string, nem fájlút. Az adatbázist a szolgáltatói
+  backup (napi snapshot / PITR — a konkrét képességet a 0. pont táblázata
+  rögzíti) **és** a deploy előtti kézi `pg_dump` együtt fedi; a disk pedig az
+  **uploadokat** tartja, amit külön, a DB-dumppal egy időablakban kell menteni.
+  A kettő együtt ad teljes mentést — részletek: [backup-restore.md](backup-restore.md).
 - Az `UPLOAD_ROOT` viszont továbbra is **abszolút, a `/var/data` mount alatti**
   út. Relatív út (a lokális `./uploads` fallback) a konténer efemer
   fájlrendszerére mutatna, amit a Render minden deploynál eldob — **minden
@@ -244,11 +257,27 @@ retry-logika): [stripe-webhook-production-readiness.md](./stripe-webhook-product
   migrációk (új tábla/oszlop) ettől még kompatibilisek a régi kóddal;
   destruktív migrációt (oszlop/tábla törlés) ezért CSAK két lépcsőben,
   külön release-ben adj ki.
-- **Adat**: deploy előtt készíts DB-mentést a Postgres oldalán
-  (`pg_dump "$DATABASE_URL" > backup-$(date +%F).sql`, vagy a szolgáltató
-  snapshot/PITR funkciója). Vészhelyzetben ez állítható vissza
-  (`psql "$DATABASE_URL" < backup-....sql`). A **feltöltött fájlokat** külön
-  kell menteni a `/var/data/uploads` mountról — azok nincsenek a DB-ben.
+- **Adat**: deploy előtt készíts DB-mentést custom formátumban:
+
+  ```bash
+  pg_dump --format=custom --no-owner --no-privileges \
+    --file="axeriva-$(date +%F-%H%M).dump" "$DATABASE_URL"
+  ```
+
+  Vészhelyzetben a visszaállítás — **nem üres adatbázisba is** működik:
+
+  ```bash
+  pg_restore --clean --if-exists --no-owner --no-privileges \
+    --single-transaction --dbname="$DATABASE_URL" axeriva-<dátum>.dump
+  ```
+
+  ⚠️ Restore után a következő restart `prisma migrate deploy`-a automatikusan
+  újra felviszi a hiányzó migrációkat — ha az incidens oka egy destruktív
+  migráció volt, azt a repóban előbb vissza kell vonni. A **feltöltött
+  fájlokat** (a teljes `/var/data/uploads`-ot: `projects/` + `logos/`) a
+  DB-dumppal egy időablakban, külön kell menteni — azok nincsenek a DB-ben.
+  A teljes eljárás, a verifikációs lépések és a restore-drill:
+  [backup-restore.md](backup-restore.md).
 
 ## 8. Troubleshooting
 

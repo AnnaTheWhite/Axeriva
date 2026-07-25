@@ -73,15 +73,21 @@ Részletek: [environment.md](environment.md).
 - [ ] Stripe **live** webhook a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
 - [ ] Resend domain verifikálva (SPF/DKIM), `ResendEmailService` aktív (nem Mock)
 - [ ] Feltöltés működik, redeploy után a fájl megmarad (persistent disk)
-- [ ] Deploy előtti DB-mentés: `pg_dump "$DATABASE_URL" > backup-$(date +%F).sql`
+- [ ] Deploy előtti DB-mentés: `pg_dump --format=custom --no-owner --no-privileges --file="axeriva-$(date +%F-%H%M).dump" "$DATABASE_URL"` ([backup-restore.md](backup-restore.md))
+- [ ] Uploads-mentés a **teljes** `/var/data/uploads`-ról (`projects/` + `logos/`), a DB-dumppal egy időablakban
+- [ ] Restore-próba lefutott (a backup-restore.md drillje, D5 nem üres célba) — dátum: *(kitöltendő)*
 
 ## Part 6 — Rollback-terv
 
 - **Kód:** Render → Events/Deploys → „Rollback to this deploy" (env-et nem érint).
 - **Migráció:** `migrate deploy` csak előre megy — destruktív migrációt csak
   külön release-ben; additív migrációk a régi kóddal kompatibilisek.
-- **Adat:** a Part 5 disk-mentés visszamásolása + restart.
-- Részletek: [render-deployment.md](render-deployment.md) 7. pont.
+- **Adat:** a Part 5 `pg_dump` visszatöltése `pg_restore --clean --if-exists
+  --single-transaction`-nel (nem üres adatbázisba is működik), verifikációval.
+  ⚠️ Restore után a restart `migrate deploy`-a újra felviszi a hiányzó
+  migrációkat — destruktív migrációt előbb vissza kell vonni a repóban.
+- Részletek: [render-deployment.md](render-deployment.md) 7. pont és
+  [backup-restore.md](backup-restore.md).
 
 ---
 
