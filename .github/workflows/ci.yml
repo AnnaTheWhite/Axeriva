@@ -4,7 +4,7 @@ name: CI
 # checks, so "green = deployable" is a fact rather than a hope.
 #
 # Gate policy:
-#   backend  — BLOCKING (132 integration tests + prisma generate + tsc)
+#   backend  — BLOCKING (140 tests + prisma generate + tsc)
 #   frontend — BLOCKING (tsc -b + vite build)
 #   lint     — REPORT ONLY (continue-on-error), see the job comment below
 on:

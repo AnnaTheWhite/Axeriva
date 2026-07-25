@@ -27,6 +27,11 @@ dist-ssr
 .env
 .env.local
 
+# Claude Code local config. settings.local.json holds machine-local paths and
+# permission entries that can contain live connection strings — never commit it.
+# (`*.local` above does not match `settings.local.json`.)
+.claude/
+
 # Local SQLite database (contains real user data) and TS build cache
 server/prisma/axeriva.db
 server/tsconfig.tsbuildinfo

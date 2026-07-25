@@ -1,6 +1,6 @@
 # Axeriva — Projekt-összefoglaló
 
-*Állapot: 2026. július 6. — `master` branch, utolsó commit: `51232bd` (JWT_SECRET fail-fast)*
+*Állapot: 2026. július 25. — `master` branch, utolsó commit: `a13ce54` (PostgreSQL-átállás lezárása)*
 
 Az **Axeriva** (repó-mappa neve történeti okból: `CrewFlow`) egy multi-tenant SaaS alkalmazás kis vállalkozások (elsősorban fizikai munkát végző csapatok) számára: munkavállalók, projektek, ügyfelek, műszakok/időnyilvántartás és előfizetés-kezelés egy helyen, tulajdonosi "Command Center"-rel kiegészítve.
 
@@ -16,13 +16,14 @@ CrewFlow/
 ├── server/         ← Backend (Express 5 + TypeScript + Prisma 6 + PostgreSQL)
 │   ├── prisma/     ← schema.prisma, migrációk (+ migrations-sqlite-archive/)
 │   ├── src/
-│   │   ├── routes/       ← 16 route-modul (a teljes API itt él, controller réteg nincs használatban)
-│   │   ├── middleware/   ← auth (JWT), role (RBAC), upload (multer)
-│   │   ├── services/     ← activity, audit, email (Resend), geofence, stripe
-│   │   ├── constants/    ← státusz/prioritás/kategória listák
+│   │   ├── routes/       ← 19 route-modul (a teljes API itt él, controller réteg nincs használatban)
+│   │   ├── middleware/   ← auth (JWT), role (RBAC), upload (multer), rateLimit, readOnly, httpSecurity, signedUploads
+│   │   ├── services/     ← activity, audit, email (Resend), geofence, storage, stripe, planAccess, readOnly
+│   │   ├── constants/    ← státusz/prioritás/kategória listák, plans/features/limits
+│   │   ├── tests/        ← 140 teszt 10 fájlban (vitest + supertest, valós PostgreSQL)
 │   │   └── scripts/      ← seedDeveloper, stripeSetup
 │   └── uploads/    ← projekt-csatolmányok (diszken, UUID fájlnévvel)
-└── docs/           ← render-deployment.md, stripe-webhook-production-readiness.md
+└── docs/           ← deploy, security, subscription és checklist dokumentáció
 ```
 
 - **Kommunikáció:** REST/JSON, JWT Bearer tokennel. A frontend `src/services/*.service.ts` fájljai fedik le végpontonként az API-t (`src/services/api.ts` a közös kliens, benne globális 401-kezelés).
@@ -139,7 +140,7 @@ Egyéb: `EmailVerificationBanner`, kétnyelvű UI (HU/EN), `AuthContext` a sessi
 
 ### Production-élesítés (dokumentálva a docs/ alatt)
 - **Render deploy** ([render-deployment.md](render-deployment.md)): backend Web Service persistent diskkel (`DATABASE_URL` és `UPLOAD_ROOT` a disk mount alá!), frontend Static Site, `axeriva.com` domain.
-- **API_URL hardkódolva** `http://localhost:5000`-re a `src/services/api.ts`-ben → environment-alapúvá kell tenni build előtt.
+- **API_URL**: a `src/services/api.ts` már `VITE_API_URL`-t olvas build-időben, `http://localhost:5000` fallbackkel; production buildnél hiánya konzol-figyelmeztetést ad. A változót a frontend Static Site buildjéhez be kell állítani.
 - **Stripe élesítés** ([stripe-webhook-production-readiness.md](stripe-webhook-production-readiness.md)): a jelenlegi `.env` teszt-kulcsokat és placeholder webhook-secretet tartalmaz; élő webhook-endpoint + live kulcsok beállítása szükséges.
 
 ### Funkcionális bővítések (a kódban előkészítve)
@@ -150,11 +151,16 @@ Egyéb: `EmailVerificationBanner`, kétnyelvű UI (HU/EN), `AuthContext` a sessi
 - **E-mail-sablonok** a cég-brandinggel.
 
 ### Műszaki adósság / minőség
-- **Tesztek**: jelenleg nincs semmilyen automatizált teszt — legalább az auth- és Stripe-webhook-útvonalakra integrációs tesztek kellenének.
-- **CI/CD** pipeline (lint + build + teszt).
-- **SQLite → PostgreSQL** megfontolandó, ha a Render-diskes SQLite-ot kinövi a projekt (párhuzamos írások, backupok).
+
+*Lezárva a v1.0 #1–#3 során:* automatizált tesztek (140 teszt, `server/src/tests/`, valós PostgreSQL ellen), CI pipeline (`.github/workflows/ci.yml` — backend és frontend build blokkoló), SQLite → PostgreSQL migráció, valamint a `tsbuildinfo` / dev-adatbázis gitignore-olása.
+
+Ami nyitva maradt:
+- **Frontend tesztek**: a `src/` alatt egyetlen teszt sincs; a teljes lefedettség backend-oldali.
+- **Lint-gate**: a CI lint-job `continue-on-error: true`, azaz csak riportál — 23 meglévő frontend lint-hiba miatt (ebből 15 `react-hooks/set-state-in-effect`).
+- **Frontend strict mode**: a `tsconfig.app.json` nem állít `strict`-et, így a frontend típusellenőrzés lazább a backendénél (`server/tsconfig.json` viszont `strict: true`).
+- **Teszt-fájlok típusellenőrzése**: a `server/tsconfig.json` kizárja a `src/tests`-et, így a tesztkód típushibái semmilyen gate-en nem buknak el.
 - **Controller/service réteg** — a route-fájlok vastagok (üres `controllers/` mappa jelzi az eredeti szándékot).
-- Repó-higiénia: `server/tsconfig.tsbuildinfo` és a dev `axeriva.db` gitignore-olása.
+- **v1.0 #3.5 Launch Blockers** — hat élesítés előtti hiba, lásd [launch-blockers-plan.md](launch-blockers-plan.md).
 
 ---
 
@@ -163,8 +169,12 @@ Egyéb: `EmailVerificationBanner`, kétnyelvű UI (HU/EN), `AuthContext` a sessi
 ```bash
 # Backend (server/.env: DATABASE_URL, JWT_SECRET, STRIPE_*, RESEND_*, APP_URL)
 cd server && npm install && npm run dev        # ts-node-dev, port 5000
-npm run seed:developer                          # DEVELOPER user seedelése
+npm run seed:developer -- <email> <jelszó>     # DEVELOPER user seedelése (a `--` kötelező)
 npm run stripe:setup                            # Stripe product/price setup
+
+# Tesztek (külön PostgreSQL adatbázis kell: TEST_DATABASE_URL, a neve
+# tartalmazza a "test" szót — a globalSetup enélkül nem indul el)
+npm test                                        # vitest run, 140 teszt
 
 # Frontend
 npm install && npm run dev                      # Vite dev szerver
