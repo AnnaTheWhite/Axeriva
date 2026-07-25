@@ -2,9 +2,10 @@ import { Router } from "express";
 import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../constants/subscriptionStatuses";
 
 // Admin Analytics & User Activity dashboard API (DEVELOPER only). Mounted at
-// /admin/analytics in index.ts behind authMiddleware; the guard below keeps
+// /admin/analytics in app.ts behind authMiddleware; the guard below keeps
 // it consistent with admin.routes.ts. Every handler selects only
 // non-sensitive fields (never password/token/secret columns) and leans on
 // aggregated Prisma queries (count / groupBy / aggregate) instead of
@@ -15,7 +16,6 @@ router.use(requireRole(ROLES.DEVELOPER));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_WINDOW_DAYS = 30;
-const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"];
 
 function daysAgo(days: number): Date {
   return new Date(Date.now() - days * DAY_MS);

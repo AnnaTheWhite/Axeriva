@@ -41,4 +41,9 @@ export const RATE_LIMITS = {
   // compromised session can't be brute-forced from a botnet either. The limit
   // is tight because the legitimate flow needs one or two attempts, never ten.
   ACCOUNT_DELETE: { windowMs: HOUR_MS, max: 5 },
+
+  // POST /company/archive re-checks the caller's password exactly like
+  // /account/delete does, so it is the same password oracle for a stolen
+  // JWT (B2). Same reasoning, same shape: per-user key, tight ceiling.
+  COMPANY_ARCHIVE: { windowMs: HOUR_MS, max: 5 },
 } as const;

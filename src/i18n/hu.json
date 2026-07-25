@@ -459,7 +459,7 @@
     },
     "archiveModal": {
       "title": "Cég archiválása",
-      "description": "Az archiválás minden céges felhasználó bejelentkezését letiltja, és aktív használatból eltávolítja a céget. Minden adat, számla és számlázási előzmény megmarad, semmi nem törlődik. Ez az ügyfélszolgálat segítségével visszavonható.",
+      "description": "Az archiválás minden céges felhasználó bejelentkezését letiltja, és aktív használatból eltávolítja a céget. Minden adat, számla és számlázási előzmény megmarad, semmi nem törlődik. Az archiválás az alkalmazásból nem vonható vissza.",
       "password": "Jelszó",
       "confirmPrefix": "Írja be, hogy",
       "confirmSuffix": "a megerősítéshez",
@@ -469,7 +469,8 @@
       "missingFields": "Adja meg jelszavát, és írja be, hogy ARCHIVE a megerősítéshez."
     },
     "dangerZone": {
-      "archiveCompany": "Cég archiválása"
+      "archiveCompany": "Cég archiválása",
+      "archiveBlockedSubscription": "Az előfizetése még aktív. Mondja le az Előfizetés oldalon, és a cég a folyó időszak lejárta után archiválható."
     }
   },
   "readOnly": {

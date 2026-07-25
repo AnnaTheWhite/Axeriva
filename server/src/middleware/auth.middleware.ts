@@ -66,8 +66,7 @@ export async function authMiddleware(
   // needing to revoke or track individual tokens. Same generic error as
   // an invalid/expired token, so this can't be used to distinguish a
   // deleted account from any other auth failure. Company-level
-  // deactivation is intentionally out of scope here (separate
-  // stabilization pass).
+  // deactivation is enforced the same way just below (K2.1.5).
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
     select: {

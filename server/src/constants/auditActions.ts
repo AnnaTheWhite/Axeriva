@@ -17,4 +17,7 @@ export const AUDIT_ACTIONS = {
   // C1.7 — company archived by its owner. Never paired with deleting any
   // User row (unlike ACCOUNT_DELETED); see companyArchive.routes.ts.
   COMPANY_ARCHIVED: "COMPANY_ARCHIVED",
+  // B2 — archive attempt refused because the company still has a live,
+  // billed Stripe subscription; metadata carries the subscriptionStatus.
+  COMPANY_ARCHIVE_BLOCKED_SUBSCRIPTION: "COMPANY_ARCHIVE_BLOCKED_SUBSCRIPTION",
 } as const;

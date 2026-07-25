@@ -459,7 +459,7 @@
     },
     "archiveModal": {
       "title": "Archive Company",
-      "description": "Archiving disables login for every user in your company and hides it from active use. All data, invoices and billing history are preserved and nothing is deleted. This can be undone by contacting support.",
+      "description": "Archiving disables login for every user in your company and hides it from active use. All data, invoices and billing history are preserved and nothing is deleted. Archiving cannot be undone from the app.",
       "password": "Password",
       "confirmPrefix": "Type",
       "confirmSuffix": "to confirm",
@@ -469,7 +469,8 @@
       "missingFields": "Enter your password and type ARCHIVE to confirm."
     },
     "dangerZone": {
-      "archiveCompany": "Archive company"
+      "archiveCompany": "Archive company",
+      "archiveBlockedSubscription": "Your subscription is still active. Cancel it on the Subscription page and wait for the current period to end before archiving the company."
     }
   },
   "readOnly": {

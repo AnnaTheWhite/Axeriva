@@ -7,10 +7,10 @@ import { logAudit } from "../services/audit/auditLog";
 import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../constants/subscriptionStatuses";
 
 const router = Router();
 
-const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"];
 const CONFIRMATION_TEXT = "DELETE";
 
 router.use(requireRole(ROLES.BUSINESS_OWNER, ROLES.EMPLOYEE));

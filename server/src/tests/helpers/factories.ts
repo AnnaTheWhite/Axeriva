@@ -29,6 +29,11 @@ type CompanyOverrides = Partial<{
   subscriptionStatus: string;
   subscriptionEndsAt: Date | null;
   active: boolean;
+  // Defaults to null (like every real company before its first Checkout).
+  // The B2 archive guard blocks only status ∈ ACTIVE_SUBSCRIPTION_STATUSES
+  // AND stripeSubscriptionId != null, so tests seeding a billed company must
+  // set this explicitly.
+  stripeSubscriptionId: string | null;
 }>;
 
 // A company with a live trial by default — i.e. NOT in read-only mode — so
@@ -45,6 +50,9 @@ export async function createCompany(overrides: CompanyOverrides = {}) {
           ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
           : overrides.subscriptionEndsAt,
       ...(overrides.active === undefined ? {} : { active: overrides.active }),
+      ...(overrides.stripeSubscriptionId === undefined
+        ? {}
+        : { stripeSubscriptionId: overrides.stripeSubscriptionId }),
     },
   });
 }
