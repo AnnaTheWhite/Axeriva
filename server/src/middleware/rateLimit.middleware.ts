@@ -7,10 +7,13 @@ import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 export { maskEmail } from "../utils/maskEmail";
 
 // Reusable in-memory rate limiter (K2.1.3). Deliberately dependency-free
-// and process-local: the app runs as a single instance on one node (SQLite
-// on a persistent disk), so an in-memory fixed window is exactly as strong
-// as an external store would be — if the deployment ever scales to multiple
-// instances, swap the Map for a shared store behind the same interface.
+// and process-local: the app still runs as a single instance on one node, so
+// an in-memory fixed window is exactly as strong as an external store would
+// be — if the deployment ever scales to multiple instances, swap the Map for
+// a shared store behind the same interface. NOTE: since the Postgres
+// migration the database no longer *forces* single-instance deployment, so
+// this limiter (and the uploads disk) is now the binding constraint on
+// scaling out.
 //
 // Fixed-window counting: `max` requests per `windowMs` per key. The key
 // defaults to the client IP (`trust proxy` is enabled in production, see

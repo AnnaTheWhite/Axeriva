@@ -1,12 +1,17 @@
 import { defineConfig } from "vitest/config";
-import path from "node:path";
+import { TEST_DATABASE_URL } from "./src/tests/testDatabaseUrl";
 
-// The integration suite talks to a REAL database — a throwaway SQLite file
-// provisioned by tests/globalSetup.ts from the committed migrations, never
-// the development database. Keeping it a real DB (rather than mocking
-// Prisma) is the whole point: tenant scoping, unique constraints and
-// cascade behaviour are exactly what these tests exist to prove.
-const TEST_DB = path.join(__dirname, "prisma", "test.db");
+// The integration suite talks to a REAL database — a disposable PostgreSQL
+// database brought up to the committed migrations by tests/globalSetup.ts,
+// never the development one. Keeping it a real DB (rather than mocking
+// Prisma) is the whole point: tenant scoping, unique constraints, index
+// behaviour and cascade semantics are exactly what these tests exist to
+// prove. Since the PostgreSQL migration this must be a real server, so the
+// connection string comes from the environment instead of being a file path
+// the suite could create itself (see ./src/tests/testDatabaseUrl.ts).
+//
+// globalSetup refuses to run against a database whose name does not contain
+// "test", so a mis-set variable cannot touch real data.
 
 export default defineConfig({
   test: {
@@ -16,9 +21,9 @@ export default defineConfig({
     globalSetup: ["src/tests/globalSetup.ts"],
     setupFiles: ["src/tests/setup.ts"],
 
-    // One shared SQLite file means the suite must not run files in parallel:
-    // two workers truncating each other's rows mid-test would produce
-    // failures that have nothing to do with the code under test.
+    // One shared database means the suite must not run files in parallel: two
+    // workers truncating each other's rows mid-test would produce failures
+    // that have nothing to do with the code under test.
     fileParallelism: false,
     pool: "forks",
     maxWorkers: 1,
@@ -27,11 +32,14 @@ export default defineConfig({
     // bcrypt hashing (cost 10) runs for real in the auth tests — the default
     // 5s timeout is tight once a test does several logins.
     testTimeout: 20_000,
-    hookTimeout: 30_000,
+    // The global setup runs `prisma migrate reset`, which drops the schema and
+    // replays 2 migrations; on a cold CI container that is slower than the
+    // 10s default.
+    hookTimeout: 60_000,
 
     env: {
       NODE_ENV: "test",
-      DATABASE_URL: `file:${TEST_DB}`,
+      DATABASE_URL: TEST_DATABASE_URL,
       JWT_SECRET: "test-only-jwt-secret-not-used-anywhere-else",
       // Stripe: a fake-but-well-formed secret and a webhook signing secret
       // the tests sign their own payloads with. No network call is made —

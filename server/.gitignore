@@ -13,6 +13,9 @@ dist
 tsconfig.tsbuildinfo
 prisma/axeriva.db
 
-# Throwaway database created and destroyed by the integration test suite
+# Legacy: the integration suite used a throwaway SQLite file before the
+# PostgreSQL migration. It now uses a disposable PostgreSQL database
+# (TEST_DATABASE_URL), so nothing is written here — kept so an old working
+# copy's leftover file can never be committed.
 prisma/test.db
 prisma/test.db-journal
