@@ -27,6 +27,7 @@ import attachmentsRoutes from "./routes/attachments.routes";
 import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import accessRoutes from "./routes/access.routes";
 import employeeAccessRoutes from "./routes/employeeAccess.routes";
+import { stripeErrorHandler } from "./services/stripe/stripeErrors";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { blockWritesWhenReadOnly } from "./middleware/readOnly.middleware";
 import { UPLOAD_ROOT } from "./middleware/upload.middleware";
@@ -201,6 +202,13 @@ app.use("/owner-notes", tenantWrite, ownerNotesRoutes);
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
+
+// B4.2 — Stripe-aware error mapping, BEFORE the global handler. Covers all
+// Stripe SDK throws centrally (card declines, unconfigured Billing Portal,
+// wrong-mode price IDs, outages) with meaningful statuses and user-safe
+// messages; calls next(error) for everything else, so non-Stripe errors
+// keep the exact behaviour of the handler below.
+app.use(stripeErrorHandler);
 
 // Global error handler — Express 5 forwards rejected promises from async
 // route handlers here automatically. Replaces the framework default, which

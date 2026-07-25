@@ -269,6 +269,37 @@ describe("checkout.session.completed", () => {
     expect(after!.stripeCustomerId).toBe("cus_test_123");
     expect(after!.stripeSubscriptionId).toBe("sub_test_123");
   });
+
+  it("answers a Stripe failure with a non-2xx and NO stack in the body (B4)", async () => {
+    // The subscriptions.retrieve inside the handler sits outside the
+    // signature try/catch, so an SDK failure propagates to the error
+    // middleware. Two properties matter: the status must be non-2xx so
+    // Stripe retries with backoff (the self-healing path), and the body
+    // must never carry a stack — before B4 the dev-mode global handler
+    // leaked err.stack into Stripe's webhook delivery log.
+    const tenant = await createTenant({ plan: "starter", subscriptionStatus: "inactive" });
+
+    vi.spyOn(stripe.subscriptions, "retrieve").mockRejectedValue(
+      new Stripe.errors.StripeAPIError({
+        message: "Stripe is down",
+        statusCode: 500,
+      })
+    );
+
+    const res = await postWebhook(
+      event("checkout.session.completed", {
+        id: "cs_test_123",
+        object: "checkout.session",
+        customer: "cus_test_123",
+        subscription: "sub_test_123",
+        metadata: { companyId: String(tenant.company.id) },
+      })
+    );
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.body.stack).toBeUndefined();
+    expect(res.body.error).not.toContain("at "); // no stack fragments either
+  });
 });
 
 describe("unhandled events", () => {

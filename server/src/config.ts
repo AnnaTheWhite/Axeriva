@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { checkStripeKeyMode } from "./config/stripeKeyMode";
 
 // The single source of truth for environment configuration. This module is
 // the ONLY place allowed to read process.env — routes, middleware, services
@@ -76,6 +77,24 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// B4.1 — Stripe key-mode check (test key under production is fatal unless
+// ALLOW_TEST_STRIPE_KEY=true makes staging a deliberate, documented choice;
+// a live key under NODE_ENV=test is always fatal). The decision table is a
+// pure function in config/stripeKeyMode.ts — this block only owns the side
+// effects, extending the fail-fast pattern above. Strict string comparison
+// on purpose: Boolean("false") would be true.
+const stripeKeyCheck = checkStripeKeyMode({
+  nodeEnv,
+  secretKey: readEnv("STRIPE_SECRET_KEY") ?? null,
+  allowTestKey: readEnv("ALLOW_TEST_STRIPE_KEY") === "true",
+});
+if (stripeKeyCheck.level === "fatal") {
+  console.error(stripeKeyCheck.message);
+  process.exit(1);
+} else if (stripeKeyCheck.level === "warn") {
+  console.warn(stripeKeyCheck.message);
+}
+
 // ---------------------------------------------------------------------------
 // Config object
 // ---------------------------------------------------------------------------
@@ -120,9 +139,10 @@ export const config = {
     // (see PRODUCTION_REQUIRED above — fails fast at startup if missing);
     // optionally unset in development until `npm run stripe:setup` has been
     // run against a test account. Test vs Live is selected by which
-    // STRIPE_SECRET_KEY (and therefore which price IDs) the deploy is
-    // configured with. Resolved via config/stripePricing.ts — no price IDs
-    // are referenced anywhere else.
+    // STRIPE_SECRET_KEY the deploy is configured with — and that choice is
+    // VERIFIED at startup (see config/stripeKeyMode.ts above): a test key
+    // under NODE_ENV=production refuses to boot. Resolved via
+    // config/stripePricing.ts — no price IDs are referenced anywhere else.
     prices: {
       starter: {
         eur: readEnv("STRIPE_PRICE_STARTER_EUR") ?? null,

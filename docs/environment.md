@@ -19,7 +19,8 @@ The frontend has a single build-time variable read by Vite in
 | `PORT` | no | `5000` | API listen port. |
 | `APP_URL` | production | unset → CORS allow-all, links use `http://localhost:5173` | Frontend origin. Drives CORS and all links built into emails (verify/reset/invite) and Stripe redirect URLs. |
 | `UPLOAD_ROOT` | production | `./uploads` under the server cwd | Absolute path for uploaded project attachments — must point inside the persistent disk mount in production. |
-| `STRIPE_SECRET_KEY` | production | unset → Stripe client throws on first use | Stripe API key (`sk_test_...` / `sk_live_...`). |
+| `STRIPE_SECRET_KEY` | production | unset → Stripe client throws on first use | Stripe API key (`sk_test_...` / `sk_live_...`). Mode-checked at startup: a test key under `NODE_ENV=production` refuses to boot, a live key under `NODE_ENV=test` always refuses (see `config/stripeKeyMode.ts`). |
+| `ALLOW_TEST_STRIPE_KEY` | no | — | Escape hatch: allows startup with an `sk_test_…` key under `NODE_ENV=production` (staging deploy). Only the exact value `true` has any effect. Never set it on the live deploy. |
 | `STRIPE_PRICE_ID` | production | unset → checkout returns 500 with a clear error | The Axeriva Pro monthly price. `npm run stripe:setup` prints it. |
 | `STRIPE_WEBHOOK_SECRET` | production | unset → webhook returns 400 | Webhook signing secret (`whsec_...`). See [stripe-webhook-production-readiness.md](stripe-webhook-production-readiness.md). |
 | `RESEND_API_KEY` | production | unset → MockEmailService (emails logged, not sent) | Resend API key for real email delivery. |

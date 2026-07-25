@@ -32,6 +32,7 @@ RC-specifikus, végső gate. Deploy-lépések: [render-deployment.md](render-dep
 | SPA rewrite | `/*` → `/index.html` (Render Static Site) | ⚠️ Renderen beállítandó |
 | `NODE_ENV=production` | kézzel beállítva | ⚠️ deploy-időben |
 | Env-validáció | hiányzó kötelező változó → startup exit(1) | ✅ (config.ts) |
+| Stripe kulcs-mód | prod: `sk_live_…`, különben startup exit(1) (kivétel: `ALLOW_TEST_STRIPE_KEY=true` staging) | ✅ (config/stripeKeyMode.ts) |
 | DATABASE_URL | managed PostgreSQL connection string (`postgresql://…?sslmode=require`) | ⚠️ deploy-időben |
 | UPLOAD_ROOT | `/var/data/uploads` (persistent disk) | ⚠️ deploy-időben |
 | CORS | prod: csak `APP_URL` origin | ✅ (index.ts) |
@@ -115,9 +116,12 @@ ellen. Minden lépés a valós UI-ból (kivéve ahol API-hívás jelezve).
 11. **Uploads:** projekt-attachment feltöltés → megjelenik (kép embedelődik,
     CORP cross-origin) → **redeploy után is megmarad**.
 12. **Dashboard:** owner dashboard aggregátumok betöltenek.
-13. **Stripe:** Checkout indítása → (live kártyával) előfizetés aktiválódik →
-    `Company.plan` frissül → Billing Portal elérhető → webhook-esemény
-    „succeeded" a Stripe Dashboardon.
+13. **Stripe:** *(előfeltétel: a live Customer Portal konfiguráció el van
+    mentve a Stripe Dashboardon — Settings → Billing → Customer portal →
+    Save)* Checkout indítása → (live kártyával) előfizetés aktiválódik →
+    `Company.plan` frissül → Billing Portal elérhető (ma még csak közvetlen
+    API-hívással: `POST /subscription/portal`) → webhook-esemény „succeeded"
+    a Stripe Dashboardon.
 14. **Account deletion:** teszt-fiók törlése (jelszó + „DELETE") → a fiók
     tokenje azonnal érvénytelen.
 

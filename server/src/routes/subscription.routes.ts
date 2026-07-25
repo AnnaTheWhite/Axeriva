@@ -184,6 +184,13 @@ router.post("/sync", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
     return res.status(400).json({ error: "sessionId is required" });
   }
 
+  // B4 — sessionId comes straight from the request body; a cheap format
+  // check keeps user-controlled junk from ever reaching the Stripe API
+  // (every Checkout session id starts with "cs_").
+  if (typeof sessionId !== "string" || !sessionId.startsWith("cs_")) {
+    return res.status(400).json({ error: "Invalid sessionId" });
+  }
+
   const session = await stripe.checkout.sessions.retrieve(sessionId);
 
   if (session.metadata?.companyId !== String(req.user!.companyId)) {

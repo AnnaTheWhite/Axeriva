@@ -102,7 +102,7 @@ to the database` hibával kilép.
 | `UPLOAD_ROOT` | `/var/data/uploads` (a disk mount path-on belül, **abszolút** út!) |
 | `JWT_SECRET` | hosszú, véletlen string (pl. `openssl rand -hex 64`) — **ne** a dev placeholder |
 | `APP_URL` | `https://axeriva.com` — a frontend URL-je; ez a CORS engedélyezett origin ÉS az e-mailekbe/Stripe-redirectekbe épülő linkek alapja |
-| `STRIPE_SECRET_KEY` | `sk_live_...` |
+| `STRIPE_SECRET_KEY` | `sk_live_...` — **test kulcs itt indulási hibát okoz**: `NODE_ENV=production` + `sk_test_…` esetén az API exit(1)-gyel megtagadja az indulást, tehát a deploy bukik (szándékos védelem, lásd `config/stripeKeyMode.ts`; staging kivétel: `ALLOW_TEST_STRIPE_KEY=true`) |
 | `STRIPE_PRICE_ID` | live Price ID — lásd 3. pont |
 | `STRIPE_WEBHOOK_SECRET` | live webhook signing secret — lásd 4. pont |
 | `RESEND_API_KEY` | Resend API key (élesítés előtt rotálva!) |
@@ -181,6 +181,11 @@ nem kell nyúlni.
 # server/.env-ben (vagy ideiglenesen exportálva) a live sk_live_... kulccsal:
 npm run stripe:setup
 ```
+
+> A scriptet `NODE_ENV` beállítása **nélkül** (development módban) futtasd: ott a
+> live kulcs csak egy hangos figyelmeztetést vált ki, az indulás engedélyezett.
+> (`NODE_ENV=test` alatt a live kulcs fatális — a teszt-suite soha nem érhet
+> live accounthoz; lásd `config/stripeKeyMode.ts`.)
 
 Idempotens: (újra)létrehozza az "Axeriva Pro" Productot és a havi Price-t
 **live mode**-ban, és kiírja a `STRIPE_PRICE_ID`-t — ezt másold a Render

@@ -149,6 +149,8 @@ Ne keverd össze ezekkel a már meglévő, helyesen beállított változókkal:
 
 Élesben **élő (live) módra váltva** mindhárom Stripe-kulcsot (secret key, webhook secret, és ha újra futtatod a setup scriptet, a price ID-t is) **újra le kell kérni live mode-ban** — a test mode és a live mode Stripe-ban teljesen különálló adatok (külön API kulcsok, külön webhook endpointok, külön Product/Price objektumok). A test mode-ban létrehozott `price_...` ID élesben **nem fog működni**.
 
+**Hibakeresés B4 óta:** a webhook-feldolgozás Stripe-hibáinál a válasz teste rövid, generikus üzenet (a Stripe-tudatos error-mapper adja, `services/stripe/stripeErrors.ts`) — stack trace soha nem kerül a Stripe delivery logjába. A részletes ok ezért a **Render szerver-logban** keresendő (`[stripe error] …` sor + `logHint`), nem a Stripe Dashboard delivery-nézetében.
+
 ---
 
 ## 6. Hogyan működjön deploy után

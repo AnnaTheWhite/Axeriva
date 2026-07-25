@@ -40,6 +40,8 @@
 
 ## Stripe
 
+- [ ] `STRIPE_SECRET_KEY` **live** kulcs (`sk_live_…`) — a Render env-ben ellenőrizve; az `ALLOW_TEST_STRIPE_KEY` **NINCS** beállítva (staging kivétel: lásd docs/environment.md). Test kulcs `NODE_ENV=production` alatt a deployt buktatja (config/stripeKeyMode.ts).
+- [ ] **Customer Portal konfiguráció elmentve a LIVE Stripe Dashboardon** (Settings → Billing → Customer portal → Save) — enélkül a `/subscription/portal` „No configuration provided" hibával áll el
 - [ ] Live mode Product + Price létrehozva (`npm run stripe:setup` live kulccsal), `STRIPE_PRICE_ID` beállítva
 - [ ] Live webhook endpoint létrehozva a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
 - [ ] Webhook-kézbesítés sikeres (Stripe Dashboard → endpoint → Events, nincs failed delivery)
