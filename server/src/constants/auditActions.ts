@@ -20,4 +20,8 @@ export const AUDIT_ACTIONS = {
   // B2 — archive attempt refused because the company still has a live,
   // billed Stripe subscription; metadata carries the subscriptionStatus.
   COMPANY_ARCHIVE_BLOCKED_SUBSCRIPTION: "COMPANY_ARCHIVE_BLOCKED_SUBSCRIPTION",
+  // B1 — an owner (or DEVELOPER) revoked an employee's login; metadata
+  // carries the employeeId and the revoked userId. The Employee row itself
+  // is untouched — see employeeAccess.routes.ts.
+  EMPLOYEE_ACCESS_REVOKED: "EMPLOYEE_ACCESS_REVOKED",
 } as const;

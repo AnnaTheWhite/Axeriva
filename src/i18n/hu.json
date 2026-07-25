@@ -154,7 +154,14 @@
     "inviteDone": "Kész",
     "sendingInvite": "Meghívás küldése...",
     "sendInvite": "Meghívás küldése",
-    "inviteFailed": "A meghívás létrehozása sikertelen."
+    "inviteFailed": "A meghívás létrehozása sikertelen.",
+    "revokeAccess": "Hozzáférés visszavonása",
+    "revokeTitle": "Hozzáférés visszavonása",
+    "revokeMessage": "Ez azonnal letiltja {{name}} bejelentkezését — minden nyitott munkamenet megszűnik, és nem tud újra belépni. A profil, a státusz és a munkaidő-előzmény megmarad. A megerősítéshez írja be: REVOKE",
+    "revokeConfirmPlaceholder": "Írja be: REVOKE",
+    "accessRevoked": "Hozzáférés visszavonva",
+    "accessRevokedBadge": "Hozzáférés visszavonva",
+    "revokeFailed": "A hozzáférés visszavonása sikertelen."
   },
   "customers": {
     "title": "Ügyfelek",

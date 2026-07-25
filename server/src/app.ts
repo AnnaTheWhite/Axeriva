@@ -26,6 +26,7 @@ import projectActivityRoutes from "./routes/projectActivity.routes";
 import attachmentsRoutes from "./routes/attachments.routes";
 import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import accessRoutes from "./routes/access.routes";
+import employeeAccessRoutes from "./routes/employeeAccess.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { blockWritesWhenReadOnly } from "./middleware/readOnly.middleware";
 import { UPLOAD_ROOT } from "./middleware/upload.middleware";
@@ -167,6 +168,12 @@ app.use("/invites", invitesRoutes);
 const tenantWrite = [authMiddleware, blockWritesWhenReadOnly];
 
 app.use("/employees", tenantWrite, employeesRoutes);
+// B1 — offboarding. Deliberately WITHOUT tenantWrite: revoking a departed
+// employee's login is a security control and must work in a read-only
+// (lapsed-subscription) company too — same reasoning as /company/archive
+// and /subscription below. Its own prefix (not a second /employees mount)
+// so authMiddleware doesn't run twice on the busiest list route.
+app.use("/employee-access", authMiddleware, employeeAccessRoutes);
 app.use("/projects", tenantWrite, projectsRoutes);
 app.use("/customers", tenantWrite, customersRoutes);
 app.use("/companies", tenantWrite, companiesRoutes);

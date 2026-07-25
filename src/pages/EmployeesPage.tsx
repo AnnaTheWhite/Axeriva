@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import EmployeeEditModal from "../components/employees/EmployeeEditModal";
 import InviteModal from "../components/employees/InviteModal";
+import RevokeAccessModal from "../components/employees/RevokeAccessModal";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import Toast from "../components/ui/Toast";
 
@@ -13,6 +14,7 @@ import {
   getEmployees,
   updateEmployeeStatus,
   deleteEmployee,
+  revokeEmployeeAccess,
 } from "../services/employee.service";
 import { getInvites } from "../services/invites.service";
 
@@ -36,6 +38,9 @@ export default function EmployeesPage() {
     useState<Employee | null>(null);
 
   const [employeeToEdit, setEmployeeToEdit] =
+    useState<Employee | null>(null);
+
+  const [employeeToRevoke, setEmployeeToRevoke] =
     useState<Employee | null>(null);
 
   const [isInviteModalOpen, setIsInviteModalOpen] =
@@ -116,6 +121,30 @@ export default function EmployeesPage() {
     }
   };
 
+  const confirmRevoke = async () => {
+    if (!employeeToRevoke) return;
+
+    try {
+      await revokeEmployeeAccess(employeeToRevoke.id, "REVOKE");
+
+      triggerToast(t("employees.accessRevoked"));
+
+      setEmployeeToRevoke(null);
+
+      await loadEmployees();
+    } catch (error) {
+      console.error(error);
+
+      triggerToast(
+        error instanceof Error
+          ? error.message
+          : t("employees.revokeFailed")
+      );
+
+      setEmployeeToRevoke(null);
+    }
+  };
+
   const filteredEmployees =
     employees.filter((employee) =>
       employee.firstName
@@ -156,6 +185,15 @@ export default function EmployeesPage() {
         return status;
     }
   };
+
+  // B1 — access is a separate axis from status: the badge appears only when
+  // the login was revoked, regardless of what the availability dropdown says.
+  const getAccessBadge = (employee: Employee) =>
+    employee.accessRevoked ? (
+      <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
+        {t("employees.accessRevokedBadge")}
+      </span>
+    ) : null;
 
   return (
     <div className="p-4 sm:p-8">
@@ -232,7 +270,10 @@ export default function EmployeesPage() {
                       <p className="text-sm text-slate-400">{employee.phone}</p>
                     )}
                   </div>
-                  {getStatusBadge(employee.status)}
+                  <div className="flex flex-col items-end gap-2">
+                    {getStatusBadge(employee.status)}
+                    {getAccessBadge(employee)}
+                  </div>
                 </div>
 
                 <select
@@ -252,6 +293,19 @@ export default function EmployeesPage() {
                   >
                     ✏ {t("common.edit")}
                   </button>
+
+                  {/* B1 — deliberately NO {...guardProps}: the revoke endpoint
+                      works in read-only mode (it's a security control outside
+                      the /employees write guard), so the button must not be
+                      disabled there either. */}
+                  {!employee.accessRevoked && (
+                    <button
+                      onClick={() => setEmployeeToRevoke(employee)}
+                      className="flex-1 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm text-orange-400 hover:bg-orange-500/20"
+                    >
+                      ⛔ {t("employees.revokeAccess")}
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setEmployeeToDelete(employee)}
@@ -293,7 +347,10 @@ export default function EmployeesPage() {
                       <td className="p-4">{employee.email}</td>
 
                       <td className="p-4">
-                        {getStatusBadge(employee.status)}
+                        <div className="flex flex-col items-start gap-2">
+                          {getStatusBadge(employee.status)}
+                          {getAccessBadge(employee)}
+                        </div>
                       </td>
 
                       <td className="p-4">
@@ -322,6 +379,20 @@ export default function EmployeesPage() {
                         >
                           ✏ {t("common.edit")}
                         </button>
+
+                        {/* B1 — deliberately NO {...guardProps}: the revoke
+                            endpoint works in read-only mode, so the button
+                            must not be disabled there either. */}
+                        {!employee.accessRevoked && (
+                          <button
+                            onClick={() =>
+                              setEmployeeToRevoke(employee)
+                            }
+                            className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm text-orange-400 hover:bg-orange-500/20"
+                          >
+                            ⛔ {t("employees.revokeAccess")}
+                          </button>
+                        )}
 
                         <button
                           onClick={() =>
@@ -362,6 +433,14 @@ export default function EmployeesPage() {
         })}
         onConfirm={confirmDelete}
         onClose={() => setEmployeeToDelete(null)}
+      />
+
+      <RevokeAccessModal
+        key={employeeToRevoke?.id ?? "closed"}
+        open={employeeToRevoke !== null}
+        employeeName={`${employeeToRevoke?.firstName ?? ""} ${employeeToRevoke?.lastName ?? ""}`}
+        onConfirm={confirmRevoke}
+        onClose={() => setEmployeeToRevoke(null)}
       />
 
       <Toast show={show} message={message} />

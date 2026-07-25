@@ -9,12 +9,23 @@ const router = Router();
 router.use(requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER));
 
 router.get("/", async (req, res) => {
-  const employees = await prisma.employee.findMany({
+  // B1 — accessRevoked is derived from the linked User (Employee itself has
+  // no offboarding column by design). Only the derived boolean leaves the
+  // API: the nested user object must NEVER reach the response, or User
+  // columns (tombstoned email, tokenVersion) would leak to the client.
+  // user == null means "never had a login" — nothing was revoked.
+  const rows = await prisma.employee.findMany({
     where: companyScope(req),
     orderBy: { id: "desc" },
+    include: { user: { select: { active: true } } },
   });
 
-  return res.json(employees);
+  return res.json(
+    rows.map(({ user, ...employee }) => ({
+      ...employee,
+      accessRevoked: user ? !user.active : false,
+    }))
+  );
 });
 
 // No POST "/" here by design — employees may only enter the system through
@@ -95,7 +106,7 @@ router.delete("/:id", async (req, res) => {
   if (employee._count.Shift > 0) {
     return res.status(409).json({
       error:
-        "This employee has shift history and can't be deleted. Set their status instead of removing them.",
+        "This employee has shift history and can't be deleted. Revoke their access instead — that disables their login and keeps the shift history.",
     });
   }
 

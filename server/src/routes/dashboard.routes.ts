@@ -51,7 +51,16 @@ router.get("/", async (req, res) => {
     upcomingShifts,
     hoursByProject,
   ] = await Promise.all([
-    prisma.employee.count({ where: { ...scope, status: "Active" } }),
+    // B1 — status stays "Active" after a revoke (the revoke touches only the
+    // User row), so filter the KPI on the login instead: revoked employees
+    // drop out, employees who never had a login still count.
+    prisma.employee.count({
+      where: {
+        ...scope,
+        status: "Active",
+        OR: [{ user: { is: null } }, { user: { is: { active: true } } }],
+      },
+    }),
     prisma.project.count({ where: { ...scope, status: "Active" } }),
     prisma.customer.count({ where: scope }),
     prisma.shift.findMany({

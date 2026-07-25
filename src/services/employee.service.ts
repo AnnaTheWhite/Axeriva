@@ -39,6 +39,31 @@ export async function updateEmployeeStatus(
   return response.json();
 }
 
+// B1 — revokes the employee's login (User.active=false + token kill) while
+// leaving the Employee row, status and shift history untouched. Note the
+// separate /employee-access prefix: the endpoint deliberately works in
+// read-only mode too, so it lives outside the /employees write guard.
+export async function revokeEmployeeAccess(id: number, confirmation: string) {
+  const response = await apiFetch(
+    `${API_URL}/employee-access/${id}/revoke`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ confirmation }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || "Failed to revoke access");
+  }
+
+  return response.json();
+}
+
 export async function deleteEmployee(id: number) {
   const response = await apiFetch(
     `${API_URL}/employees/${id}`,

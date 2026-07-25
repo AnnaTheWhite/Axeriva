@@ -154,7 +154,14 @@
     "inviteDone": "Done",
     "sendingInvite": "Sending invite...",
     "sendInvite": "Send invite",
-    "inviteFailed": "Failed to create invite."
+    "inviteFailed": "Failed to create invite.",
+    "revokeAccess": "Revoke access",
+    "revokeTitle": "Revoke access",
+    "revokeMessage": "This disables {{name}}'s login immediately — every open session ends and they can't sign in again. Their profile, status and shift history are kept. Type REVOKE to confirm.",
+    "revokeConfirmPlaceholder": "Type REVOKE to confirm",
+    "accessRevoked": "Access revoked",
+    "accessRevokedBadge": "Access revoked",
+    "revokeFailed": "Failed to revoke access."
   },
   "customers": {
     "title": "Customers",
