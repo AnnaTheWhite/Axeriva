@@ -124,6 +124,37 @@ router.post("/clock-out", requireRole(ROLES.EMPLOYEE), async (req, res) => {
   return res.json(shift);
 });
 
+// A shift points at two tenant-owned rows, and BOTH ids arrive in the request
+// body. The employee was already re-read under companyScope; the project was
+// not, so a shift could be linked to another company's project — and since
+// both write endpoints answer with `include: { project: true }`, that foreign
+// project's full row came straight back in the response. Resolving the
+// project under the same scope closes the write and the read at once.
+//
+// Returns `undefined` when nothing was requested (projectId omitted/blank →
+// the shift simply has no project) and `null` when an id was requested but
+// does not belong to this tenant.
+async function resolveScopedProjectId(
+  req: Parameters<typeof companyScope>[0],
+  rawProjectId: unknown
+): Promise<number | null | undefined> {
+  if (!rawProjectId) {
+    return undefined;
+  }
+
+  const projectId = Number(rawProjectId);
+
+  if (!Number.isInteger(projectId)) {
+    return null;
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, ...companyScope(req) },
+  });
+
+  return project ? projectId : null;
+}
+
 router.post(
   "/",
   requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER),
@@ -138,10 +169,16 @@ router.post(
       return res.status(404).json({ error: "Employee not found" });
     }
 
+    const scopedProjectId = await resolveScopedProjectId(req, projectId);
+
+    if (scopedProjectId === null) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
     const shift = await prisma.shift.create({
       data: {
         employeeId: Number(employeeId),
-        projectId: projectId ? Number(projectId) : null,
+        projectId: scopedProjectId ?? null,
         start: new Date(start),
         end: end ? new Date(end) : null,
         notes,
@@ -172,13 +209,31 @@ router.put(
       return res.status(404).json({ error: "Shift not found" });
     }
 
+    // `existing` only proves the shift being edited is ours — it says nothing
+    // about the employee the body wants to move it TO. Without this check an
+    // owner could reassign their own shift onto another tenant's employee and
+    // read that employee back out of the response `include`.
+    const employee = await prisma.employee.findFirst({
+      where: { id: Number(employeeId), ...companyScope(req) },
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    const scopedProjectId = await resolveScopedProjectId(req, projectId);
+
+    if (scopedProjectId === null) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
     const shift = await prisma.shift.update({
       where: {
         id: Number(id),
       },
       data: {
         employeeId: Number(employeeId),
-        projectId: projectId ? Number(projectId) : null,
+        projectId: scopedProjectId ?? null,
         start: new Date(start),
         end: end ? new Date(end) : null,
         notes,

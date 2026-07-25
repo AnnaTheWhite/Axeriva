@@ -6,6 +6,7 @@ import { logProjectActivity } from "../services/activity/logProjectActivity";
 import { PROJECT_ACTIVITY_TYPES } from "../constants/projectActivity";
 import { uploadProjectFiles, isImageMimeType } from "../middleware/upload.middleware";
 import { normalizeCategory } from "../constants/attachmentCategories";
+import { fileStorage } from "../services/storage";
 
 const router = Router();
 
@@ -37,7 +38,11 @@ function serializeAttachment(attachment: AttachmentWithUser) {
     fileName: attachment.fileName,
     fileType: attachment.fileType,
     fileSize: attachment.fileSize,
-    fileUrl: attachment.fileUrl,
+    // R1.5 — the client receives a SIGNED, expiring URL, never the raw stored
+    // path: /uploads refuses anything unsigned. This is the single choke point
+    // through which every attachment reaches a response, so signing here
+    // covers the list, the upload response and the activity feed alike.
+    fileUrl: fileStorage.signUrl(attachment.fileUrl),
     category: attachment.category,
     isImage: isImageMimeType(attachment.fileType),
     createdAt: attachment.createdAt,

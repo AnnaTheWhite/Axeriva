@@ -8,5 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The integration suite is run by Vitest (which type-checks and transpiles
+  // it itself) and must never be emitted into dist/ — production installs
+  // don't have vitest/supertest, so a compiled test file would break the
+  // deployed build the moment anything imported it.
+  "exclude": ["src/tests"]
 }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
+import { pickCompanyWritableFields } from "../constants/companyWritableFields";
 
 const router = Router();
 
@@ -54,11 +55,16 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ error: "Company not found" });
   }
 
+  // Never spread req.body into `data` — build the update from the shared
+  // allow-list so billing/subscription/Stripe/ID/system fields can never be
+  // written here.
+  const data = pickCompanyWritableFields(req.body);
+
   const company = await prisma.company.update({
     where: {
       id: Number(id),
     },
-    data: req.body,
+    data,
   });
 
   return res.json(company);

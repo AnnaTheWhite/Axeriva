@@ -33,4 +33,12 @@ export const RATE_LIMITS = {
 
   // Invite-token guessing / automated account creation via invites.
   INVITE_ACCEPT: { windowMs: HOUR_MS, max: 10 },
+
+  // POST /account/delete re-checks the caller's password, which turns it into
+  // a password oracle for anyone holding a stolen JWT: guess in the body,
+  // read the 401 vs 400. Authentication alone is no protection here — the
+  // attacker already has a token. Keyed per USER (not per IP), so one
+  // compromised session can't be brute-forced from a botnet either. The limit
+  // is tight because the legitimate flow needs one or two attempts, never ten.
+  ACCOUNT_DELETE: { windowMs: HOUR_MS, max: 5 },
 } as const;

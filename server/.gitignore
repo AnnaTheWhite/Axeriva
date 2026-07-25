@@ -12,3 +12,7 @@ dist
 .env.local
 tsconfig.tsbuildinfo
 prisma/axeriva.db
+
+# Throwaway database created and destroyed by the integration test suite
+prisma/test.db
+prisma/test.db-journal

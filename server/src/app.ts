@@ -1,0 +1,220 @@
+import express, { NextFunction, Request, Response } from "express";
+import cors from "cors";
+import crypto from "crypto";
+
+// Loads .env, validates required variables and exits with a clear error if
+// any are missing — must stay the first app import so every other module
+// sees a validated environment.
+import { config } from "./config";
+
+import authRoutes from "./routes/auth.routes";
+import invitesRoutes from "./routes/invites.routes";
+import employeesRoutes from "./routes/employees.routes";
+import projectsRoutes from "./routes/projects.routes";
+import customersRoutes from "./routes/customers.routes";
+import companiesRoutes from "./routes/companies.routes";
+import shiftsRoutes from "./routes/shifts.routes";
+import subscriptionRoutes from "./routes/subscription.routes";
+import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
+import adminRoutes from "./routes/admin.routes";
+import adminAnalyticsRoutes from "./routes/adminAnalytics.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
+import accountRoutes from "./routes/account.routes";
+import companyRoutes from "./routes/company.routes";
+import companyArchiveRoutes from "./routes/companyArchive.routes";
+import projectActivityRoutes from "./routes/projectActivity.routes";
+import attachmentsRoutes from "./routes/attachments.routes";
+import ownerNotesRoutes from "./routes/ownerNotes.routes";
+import accessRoutes from "./routes/access.routes";
+import { authMiddleware } from "./middleware/auth.middleware";
+import { blockWritesWhenReadOnly } from "./middleware/readOnly.middleware";
+import { UPLOAD_ROOT } from "./middleware/upload.middleware";
+import { requireSignedUploadUrl } from "./middleware/signedUploads.middleware";
+import {
+  httpSecurity,
+  permissionsPolicy,
+  uploadsResourcePolicy,
+} from "./middleware/httpSecurity";
+
+// The fully wired Express application, with no side effects beyond module
+// import: no DB connect, no listen. index.ts owns the startup sequence; the
+// integration tests (src/tests) mount this same object through Supertest so
+// what they exercise is byte-for-byte the app that runs in production.
+const app = express();
+
+// Fingerprinting hygiene, and a prerequisite for a future Helmet setup
+// (helmet would do this too — doing it now costs nothing).
+app.disable("x-powered-by");
+
+// Production runs behind a reverse proxy (Render), so req.ip / req.protocol
+// must be derived from X-Forwarded-* set by that first proxy hop.
+if (config.isProduction) {
+  app.set("trust proxy", 1);
+}
+
+// Per-request correlation id — attached first so it's available to the auth
+// audit log (see services/audit/authAudit.ts) for every downstream event.
+app.use((req, _res, next) => {
+  req.id = crypto.randomUUID();
+  next();
+});
+
+// HTTP security headers (K2.2) — Helmet (CSP, HSTS, frameguard, nosniff,
+// CORP/COOP, referrer policy) plus an explicit Permissions-Policy. Applied
+// before routing so every response carries them. See middleware/
+// httpSecurity.ts and docs/http-security.md.
+app.use(httpSecurity());
+app.use(permissionsPolicy());
+
+// Production: only the configured frontend origin (APP_URL is a required
+// variable there — see config.ts). Development: APP_URL if set, otherwise
+// allow-all so local tooling isn't locked out. The API is Bearer-token
+// based (no cookies), so credentials stay disabled.
+app.use(
+  cors({
+    origin: config.isProduction ? config.appUrl! : config.appUrl ?? true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Development-only request log: one concise line per request after it
+// finishes. Production stays quiet on the happy path (errors are still
+// logged by the error handler below). Silenced under test so a 60-test run
+// doesn't bury the reporter output.
+if (!config.isProduction && !config.isTest) {
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on("finish", () => {
+      console.log(
+        `${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`
+      );
+    });
+    next();
+  });
+}
+
+// Stripe needs the raw request body to verify the webhook signature, so this
+// route must be registered with express.raw() before the global
+// express.json() below would otherwise consume the body first.
+app.use("/subscription/webhook", express.raw({ type: "application/json" }), stripeWebhookRoutes);
+
+// Default 100kb is too small for a base64-encoded logo upload (see
+// POST /company/settings, BrandingSection on the frontend).
+// No urlencoded parser on purpose: the API is JSON-only (plus multer for
+// multipart uploads); adding one would only widen the parsing surface.
+app.use(express.json({ limit: "5mb" }));
+
+// Project attachments live on disk (see middleware/upload.middleware.ts),
+// not as base64 in the DB. Filenames are randomized UUIDs, not the uploaded
+// names. Files are immutable once written (a new upload gets a new UUID), so
+// letting browsers cache them for a day is safe.
+//
+// R1.5: randomized filenames alone were NOT access control — the mount was
+// world-readable to anyone who learned a URL, permanently. requireSignedUploadUrl
+// now demands the HMAC signature that fileStorage.signUrl() attaches, and that
+// signature is only ever handed out in an authenticated API response. It runs
+// BEFORE express.static so an unsigned request never reaches the filesystem.
+// Stateless by design: a plain <img src> cannot send an Authorization header.
+//
+// uploadsResourcePolicy overrides the global same-origin CORP with
+// cross-origin so the frontend can embed attachment images across origins
+// (see httpSecurity.ts). Static files keep the day-long cache and inherit
+// nosniff from the global Helmet layer.
+app.use(
+  "/uploads",
+  uploadsResourcePolicy(),
+  requireSignedUploadUrl(),
+  express.static(UPLOAD_ROOT, { maxAge: "1d" })
+);
+
+app.get("/", (_req, res) => {
+  res.json({
+    name: "Axeriva API",
+    version: config.version,
+    status: "running",
+  });
+});
+
+// Dedicated health endpoint for uptime checks / the hosting platform's
+// health probe. Deliberately unauthenticated and DB-free: it answers "is
+// the process up and serving HTTP", not "is every dependency healthy".
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    environment: config.nodeEnv,
+    version: config.version,
+    uptime: `${Math.round(process.uptime())}s`,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.use("/auth", authRoutes);
+app.use("/invites", invitesRoutes);
+
+// S2.7 Read-only Mode — the shared middleware chain for every router that
+// lets a company MODIFY its own tenant data. blockWritesWhenReadOnly ignores
+// GET/HEAD/OPTIONS (viewing/exporting is always allowed) and only refuses
+// writes when the company is read-only, so mounting a router through
+// `tenantWrite` is all a current or FUTURE module needs to inherit
+// enforcement — no per-controller checks. Deliberately NOT applied to:
+//   - /subscription (must stay writable so an owner can upgrade/resume out
+//     of read-only)
+//   - /account (profile + logout stay available)
+//   - /admin, /admin/analytics, /dashboard (DEVELOPER-only or read-only)
+//   - /invites (mixes public accept routes with per-route auth — the two
+//     authenticated invite WRITE routes carry the guard inline instead)
+const tenantWrite = [authMiddleware, blockWritesWhenReadOnly];
+
+app.use("/employees", tenantWrite, employeesRoutes);
+app.use("/projects", tenantWrite, projectsRoutes);
+app.use("/customers", tenantWrite, customersRoutes);
+app.use("/companies", tenantWrite, companiesRoutes);
+app.use("/shifts", tenantWrite, shiftsRoutes);
+app.use("/subscription", authMiddleware, subscriptionRoutes);
+// More specific mount first so /admin/analytics/* is handled here and not
+// swallowed by the generic /admin router below.
+app.use("/admin/analytics", authMiddleware, adminAnalyticsRoutes);
+app.use("/admin", authMiddleware, adminRoutes);
+app.use("/dashboard", authMiddleware, dashboardRoutes);
+app.use("/account", authMiddleware, accountRoutes);
+app.use("/access", authMiddleware, accessRoutes);
+// C1.7 — mounted BEFORE /company (more specific path first, same pattern as
+// /admin/analytics before /admin) and deliberately WITHOUT tenantWrite: a
+// read-only company must still be archivable, exactly like /subscription
+// stays writable so an owner can upgrade/resume out of read-only.
+app.use("/company/archive", authMiddleware, companyArchiveRoutes);
+app.use("/company", tenantWrite, companyRoutes);
+app.use("/projects", tenantWrite, projectActivityRoutes);
+app.use("/attachments", tenantWrite, attachmentsRoutes);
+app.use("/owner-notes", tenantWrite, ownerNotesRoutes);
+
+// JSON 404 for unknown routes — without this Express falls through to its
+// default HTML "Cannot GET ..." page, which is wrong for a JSON API.
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Global error handler — Express 5 forwards rejected promises from async
+// route handlers here automatically. Replaces the framework default, which
+// renders an HTML page including the stack trace. The full error is always
+// logged server-side; what the client sees depends on the environment:
+// development gets the message + stack for debugging, production gets a
+// generic body with no internals.
+app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
+  console.error(`[error] ${req.method} ${req.originalUrl}`, error);
+
+  if (res.headersSent) {
+    return;
+  }
+
+  if (config.isProduction) {
+    res.status(500).json({ error: "Internal server error" });
+    return;
+  }
+
+  const err = error instanceof Error ? error : new Error(String(error));
+  res.status(500).json({ error: err.message, stack: err.stack });
+});
+
+export default app;

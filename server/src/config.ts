@@ -9,6 +9,11 @@ dotenv.config();
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProduction = nodeEnv === "production";
+// Set by the Vitest setup file (src/tests/setup.ts). Only ever used to
+// silence per-request logging during a test run — it must NOT relax any
+// validation or security behaviour, or the tests would stop testing the real
+// application.
+const isTest = nodeEnv === "test";
 
 // Single source of the application version — read from package.json so the
 // number isn't duplicated in code. Resolves correctly both from src/ (ts-node)
@@ -79,6 +84,7 @@ const appUrl = readEnv("APP_URL") ?? null;
 export const config = {
   nodeEnv,
   isProduction,
+  isTest,
   version: packageJson.version,
 
   port: Number(readEnv("PORT")) || 5000,

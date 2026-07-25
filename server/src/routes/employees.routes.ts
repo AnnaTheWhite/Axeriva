@@ -21,6 +21,29 @@ router.get("/", async (req, res) => {
 // the invitation flow (see invites.routes.ts POST "/:token/accept"). Do not
 // add a manual-creation endpoint here; this is a permanent product rule.
 
+// Which Employee columns this endpoint may write. Same allow-list pattern as
+// COMPANY_WRITABLE_FIELDS (constants/companyWritableFields.ts), kept local
+// because this route is the only consumer.
+//
+// The critical omission is `companyId`: the `where` clause below is tenant-
+// scoped, so an owner can only reach their OWN employees — but with
+// `data: req.body` they could still hand that employee to another company by
+// rewriting its tenant link, moving a worker (and their shift history) out of
+// their own tenant. Everything not listed here — companyId, the primary key
+// and the system timestamps — is silently dropped.
+const EMPLOYEE_WRITABLE_FIELDS = ["firstName", "lastName", "phone", "email", "status"] as const;
+
+function pickEmployeeWritableFields(body: unknown): Record<string, unknown> {
+  const source = (body ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  for (const field of EMPLOYEE_WRITABLE_FIELDS) {
+    if (field in source) {
+      data[field] = source[field];
+    }
+  }
+  return data;
+}
+
 // Full update (edit modal)
 router.put("/:id", async (req, res) => {
   try {
@@ -28,7 +51,8 @@ router.put("/:id", async (req, res) => {
 
     const updated = await prisma.employee.update({
       where: { id: Number(id), ...companyScope(req) },
-      data: req.body,
+      // Never spread req.body into `data` — see EMPLOYEE_WRITABLE_FIELDS.
+      data: pickEmployeeWritableFields(req.body),
     });
 
     return res.json(updated);

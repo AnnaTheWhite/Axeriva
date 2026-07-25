@@ -150,19 +150,49 @@ router.put(
   }
 );
 
+// Both sides of an assignment must belong to the caller's tenant. Neither id
+// arrives from a trusted source — the project comes from the URL and the
+// employee from the request body — so both are re-read under companyScope
+// before any write. Without this, an authenticated owner could link their own
+// employee to another company's project (granting themselves visibility into
+// that project) or attach a stranger's employee to their own.
+//
+// Both failures answer 404, never 403 or a distinct message: a tenant must
+// not be able to tell "this id exists but belongs to someone else" apart from
+// "this id does not exist".
+async function resolveAssignmentPair(
+  req: Parameters<typeof companyScope>[0],
+  projectId: number,
+  employeeId: number
+) {
+  const scope = companyScope(req);
+
+  const [project, employee] = await Promise.all([
+    prisma.project.findFirst({ where: { id: projectId, ...scope } }),
+    prisma.employee.findFirst({ where: { id: employeeId, ...scope } }),
+  ]);
+
+  return project && employee ? { project, employee } : null;
+}
+
 // Assign employee to project
 router.post(
   "/:projectId/assign",
   requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER),
   async (req, res) => {
-    const { projectId } = req.params;
-    const { employeeId } = req.body;
+    const projectId = Number(req.params.projectId);
+    const employeeId = Number(req.body?.employeeId);
+
+    if (!Number.isInteger(projectId) || !Number.isInteger(employeeId)) {
+      return res.status(400).json({ error: "projectId and employeeId are required" });
+    }
+
+    if (!(await resolveAssignmentPair(req, projectId, employeeId))) {
+      return res.status(404).json({ error: "Project or employee not found" });
+    }
 
     const assignment = await prisma.projectAssignment.create({
-      data: {
-        projectId: Number(projectId),
-        employeeId: Number(employeeId),
-      },
+      data: { projectId, employeeId },
     });
 
     return res.status(201).json(assignment);
@@ -174,13 +204,22 @@ router.delete(
   "/:projectId/assign/:employeeId",
   requireRole(ROLES.BUSINESS_OWNER, ROLES.DEVELOPER),
   async (req, res) => {
-    const { projectId, employeeId } = req.params;
+    const projectId = Number(req.params.projectId);
+    const employeeId = Number(req.params.employeeId);
+
+    if (!Number.isInteger(projectId) || !Number.isInteger(employeeId)) {
+      return res.status(400).json({ error: "projectId and employeeId are required" });
+    }
+
+    // Same tenant check as the create path — deleteMany with an unscoped
+    // where silently succeeds (204, zero rows) against another tenant's
+    // assignment, which is exactly how this went unnoticed.
+    if (!(await resolveAssignmentPair(req, projectId, employeeId))) {
+      return res.status(404).json({ error: "Project or employee not found" });
+    }
 
     await prisma.projectAssignment.deleteMany({
-      where: {
-        projectId: Number(projectId),
-        employeeId: Number(employeeId),
-      },
+      where: { projectId, employeeId },
     });
 
     return res.status(204).send();

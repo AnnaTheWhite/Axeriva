@@ -8,8 +8,23 @@ import { AUDIT_ACTIONS } from "../constants/auditActions";
 import { validateCompanySettings } from "../services/companyValidation";
 import { uploadCompanyLogo } from "../middleware/upload.middleware";
 import { processUploadedLogo, deleteLogoFile } from "../services/companyLogo";
+import { pickCompanyWritableFields } from "../constants/companyWritableFields";
+import { fileStorage } from "../services/storage";
 
 const router = Router();
+
+// R1.5 — /uploads refuses unsigned requests, so every response that the UI
+// renders a logo from must carry a signed, expiring URL rather than the raw
+// stored path. Legacy base64 `data:` logos pass through untouched (they are
+// not stored objects) — see FileStorage.signUrlOrNull.
+//
+// Deliberately NOT applied to GET /export: that produces a JSON document the
+// user saves, and baking a one-hour URL into a saved file would hand them a
+// link that is already dead by the time they open it. The export keeps the
+// raw stored path, which is inert on its own.
+function serializeSettings<T extends { logoUrl: string | null }>(company: T): T {
+  return { ...company, logoUrl: fileStorage.signUrlOrNull(company.logoUrl) };
+}
 
 // C1 — read access (view settings) is available to every authenticated
 // tenant role, including EMPLOYEE: "Managers and Employees have read-only
@@ -60,36 +75,6 @@ const SETTINGS_SELECT = {
   desktopNotificationsEnabled: true,
 } as const;
 
-const WRITABLE_FIELDS = [
-  "name",
-  "logoUrl",
-  "billingEmail",
-  "contactEmail",
-  "phone",
-  "website",
-  "address",
-  "taxNumber",
-  "vatNumber",
-  "legalName",
-  "registrationNumber",
-  "postalCode",
-  "city",
-  "country",
-  "primaryColor",
-  "accentColor",
-  "language",
-  "currency",
-  "timezone",
-  "dateFormat",
-  "timeFormat",
-  "firstDayOfWeek",
-  "defaultWorkStart",
-  "defaultWorkEnd",
-  "defaultShiftMinutes",
-  "notificationsEnabled",
-  "emailNotificationsEnabled",
-  "desktopNotificationsEnabled",
-] as const;
 
 // BUSINESS_OWNER/EMPLOYEE are always scoped to their own company (companyScope
 // enforces this from the JWT, ignoring anything in the query string).
@@ -122,7 +107,7 @@ router.get("/settings", async (req, res) => {
     return res.status(404).json({ error: "Company not found" });
   }
 
-  return res.json(company);
+  return res.json(serializeSettings(company));
 });
 
 router.put(
@@ -152,15 +137,10 @@ router.put(
     }
 
     // Only ever write the known, allow-listed fields — req.body is never
-    // spread directly into `data` (unlike companies.routes.ts's admin PUT),
-    // so a client can never smuggle in plan/subscription/Stripe fields
-    // through this endpoint.
-    const data: Record<string, unknown> = {};
-    for (const field of WRITABLE_FIELDS) {
-      if (field in req.body) {
-        data[field] = req.body[field];
-      }
-    }
+    // spread directly into `data`, so a client can never smuggle in
+    // plan/subscription/Stripe fields through this endpoint. The allow-list
+    // is shared with companies.routes.ts (constants/companyWritableFields).
+    const data = pickCompanyWritableFields(req.body);
 
     const company = await prisma.company.update({
       where: { id: companyId },
@@ -174,7 +154,7 @@ router.put(
       companyId,
     });
 
-    return res.json(company);
+    return res.json(serializeSettings(company));
   }
 );
 
@@ -244,7 +224,7 @@ router.post(
       metadata: { field: "logoUrl" },
     });
 
-    return res.json(company);
+    return res.json(serializeSettings(company));
   }
 );
 
@@ -282,7 +262,7 @@ router.delete(
       metadata: { field: "logoUrl", removed: true },
     });
 
-    return res.json(company);
+    return res.json(serializeSettings(company));
   }
 );
 

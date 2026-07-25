@@ -1,4 +1,5 @@
 import { emailLayout } from "./layout";
+import { escapeHtml } from "../../../utils/escapeHtml";
 
 export type SubscriptionConfirmedEmailData = {
   companyName: string;
@@ -9,12 +10,18 @@ export function subscriptionConfirmedEmailTemplate({
   companyName,
   planName,
 }: SubscriptionConfirmedEmailData) {
+  // `companyName` is tenant-supplied. `planName` is server-derived today, but
+  // it is escaped too so this template never depends on where its inputs came
+  // from — the same rule for every interpolated value.
+  const safeCompanyName = escapeHtml(companyName);
+  const safePlanName = escapeHtml(planName);
+
   const subject = `Your ${planName} subscription is active`;
 
   const html = emailLayout(`
     <p style="margin:0 0 16px;">Thanks for subscribing!</p>
     <p style="margin:0 0 16px;">
-      <strong>${companyName}</strong> is now on the <strong>${planName}</strong>
+      <strong>${safeCompanyName}</strong> is now on the <strong>${safePlanName}</strong>
       plan. You have full access to employees, projects, scheduling, and
       time tracking.
     </p>

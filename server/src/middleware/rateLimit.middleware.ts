@@ -49,6 +49,14 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS).unref();
 
+// Clears every counter. Exists for the integration suite: the windows Map is
+// process-local, so without this the login attempts of one test would count
+// against the next one and tests would fail (or pass) depending on the order
+// they happened to run in. Not referenced by application code.
+export function resetRateLimiters() {
+  windows.clear();
+}
+
 // Typed as RequestHandler so adding a limiter to a route doesn't change how
 // Express infers the route's path params (e.g. `:token` staying `string`).
 export function createRateLimiter(options: RateLimitOptions): RequestHandler<any> {

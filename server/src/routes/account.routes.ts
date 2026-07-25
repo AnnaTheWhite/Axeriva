@@ -5,6 +5,8 @@ import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { logAudit } from "../services/audit/auditLog";
 import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
+import { createRateLimiter } from "../middleware/rateLimit.middleware";
+import { RATE_LIMITS } from "../constants/rateLimits";
 
 const router = Router();
 
@@ -13,10 +15,22 @@ const CONFIRMATION_TEXT = "DELETE";
 
 router.use(requireRole(ROLES.BUSINESS_OWNER, ROLES.EMPLOYEE));
 
+// Throttles the password check below (R1.5). Keyed on the authenticated user
+// id rather than the IP: the whole point is to cap guesses against ONE
+// account, and the attacker scenario here is a stolen token, so the requests
+// may well arrive from many addresses. `/account` is mounted behind
+// authMiddleware in app.ts, so req.user is always populated by the time this
+// runs; the IP fallback exists only so the key can never be undefined.
+const deleteAccountLimiter = createRateLimiter({
+  name: "account-delete",
+  ...RATE_LIMITS.ACCOUNT_DELETE,
+  keyGenerator: (req) => String(req.user?.userId ?? req.ip ?? "unknown"),
+});
+
 // Soft-deletes the caller's own account. Requires re-entering the password
 // and typing "DELETE" — this is a deliberately heavy confirmation for an
 // irreversible-feeling action, even though nothing is physically removed.
-router.post("/delete", async (req, res) => {
+router.post("/delete", deleteAccountLimiter, async (req, res) => {
   const { password, confirmation } = req.body;
   const userId = req.user!.userId;
   const companyId = req.user!.companyId;

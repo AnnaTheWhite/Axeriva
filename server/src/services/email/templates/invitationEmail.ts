@@ -1,4 +1,5 @@
 import { emailLayout, ctaButton } from "./layout";
+import { escapeHtml } from "../../../utils/escapeHtml";
 
 export type InvitationEmailData = {
   companyName: string;
@@ -6,12 +7,18 @@ export type InvitationEmailData = {
 };
 
 export function invitationEmailTemplate({ companyName, inviteLink }: InvitationEmailData) {
+  // `companyName` is attacker-controlled and this email goes to a THIRD PARTY
+  // (the invitee), which makes it the highest-value injection target of the
+  // three. Escaped for the HTML body only — the subject and text parts below
+  // are not HTML.
+  const safeCompanyName = escapeHtml(companyName);
+
   const subject = `You've been invited to join ${companyName} on Axeriva`;
 
   const html = emailLayout(`
     <p style="margin:0 0 16px;">Hi,</p>
     <p style="margin:0 0 16px;">
-      You've been invited to join <strong>${companyName}</strong> on Axeriva.
+      You've been invited to join <strong>${safeCompanyName}</strong> on Axeriva.
       Click below to set your password and activate your account.
     </p>
     ${ctaButton("Accept invitation", inviteLink)}
