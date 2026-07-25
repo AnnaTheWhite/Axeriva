@@ -13,8 +13,8 @@ Klasszikus kétrétegű felépítés, monorepo-szerű elrendezésben:
 ```
 CrewFlow/
 ├── src/            ← Frontend (React 19 + Vite 8 + TypeScript + Tailwind 4)
-├── server/         ← Backend (Express 5 + TypeScript + Prisma 6 + SQLite)
-│   ├── prisma/     ← schema.prisma, migrációk, axeriva.db (SQLite fájl)
+├── server/         ← Backend (Express 5 + TypeScript + Prisma 6 + PostgreSQL)
+│   ├── prisma/     ← schema.prisma, migrációk (+ migrations-sqlite-archive/)
 │   ├── src/
 │   │   ├── routes/       ← 16 route-modul (a teljes API itt él, controller réteg nincs használatban)
 │   │   ├── middleware/   ← auth (JWT), role (RBAC), upload (multer)
@@ -26,7 +26,7 @@ CrewFlow/
 ```
 
 - **Kommunikáció:** REST/JSON, JWT Bearer tokennel. A frontend `src/services/*.service.ts` fájljai fedik le végpontonként az API-t (`src/services/api.ts` a közös kliens, benne globális 401-kezelés).
-- **Adatbázis:** SQLite fájl (`server/prisma/axeriva.db`) Prisma ORM-en keresztül — production-ben Render persistent diskre kerül.
+- **Adatbázis:** PostgreSQL, Prisma ORM-en keresztül (`DATABASE_URL` connection string). Korábban SQLite fájl volt; a migráció óta a persistent disk már csak a feltöltött fájlokat tartja.
 - **Fájltárolás:** lemezen (`server/uploads/`), statikus mount `/uploads` alatt, véletlenszerű UUID fájlnevekkel.
 - **E-mail:** Resend (verifikáció, jelszó-reset, meghívók).
 - **Fizetés:** Stripe Checkout + Billing Portal + webhook.
@@ -47,7 +47,7 @@ A multi-tenancy alapja a `companyId`: minden üzleti entitás céghez kötött, 
 
 **Frontend:** React 19, TypeScript ~6.0, Vite 8, Tailwind CSS 4, React Router 7, react-big-calendar (naptár/beosztás), date-fns. Saját, könnyűsúlyú i18n megoldás (`src/i18n/` — `hu.json` + `en.json`, `LanguageProvider` context, `LanguageSwitcher` komponens).
 
-**Backend:** Node.js + Express 5 (CommonJS), TypeScript 5.6, Prisma 6 (SQLite), bcryptjs (jelszó-hash), jsonwebtoken, multer (upload), Stripe SDK, Resend SDK, dotenv, cors. Dev: `ts-node-dev`.
+**Backend:** Node.js + Express 5 (CommonJS), TypeScript 5.6, Prisma 6 (PostgreSQL), bcryptjs (jelszó-hash), jsonwebtoken, multer (upload), Stripe SDK, Resend SDK, dotenv, cors. Dev: `ts-node-dev`.
 
 **Nincs még:** automatizált tesztek (unit/integration/E2E), CI pipeline, controller-réteg (a route-fájlok tartalmazzák a logikát), state-management könyvtár (React context + service hívások).
 

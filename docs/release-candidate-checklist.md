@@ -32,7 +32,7 @@ RC-specifikus, végső gate. Deploy-lépések: [render-deployment.md](render-dep
 | SPA rewrite | `/*` → `/index.html` (Render Static Site) | ⚠️ Renderen beállítandó |
 | `NODE_ENV=production` | kézzel beállítva | ⚠️ deploy-időben |
 | Env-validáció | hiányzó kötelező változó → startup exit(1) | ✅ (config.ts) |
-| DATABASE_URL | `file:/var/data/axeriva.db` (persistent disk) | ⚠️ deploy-időben |
+| DATABASE_URL | managed PostgreSQL connection string (`postgresql://…?sslmode=require`) | ⚠️ deploy-időben |
 | UPLOAD_ROOT | `/var/data/uploads` (persistent disk) | ⚠️ deploy-időben |
 | CORS | prod: csak `APP_URL` origin | ✅ (index.ts) |
 | Helmet | globális, prod strict | ✅ (K2.2) |
@@ -72,7 +72,7 @@ Részletek: [environment.md](environment.md).
 - [ ] Stripe **live** webhook a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
 - [ ] Resend domain verifikálva (SPF/DKIM), `ResendEmailService` aktív (nem Mock)
 - [ ] Feltöltés működik, redeploy után a fájl megmarad (persistent disk)
-- [ ] Deploy előtti DB-mentés: `cp /var/data/axeriva.db /var/data/backup-$(date +%F).db`
+- [ ] Deploy előtti DB-mentés: `pg_dump "$DATABASE_URL" > backup-$(date +%F).sql`
 
 ## Part 6 — Rollback-terv
 

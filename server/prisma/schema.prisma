@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -101,6 +101,12 @@ model Company {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // The Stripe webhook resolves a company by customer id whenever the event
+  // metadata carries no companyId (stripeWebhook.routes.ts resolveCompanyId).
+  // Not @unique: that would be a CONSTRAINT, which could fail on existing data
+  // and change behaviour — indexes here are additive only.
+  @@index([stripeCustomerId])
 }
 
 model User {
@@ -151,6 +157,8 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 model Employee {
@@ -174,6 +182,12 @@ model Employee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   Shift     Shift[]
+
+  // Roadmap #3, prescribed index. Serves the owner dashboard's
+  // `employee.count({ ...scope, status: "Active" })` (dashboard.routes.ts),
+  // and its leftmost prefix also covers every plain `where: { companyId }`
+  // employee lookup, so no separate companyId index is needed.
+  @@index([companyId, status])
 }
 
 model Project {
@@ -214,6 +228,12 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   Shift     Shift[]
+
+  // Roadmap #3, prescribed index — `project.count({ ...scope, status: "Active" })`
+  // on the owner dashboard; the companyId prefix also serves the plain
+  // tenant-scoped project list.
+  @@index([companyId, status])
+  @@index([customerId])
 }
 
 model ProjectNote {
@@ -228,6 +248,11 @@ model ProjectNote {
   content String
 
   createdAt DateTime @default(now())
+
+  // Loaded as a project's note list, and scanned by the FK check when a
+  // project (or the authoring user) is deleted.
+  @@index([projectId])
+  @@index([userId])
 }
 
 model ProjectAttachment {
@@ -251,6 +276,9 @@ model ProjectAttachment {
   category String @default("Other")
 
   createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([userId])
 }
 
 // Free-form, append-only feed of everything that happens on a project — the
@@ -271,6 +299,9 @@ model ProjectActivity {
   metadata String?
 
   createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([userId])
 }
 
 model ProjectAssignment {
@@ -285,7 +316,11 @@ model ProjectAssignment {
 
   createdAt DateTime @default(now())
 
+  // The existing @@unique already indexes (employeeId, projectId), which
+  // covers employee-side lookups via its leftmost prefix. The reverse
+  // direction — "who is assigned to this project" — has no index.
   @@unique([employeeId, projectId])
+  @@index([projectId])
 }
 
 model Customer {
@@ -308,6 +343,8 @@ model Customer {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 model Shift {
@@ -326,6 +363,13 @@ model Shift {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Roadmap #3, prescribed index. Exactly the shape of GET /shifts/me:
+  // `where: { employeeId }, orderBy: { start: "desc" }` (shifts.routes.ts).
+  // The employeeId prefix also covers the open-shift lookup used by
+  // clock-in/clock-out.
+  @@index([employeeId, start])
+  @@index([projectId])
 }
 
 // Owner Command Center — a private, owner-only scratchpad for quick notes
@@ -376,6 +420,16 @@ model OwnerNote {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Roadmap #3, prescribed index — the Command Center dashboard runs three
+  // `ownerNote.count({ companyId, status })` queries per load
+  // (ownerNotes.routes.ts), and the list endpoint filters by status too. The
+  // companyId prefix covers the unfiltered tenant list.
+  @@index([companyId, status])
+  @@index([userId])
+  @@index([projectId])
+  @@index([customerId])
+  @@index([employeeId])
 }
 
 // Phase 3 — minimum Task architecture needed for Owner Command Center
@@ -408,6 +462,10 @@ model Task {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([employeeId])
 }
 
 // Phase 3 — Owner Note → Reminder conversion target. Notification delivery
@@ -433,6 +491,10 @@ model Reminder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([customerId])
 }
 
 // Phase 3 — Owner Note → Communication Log conversion target. Records a
@@ -457,6 +519,10 @@ model CommunicationLog {
   project   Project? @relation(fields: [projectId], references: [id])
 
   createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([projectId])
 }
 
 // Phase 3 — Owner Note → Project Internal Note conversion target.
@@ -478,6 +544,10 @@ model ProjectInternalNote {
   user   User @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([userId])
 }
 
 // Phase 3 — audit trail of every conversion an OwnerNote has produced.
@@ -498,6 +568,11 @@ model OwnerNoteConversion {
   company   Company @relation(fields: [companyId], references: [id])
 
   createdAt DateTime @default(now())
+
+  // The duplicate-protection check queries `{ ownerNoteId, companyId }`
+  // (ownerNotes.routes.ts) before every conversion.
+  @@index([ownerNoteId, companyId])
+  @@index([companyId])
 }
 
 model AuditLog {
@@ -514,6 +589,8 @@ model AuditLog {
   metadata String?
 
   createdAt DateTime @default(now())
+
+  @@index([companyId])
 }
 
 model Invitation {
@@ -532,4 +609,6 @@ model Invitation {
   acceptedAt DateTime?
 
   createdAt DateTime @default(now())
+
+  @@index([companyId])
 }

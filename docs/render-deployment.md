@@ -13,7 +13,7 @@ CrewFlow/                 ← repo root = FRONTEND (React + Vite)
 ├── src/                  ← frontend forrás
 ├── package.json          ← frontend build ("npm run build" → dist/)
 ├── .env.example          ← frontend env minta (VITE_API_URL)
-└── server/               ← BACKEND (Express + Prisma + SQLite)
+└── server/               ← BACKEND (Express + Prisma + PostgreSQL)
     ├── src/              ← backend forrás (belépési pont: src/index.ts)
     ├── prisma/           ← schema + migrációk
     ├── package.json      ← backend build/start scriptek
@@ -26,10 +26,11 @@ Directory: a repo root).
 
 ## Miért Render
 
-A backend SQLite-fájlt használ, nem külön DB-szervert — ezért **perzisztens
-disk** kell, ami a fájlrendszert deploy között megtartja. Render Web
-Service-e ezt natívan támogatja. Ugyanez igaz a feltöltött
-project-attachmentekre.
+A backend **managed PostgreSQL**-t használ (Render PostgreSQL vagy bármely
+külső Postgres) — az adatbázis tehát már *nem* a konténer fájlrendszerén él.
+**Perzisztens disk viszont továbbra is kell**, mert a feltöltött
+project-attachmentek fájlok maradtak: ezeket a Render deployonként eldobná a
+konténer efemer fájlrendszeréről. Render Web Service-e ezt natívan támogatja.
 
 ## Deployment sorrend
 
@@ -59,15 +60,15 @@ project-attachmentekre.
    - **Mount path: `/var/data`** (ez az ajánlott érték, a lenti env varok
      erre épülnek)
    - Méret: 1 GB-tal indulva bővíthető.
-   - Ez tartja meg a SQLite fájlt és a feltöltött fájlokat
-     újraindítás/redeploy között.
+   - Ez tartja meg a **feltöltött fájlokat** újraindítás/redeploy között.
+     (Az adatbázis a Postgres-migráció óta már nem itt van — lásd lentebb.)
 
 ### Environment Variables (Render Dashboard → Environment)
 
 | Változó | Érték |
 |---|---|
 | `NODE_ENV` | `production` — **kötelező kézzel beállítani**: ez kapcsolja be a szigorú env-validációt, a produkciós CORS-t és hibaválaszokat (lásd [runtime.md](runtime.md)) |
-| `DATABASE_URL` | `file:/var/data/axeriva.db` (a disk mount path-on belül, **abszolút** út!) |
+| `DATABASE_URL` | a managed PostgreSQL connection stringje (`postgresql://…?sslmode=require`). Render PostgreSQL esetén az **Internal Database URL** (ugyanabban a régióban, nem megy ki a publikus netre) |
 | `UPLOAD_ROOT` | `/var/data/uploads` (a disk mount path-on belül, **abszolút** út!) |
 | `JWT_SECRET` | hosszú, véletlen string (pl. `openssl rand -hex 64`) — **ne** a dev placeholder |
 | `APP_URL` | `https://axeriva.com` — a frontend URL-je; ez a CORS engedélyezett origin ÉS az e-mailekbe/Stripe-redirectekbe épülő linkek alapja |
@@ -85,10 +86,13 @@ azonnal, láthatóan bukik, nem félkészen üzemel.
 
 ### Perzisztens tárolás — miért így
 
-- A `DATABASE_URL` és `UPLOAD_ROOT` **abszolút, a `/var/data` mount alatti**
-  utak. Relatív út (pl. a default `file:./axeriva.db` vagy a lokális
-  `./uploads` fallback) a konténer efemer fájlrendszerére mutatna, amit a
-  Render minden deploynál eldob — **minden adat elveszne**.
+- Az **adatbázis** a Postgres-migráció óta külön managed szolgáltatás: a
+  `DATABASE_URL` connection string, nem fájlút. Backup/PITR a DB-szolgáltató
+  dolga, nem a diszk-mentésé.
+- Az `UPLOAD_ROOT` viszont továbbra is **abszolút, a `/var/data` mount alatti**
+  út. Relatív út (a lokális `./uploads` fallback) a konténer efemer
+  fájlrendszerére mutatna, amit a Render minden deploynál eldob — **minden
+  feltöltött fájl elveszne**.
 - Az upload-könyvtárat a szerver induláskor hozza létre
   (`/var/data/uploads/projects`); ha a mount hiányzik vagy nem írható,
   induláskor `FATAL` hibával leáll (szándékosan — lásd runtime.md).
@@ -180,9 +184,11 @@ retry-logika): [stripe-webhook-production-readiness.md](./stripe-webhook-product
   migrációk (új tábla/oszlop) ettől még kompatibilisek a régi kóddal;
   destruktív migrációt (oszlop/tábla törlés) ezért CSAK két lépcsőben,
   külön release-ben adj ki.
-- **Adat**: deploy előtt készíts disk-mentést (lásd checklist — a SQLite
-  fájl lemásolása a Render Shell-ből: `cp /var/data/axeriva.db
-  /var/data/backup-$(date +%F).db`). Vészhelyzetben ez másolható vissza.
+- **Adat**: deploy előtt készíts DB-mentést a Postgres oldalán
+  (`pg_dump "$DATABASE_URL" > backup-$(date +%F).sql`, vagy a szolgáltató
+  snapshot/PITR funkciója). Vészhelyzetben ez állítható vissza
+  (`psql "$DATABASE_URL" < backup-....sql`). A **feltöltött fájlokat** külön
+  kell menteni a `/var/data/uploads` mountról — azok nincsenek a DB-ben.
 
 ## 8. Troubleshooting
 
@@ -190,7 +196,7 @@ retry-logika): [stripe-webhook-production-readiness.md](./stripe-webhook-product
 |---|---|
 | Deploy log: `FATAL: missing required environment variable(s): ...` | A megnevezett env var hiányzik a Render Environment panelen. Pótold, redeploy. |
 | Deploy log: `FATAL: cannot create upload directory` | `UPLOAD_ROOT` nem a diskre mutat, vagy a disk nincs csatolva. Ellenőrizd a mount path-t (`/var/data`). |
-| Deploy log: `FATAL: cannot connect to the database` | `DATABASE_URL` hibás (nem `file:/var/data/...` formátumú abszolút út). |
+| Deploy log: `FATAL: cannot connect to the database` | `DATABASE_URL` hibás vagy elérhetetlen: nem `postgresql://…` formátumú, rossz jelszó/host, hiányzó `sslmode=require`, vagy a DB nem ugyanabban a régióban van (Render: az **Internal** Database URL-t használd). |
 | A frontend minden API-hívása elhasal, konzolban `localhost:5000` | A build `VITE_API_URL` nélkül készült — állítsd be és **rebuild**. |
 | CORS-hiba a böngészőben | A backend `APP_URL`-je nem egyezik a frontend tényleges origin-jével (pontos séma+domain, trailing slash nélkül). |
 | `/login` frissítésre 404 | Hiányzik az SPA rewrite (`/*` → `/index.html`). |

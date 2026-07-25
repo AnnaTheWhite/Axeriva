@@ -14,7 +14,7 @@
 
 ## Database
 
-- [ ] `DATABASE_URL` = `file:/var/data/axeriva.db` (persistent disk alatt, abszolút út)
+- [ ] `DATABASE_URL` = a managed PostgreSQL connection stringje (`postgresql://…?sslmode=require`; Renderen az Internal Database URL)
 - [ ] `prisma migrate deploy` lefutott az első deployban (start command része — deploy log igazolja)
 - [ ] Redeploy után az adatok megmaradnak (teszt-rekorddal ellenőrizve)
 
@@ -65,7 +65,7 @@
 
 ## Backups
 
-- [ ] Deploy előtti manuális DB-mentés: Render Shell → `cp /var/data/axeriva.db /var/data/backup-$(date +%F).db`
+- [ ] Deploy előtti manuális DB-mentés: `pg_dump "$DATABASE_URL" > backup-$(date +%F).sql` (vagy a DB-szolgáltató snapshotja)
 - [ ] Rendszeres (pl. napi) mentési rutin kijelölve és dokumentálva *(automatizálása jövőbeli feladat)*
 - [ ] Visszaállítás egyszer kipróbálva (backup fájl visszamásolása + restart)
 

@@ -35,9 +35,35 @@ jobs:
     runs-on: ubuntu-latest
     # Generous ceiling relative to the ~1 minute this actually takes; it is a
     # hang-breaker, not a performance target. The integration suite talks to a
-    # real (SQLite) database, so a deadlock would otherwise burn the full
-    # 6-hour default.
+    # real database, so a deadlock would otherwise burn the full 6-hour
+    # default.
     timeout-minutes: 15
+
+    # The suite runs against a real PostgreSQL since v1.0 #3 — the same engine
+    # production uses, so index behaviour, case sensitivity and constraint
+    # semantics are the ones that will actually ship. Ephemeral and per-job:
+    # nothing here is a secret and nothing outlives the run.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: axeriva_test
+        ports:
+          - 5432:5432
+        # Without the health check the first `prisma migrate reset` can race
+        # the container and fail on a connection refused.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Consumed by server/vitest.config.ts. The database name contains
+      # "test", which globalSetup.ts requires before it will drop anything.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/axeriva_test?schema=public
 
     steps:
       - uses: actions/checkout@v4
@@ -62,10 +88,10 @@ jobs:
         working-directory: server
         run: npm run build
 
-      # The suite provisions its own throwaway SQLite database from the
-      # committed migrations (src/tests/globalSetup.ts) and sets every
-      # environment variable it needs in vitest.config.ts — no secrets, no
-      # service containers, no network.
+      # globalSetup.ts runs `prisma migrate reset` against the service
+      # container above, so the suite proves the migration history applies
+      # cleanly to an empty PostgreSQL before a single test runs. Every other
+      # variable it needs is set in vitest.config.ts — no secrets, no network.
       - name: Run integration tests
         working-directory: server
         run: npm test

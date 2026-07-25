@@ -34,8 +34,9 @@ function buildUsersWhere(query: Record<string, unknown>): Record<string, unknown
   const plan = typeof query.plan === "string" ? query.plan : "";
 
   if (search) {
-    // SQLite LIKE is case-insensitive for ASCII, so no `mode` needed.
-    where.email = { contains: search };
+    // Postgres LIKE/ILIKE is case-SENSITIVE by default (unlike SQLite's LIKE,
+    // which folded ASCII case for free), so the insensitive mode is explicit.
+    where.email = { contains: search, mode: "insensitive" };
   }
   if (role) where.role = role;
   if (plan) where.company = { plan };
@@ -168,8 +169,16 @@ router.get("/overview", async (_req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /charts — daily time-series data for the last 30 days (line charts).
-// Uses raw SQL with SQLite DATE() to group by calendar day without loading
-// all rows. BigInt values from COUNT(*) are serialized as numbers.
+// Uses raw SQL to group by calendar day without loading all rows.
+//
+// Postgres notes (this was SQLite's `DATE()` before the migration):
+//   - `to_char(ts, 'YYYY-MM-DD')` keeps `date` a STRING, matching the frontend
+//     contract. A bare `::date` cast would come back as a JS Date instead.
+//   - Timestamps are stored in UTC, so the grouping is by UTC calendar day —
+//     same semantics as the previous SQLite `DATE()`.
+//   - Identifiers MUST stay double-quoted: Postgres folds unquoted names to
+//     lowercase, and Prisma's columns are camelCase.
+// BigInt values from COUNT(*) are serialized as numbers.
 // ---------------------------------------------------------------------------
 type RawDayRow = { date: string; count: bigint };
 
@@ -178,21 +187,21 @@ router.get("/charts", async (_req, res) => {
 
   const [userRegs, companyGrowth, projectCreations, activeUsers] = await Promise.all([
     prisma.$queryRaw<RawDayRow[]>`
-      SELECT DATE(createdAt) as date, COUNT(*) as count
-      FROM "User" WHERE createdAt >= ${since}
-      GROUP BY DATE(createdAt) ORDER BY date ASC`,
+      SELECT to_char("createdAt", 'YYYY-MM-DD') as date, COUNT(*) as count
+      FROM "User" WHERE "createdAt" >= ${since}
+      GROUP BY to_char("createdAt", 'YYYY-MM-DD') ORDER BY date ASC`,
     prisma.$queryRaw<RawDayRow[]>`
-      SELECT DATE(createdAt) as date, COUNT(*) as count
-      FROM "Company" WHERE createdAt >= ${since}
-      GROUP BY DATE(createdAt) ORDER BY date ASC`,
+      SELECT to_char("createdAt", 'YYYY-MM-DD') as date, COUNT(*) as count
+      FROM "Company" WHERE "createdAt" >= ${since}
+      GROUP BY to_char("createdAt", 'YYYY-MM-DD') ORDER BY date ASC`,
     prisma.$queryRaw<RawDayRow[]>`
-      SELECT DATE(createdAt) as date, COUNT(*) as count
-      FROM "Project" WHERE createdAt >= ${since}
-      GROUP BY DATE(createdAt) ORDER BY date ASC`,
+      SELECT to_char("createdAt", 'YYYY-MM-DD') as date, COUNT(*) as count
+      FROM "Project" WHERE "createdAt" >= ${since}
+      GROUP BY to_char("createdAt", 'YYYY-MM-DD') ORDER BY date ASC`,
     prisma.$queryRaw<RawDayRow[]>`
-      SELECT DATE(lastLoginAt) as date, COUNT(*) as count
-      FROM "User" WHERE lastLoginAt IS NOT NULL AND lastLoginAt >= ${since}
-      GROUP BY DATE(lastLoginAt) ORDER BY date ASC`,
+      SELECT to_char("lastLoginAt", 'YYYY-MM-DD') as date, COUNT(*) as count
+      FROM "User" WHERE "lastLoginAt" IS NOT NULL AND "lastLoginAt" >= ${since}
+      GROUP BY to_char("lastLoginAt", 'YYYY-MM-DD') ORDER BY date ASC`,
   ]);
 
   const toSeries = (rows: RawDayRow[]) =>
@@ -216,13 +225,15 @@ router.get("/storage", async (_req, res) => {
   const [totalResult, companyCount, topCompaniesRaw] = await Promise.all([
     prisma.projectAttachment.aggregate({ _sum: { fileSize: true } }),
     prisma.company.count(),
+    // Aliases are quoted too — an unquoted `as companyId` would come back as
+    // `companyid` on Postgres and silently break the mapping below.
     prisma.$queryRaw<RawStorageRow[]>`
-      SELECT c.id as companyId, c.name as companyName, SUM(pa.fileSize) as totalBytes
+      SELECT c."id" as "companyId", c."name" as "companyName", SUM(pa."fileSize") as "totalBytes"
       FROM "ProjectAttachment" pa
-      JOIN "Project" p ON pa.projectId = p.id
-      JOIN "Company" c ON p.companyId = c.id
-      GROUP BY c.id, c.name
-      ORDER BY totalBytes DESC
+      JOIN "Project" p ON pa."projectId" = p."id"
+      JOIN "Company" c ON p."companyId" = c."id"
+      GROUP BY c."id", c."name"
+      ORDER BY "totalBytes" DESC
       LIMIT 10`,
   ]);
 

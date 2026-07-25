@@ -13,7 +13,7 @@ The frontend has a single build-time variable read by Vite in
 
 | Variable | Required | Default (development) | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | **always** | — | SQLite file for Prisma, e.g. `file:./axeriva.db`. Production: put it on the persistent disk (`file:/var/data/axeriva.db`). |
+| `DATABASE_URL` | **always** | — | PostgreSQL connection string for Prisma: `postgresql://USER:PASSWORD@HOST:PORT/DB?schema=public`. Managed providers usually need `&sslmode=require`. *(Replaced the former SQLite `file:` URL — a `file:` URL is no longer valid.)* |
 | `JWT_SECRET` | **always** | — | Signs/verifies auth JWTs. Long random string; never use the dev placeholder in production. |
 | `NODE_ENV` | no | `development` | `production` switches validation to strict mode (see below) and changes runtime behaviour — CORS, error responses, logging, `trust proxy` (see [runtime.md](runtime.md)). |
 | `PORT` | no | `5000` | API listen port. |
@@ -56,9 +56,9 @@ import in `index.ts`), before anything else starts:
 
 ```bash
 # Backend
-cp server/.env.example server/.env      # fill in JWT_SECRET at minimum
+cp server/.env.example server/.env      # fill in DATABASE_URL + JWT_SECRET
 cd server && npm install
-npx prisma migrate dev                  # create/refresh the local SQLite DB
+npx prisma migrate deploy               # apply migrations to the Postgres DB
 npm run dev                             # port 5000
 
 # Frontend (repo root) — no .env needed locally
@@ -69,14 +69,36 @@ Optional locally: Stripe test keys (`npm run stripe:setup` prints the price
 ID) and a Resend key — without them billing routes error clearly and emails
 go to the console via MockEmailService.
 
+### Running the integration tests
+
+The suite needs its **own** PostgreSQL database — it drops the schema and
+truncates every table between tests, so it must never point at the
+development one:
+
+```bash
+createdb axeriva_test                   # once
+cd server && npm test
+```
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `TEST_DATABASE_URL` | test runs | `postgresql://postgres:postgres@localhost:5432/axeriva_test?schema=public` | Connection string the suite provisions and wipes. Read by `server/vitest.config.ts`; CI sets it to its `postgres` service container. |
+
+Safety rail: `src/tests/globalSetup.ts` refuses to start unless the target
+database name contains `test`, so a mistyped variable cannot destroy real
+data. Everything else the suite needs (JWT secret, Stripe test keys) is set
+in `vitest.config.ts` — no `.env` and no secrets are involved.
+
 ## Production setup
 
 Set all variables from the backend table above in the hosting platform's
 environment panel (never commit a production `.env`). On Render specifically,
-`DATABASE_URL` and `UPLOAD_ROOT` must point inside the persistent disk mount
-— full walkthrough in [render-deployment.md](render-deployment.md). Build the
-frontend with `VITE_API_URL` set to the deployed API URL.
+`DATABASE_URL` is the managed PostgreSQL instance's connection string and
+`UPLOAD_ROOT` must still point inside the persistent disk mount (uploads are
+files, not rows — they did not move with the database) — full walkthrough in
+[render-deployment.md](render-deployment.md). Build the frontend with
+`VITE_API_URL` set to the deployed API URL.
 
 Git hygiene: `.env` / `.env.local` are ignored at both the repo root and in
-`server/`; the local SQLite database (`server/prisma/axeriva.db`) and
+`server/`; the legacy local SQLite database (`server/prisma/axeriva.db`) and
 `server/tsconfig.tsbuildinfo` are ignored too and no longer tracked.
