@@ -1,0 +1,128 @@
+name: CI
+
+# Roadmap v1.0 #2. Every push and every pull request runs the same three
+# checks, so "green = deployable" is a fact rather than a hope.
+#
+# Gate policy:
+#   backend  — BLOCKING (132 integration tests + prisma generate + tsc)
+#   frontend — BLOCKING (tsc -b + vite build)
+#   lint     — REPORT ONLY (continue-on-error), see the job comment below
+on:
+  push:
+  pull_request:
+
+# A new push to the same branch makes the previous run obsolete — cancel it
+# instead of paying for both. `github.ref` keeps concurrent work on different
+# branches (and PRs) independent of each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only reads the repository; no job publishes, deploys or writes
+# back. Narrowing the default token removes that capability entirely.
+permissions:
+  contents: read
+
+env:
+  # server/package.json and the root both declare engines.node ">=20"; 22 is
+  # the current LTS satisfying that. Pinned rather than "latest" so a new
+  # Node release can never turn a green pipeline red without a commit.
+  NODE_VERSION: '22'
+
+jobs:
+  backend:
+    name: Backend — build & tests
+    runs-on: ubuntu-latest
+    # Generous ceiling relative to the ~1 minute this actually takes; it is a
+    # hang-breaker, not a performance target. The integration suite talks to a
+    # real (SQLite) database, so a deadlock would otherwise burn the full
+    # 6-hour default.
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          # Restores ~/.npm keyed on the backend lockfile, so `npm ci` reuses
+          # the download cache across runs.
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # `npm ci` (not `npm install`): installs exactly the lockfile, fails if
+      # package.json and the lockfile disagree, and never mutates either.
+      - name: Install backend dependencies
+        working-directory: server
+        run: npm ci
+
+      # `prisma generate && tsc`. This is also what produces the Prisma client
+      # the tests import, which is why it runs before them.
+      - name: Build backend
+        working-directory: server
+        run: npm run build
+
+      # The suite provisions its own throwaway SQLite database from the
+      # committed migrations (src/tests/globalSetup.ts) and sets every
+      # environment variable it needs in vitest.config.ts — no secrets, no
+      # service containers, no network.
+      - name: Run integration tests
+        working-directory: server
+        run: npm test
+
+  frontend:
+    name: Frontend — build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # `tsc -b && vite build`. VITE_API_URL is intentionally unset: the build
+      # must succeed without it (the app falls back to localhost and warns),
+      # and the real value is injected by the deploy environment, not here.
+      - name: Build frontend
+        run: npm run build
+
+  lint:
+    name: Lint — report only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Only the root install is needed: the lint setup is not type-aware, so
+      # ESLint reads server/src as plain syntax without the backend's
+      # node_modules.
+      - name: Install dependencies
+        run: npm ci
+
+      # continue-on-error is deliberate and TEMPORARY. As of v1.0 #2 the
+      # frontend carries 23 pre-existing lint errors — 15 of them
+      # react-hooks/set-state-in-effect, which need real effect refactors
+      # across 15 components. Fixing those inside a CI task would have meant
+      # an unreviewed frontend refactor with no frontend tests to catch a
+      # regression, so the debt is tracked as its own roadmap item instead.
+      #
+      # The result still shows up on every run, so the count can only be
+      # watched going down. Flip this to a blocking gate (delete the line) the
+      # moment that backlog reaches zero.
+      - name: ESLint
+        continue-on-error: true
+        run: npm run lint

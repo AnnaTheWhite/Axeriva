@@ -18,7 +18,11 @@ const isTest = nodeEnv === "test";
 // Single source of the application version — read from package.json so the
 // number isn't duplicated in code. Resolves correctly both from src/ (ts-node)
 // and dist/ (compiled) since both sit one level under server/.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// `require` rather than `import`: package.json sits outside tsconfig's
+// rootDir ("./src"), so importing it would break the build. The rule was
+// renamed no-var-requires -> no-require-imports in typescript-eslint 8, and
+// the stale directive name was itself reported as an error.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const packageJson = require("../package.json") as { version: string };
 
 // ---------------------------------------------------------------------------
