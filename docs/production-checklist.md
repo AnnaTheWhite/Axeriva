@@ -14,7 +14,8 @@
 
 ## Database
 
-- [ ] `DATABASE_URL` = a managed PostgreSQL connection stringje (`postgresql://…?sslmode=require`; Renderen az Internal Database URL)
+- [ ] **PostgreSQL instance létrehozva**, a Web Service-szel **azonos régióban** (enélkül az Internal URL nem oldható fel)
+- [ ] `DATABASE_URL` = a managed PostgreSQL connection stringje (Renderen az **Internal** Database URL; külső kapcsolatnál `?sslmode=require`)
 - [ ] `prisma migrate deploy` lefutott az első deployban (start command része — deploy log igazolja)
 - [ ] Redeploy után az adatok megmaradnak (teszt-rekorddal ellenőrizve)
 
@@ -74,7 +75,7 @@
 - [ ] CORS csak az `APP_URL` origint engedi (idegen originről a hívás elutasítva)
 - [ ] `X-Powered-By` header nincs a válaszokban
 - [ ] Rate limiting / Helmet még **nincs** — K2 (Security Foundation) scope, kockázatként nyilvántartva
-- [ ] Admin (DEVELOPER) fiók erős jelszóval seedelve (`npm run seed:developer`), a credential nem a repóban él
+- [ ] Admin (DEVELOPER) fiók erős jelszóval seedelve — a szerveren `node dist/scripts/seedDeveloper.js <email> <jelszó>` (**nem** `npm run seed:developer`: az `ts-node`-ot hív, ami production-installban nincs telepítve — lásd [render-deployment.md](render-deployment.md) 1.9), a credential nem a repóban él
 
 ## Deployment verification (közvetlenül deploy után)
 

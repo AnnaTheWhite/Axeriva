@@ -26,6 +26,27 @@ function daysAgo(days: number): Date {
 // ---------------------------------------------------------------------------
 const SORTABLE = new Set(["createdAt", "lastLoginAt", "email", "role"]);
 
+// `lastLoginAt` is the only NULLABLE column in SORTABLE, and null means "has
+// never signed in" (see schema.prisma). SQLite and PostgreSQL disagree about
+// where nulls belong: SQLite treats NULL as the smallest value (first on ASC,
+// last on DESC), PostgreSQL as the largest (last on ASC, first on DESC). So
+// after the Postgres migration, clicking "Last login" descending — the
+// natural "who was here most recently" action — put every never-logged-in
+// user at the top instead of the bottom.
+//
+// Pinning nulls LAST in both directions is the behaviour the column actually
+// wants: "never signed in" is the least interesting row either way. Prisma
+// supports `nulls` only on connectors that implement it (Postgres does), and
+// only for nullable fields — hence the narrow special case rather than
+// applying it to every sort key.
+function buildUserOrderBy(sortBy: string, sortDir: "asc" | "desc") {
+  if (sortBy === "lastLoginAt") {
+    return { lastLoginAt: { sort: sortDir, nulls: "last" } } as const;
+  }
+
+  return { [sortBy]: sortDir };
+}
+
 function buildUsersWhere(query: Record<string, unknown>): Record<string, unknown> {
   const where: Record<string, unknown> = {};
   const search = typeof query.search === "string" ? query.search.trim() : "";
@@ -267,7 +288,7 @@ router.get("/users", async (req, res) => {
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
-      orderBy: { [sortBy]: sortDir },
+      orderBy: buildUserOrderBy(sortBy, sortDir),
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
@@ -327,7 +348,7 @@ router.get("/users/export", async (req, res) => {
 
   const users = await prisma.user.findMany({
     where,
-    orderBy: { [sortBy]: sortDir },
+    orderBy: buildUserOrderBy(sortBy, sortDir),
     take: 10000,
     select: {
       id: true,

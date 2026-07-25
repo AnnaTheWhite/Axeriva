@@ -34,12 +34,42 @@ konténer efemer fájlrendszeréről. Render Web Service-e ezt natívan támogat
 
 ## Deployment sorrend
 
-1. Backend Web Service létrehozása diskkel + env varokkal → deploy.
-2. Backend URL ellenőrzése (`/health`).
-3. Stripe live setup (product/price + webhook) a backend URL-lel.
-4. Frontend Static Site a backend URL-re mutató `VITE_API_URL`-lel → deploy.
-5. `APP_URL` beállítása a backendben a végleges frontend-domainre → redeploy.
-6. Post-deploy validáció (lásd checklist).
+1. **PostgreSQL instance létrehozása** (lásd 0. pont) — ennek meg kell lennie,
+   mielőtt a backend elindulna.
+2. Backend Web Service létrehozása diskkel + env varokkal → deploy.
+3. Backend URL ellenőrzése (`/health`).
+4. **DEVELOPER (platform-admin) fiók seedelése** — az adatbázis üres, ez az
+   egyetlen módja, hogy az `/admin` felület elérhetővé váljon (lásd 1.9 pont).
+5. Stripe live setup (product/price + webhook) a backend URL-lel.
+6. Frontend Static Site a backend URL-re mutató `VITE_API_URL`-lel → deploy.
+7. `APP_URL` beállítása a backendben a végleges frontend-domainre → redeploy.
+8. Post-deploy validáció (lásd checklist).
+
+## 0. Adatbázis — Render PostgreSQL
+
+A backend nem hoz létre magának adatbázist: a `DATABASE_URL`-nek egy már létező
+instance-ra kell mutatnia, különben a szerver induláskor `FATAL: cannot connect
+to the database` hibával kilép.
+
+1. Render Dashboard → **New → PostgreSQL**.
+2. **Region**: *ugyanaz*, amit a Web Service is kapni fog. Ez nem stílus
+   kérdése — az Internal Database URL csak azonos régión belül oldható fel.
+3. Név / adatbázisnév / user: szabadon. Jegyezd fel.
+4. Létrehozás után az instance **Connect** fülén két connection string van:
+   - **Internal Database URL** — ezt add a backend `DATABASE_URL`-jének. Nem
+     megy ki a publikus internetre, és nem kell hozzá `sslmode=require`.
+   - **External Database URL** — csak a Renderen kívülről (pl. a saját gépedről
+     futtatott `pg_dump`, seed-script vagy migráció) használható; ehhez kell az
+     `sslmode=require`.
+5. A sémát **nem kell kézzel létrehozni**: a Start Command első fele
+   (`prisma migrate deploy`) minden deploynál alkalmazza a migrációkat, az
+   elsőnél a teljes sémát a nulláról.
+
+> **Az adatbázis üresen indul.** A projekt SQLite-ról állt át PostgreSQL-re, és
+> a régi fejlesztői adatok szándékosan nem lettek átmigrálva. Az első deploy
+> után nincs egyetlen cég, felhasználó vagy projekt sem — az első fiók a
+> regisztrációs űrlapon keresztül jön létre, a platform-admin pedig az 1.9
+> pontban leírt seed-scripttel.
 
 ## 1. Backend — Web Service
 
@@ -96,6 +126,31 @@ azonnal, láthatóan bukik, nem félkészen üzemel.
 - Az upload-könyvtárat a szerver induláskor hozza létre
   (`/var/data/uploads/projects`); ha a mount hiányzik vagy nem írható,
   induláskor `FATAL` hibával leáll (szándékosan — lásd runtime.md).
+
+### 1.9 DEVELOPER (platform-admin) fiók seedelése
+
+Az adatbázis üresen indul, és a regisztráció **mindig `BUSINESS_OWNER`-t hoz
+létre** — nincs olyan végpont, amivel `DEVELOPER` szerepkör kiosztható lenne.
+Az `/admin` és `/admin/analytics` felület tehát addig elérhetetlen, amíg ez a
+script le nem fut. Egyszer kell megcsinálni, az első deploy után.
+
+A Render Shellben (Web Service → **Shell**):
+
+```bash
+node dist/scripts/seedDeveloper.js <email> <erős-jelszó>
+```
+
+> **Ne `npm run seed:developer`-t használj a szerveren.** Az az alias
+> `ts-node`-ot hív, ami csak devDependency — a Render `NODE_ENV=production`
+> mellett buildel, tehát ott nincs telepítve, és a parancs
+> `ts-node: not found`-dal elhasal. A `dist/scripts/seedDeveloper.js` a build
+> részeként keletkezik, és csak production-függőségeket használ. Lokálisan
+> (ahol a devDependencies megvannak) az `npm run seed:developer` továbbra is
+> jó.
+
+Alternatíva: a scriptet a saját gépedről is futtathatod az **External**
+Database URL-lel a `DATABASE_URL`-ben — ilyenkor `npm run seed:developer` is
+működik. A jelszó ne kerüljön a repóba és ne maradjon shell-historyban.
 
 ## 2. Frontend — Static Site
 
