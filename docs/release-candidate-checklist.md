@@ -4,8 +4,9 @@
 részletesebb [production-checklist.md](production-checklist.md)-t; ez az
 RC-specifikus, végső gate. Deploy-lépések: [render-deployment.md](render-deployment.md).*
 
-*Állapot: `f269c38`. A commitolt HEAD == working tree; backend és frontend
-`tsc`/build zöld.*
+*Állapot: a v1.0 #3.5 Launch Blockers (B1–B7) lezárása utáni fa. Backend és
+frontend `tsc`/build zöld, a 198 tesztes suite zöld (Render teszt-DB ellen,
+2026-07-26).*
 
 ---
 
@@ -49,6 +50,7 @@ Jelmagyarázat: ✅ kódban igazolva; ⚠️ Render dashboard/deploy-időben ál
 
 Backend (kötelező prod-ban, hiány → startup exit): `NODE_ENV`, `DATABASE_URL`,
 `JWT_SECRET`, `APP_URL`, `UPLOAD_ROOT`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`,
+a hat per-plan `STRIPE_PRICE_{STARTER,PROFESSIONAL,BUSINESS}_{EUR,HUF}`,
 `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`. Opcionális:
 `PORT` (Render adja), `STRIPE_PUBLISHABLE_KEY` (jelenleg **nem használt**),
 `DEVELOPER_EMAIL/PASSWORD` (csak seedhez). Frontend: `VITE_API_URL`.
@@ -69,7 +71,7 @@ Részletek: [environment.md](environment.md).
 
 ## Part 5 — Stripe / Resend / Uploads / Backups
 
-- [ ] Stripe **live** Product+Price (`npm run stripe:setup`), `STRIPE_PRICE_ID` beállítva
+- [ ] Stripe **live** Product+Price (`npm run stripe:setup`), `STRIPE_PRICE_ID` **és mind a hat `STRIPE_PRICE_*`** beállítva (a script mindet kiírja)
 - [ ] Stripe **live** webhook a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
 - [ ] Resend domain verifikálva (SPF/DKIM), `ResendEmailService` aktív (nem Mock)
 - [ ] Feltöltés működik, redeploy után a fájl megmarad (persistent disk)

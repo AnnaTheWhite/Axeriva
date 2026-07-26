@@ -2,6 +2,12 @@
 
 *Állapot: 2026-07-25 — a kód a `master` @ `a13ce54` ellen verifikálva (a rákövetkező `de53cc0` csak dokumentációt adott hozzá, kódot nem érint). Ez a dokumentum a hivatalos, munkamenetek közt is érvényes terv (lásd a roadmap 3.5 szakaszát: `Axeriva-Product-Roadmap-v2.md`).*
 
+> **Utóirat (2026-07-26):** B1–B7 implementálva a `6f428b6`..`bb8c94d` commitokban
+> (B6 operatívan végrehajtva és verifikálva a productionön). A szakaszokban
+> hivatkozott sorszámok a javítás **előtti** fát írják le — a jelenlegi állapotot
+> a [release-readiness-audit.md](release-readiness-audit.md) rögzíti, a nyitva
+> maradt tételeket a [post-launch-backlog.md](post-launch-backlog.md).
+
 ## Honnan jött ez a terv
 
 A #3 (PostgreSQL-migráció) lezárása után futtatott teljes nyitott-tétel leltár (106 nyers megállapítás, konszolidálva) hat launch-blokkolót azonosított. 2026-07-25-én mind a hatot újra verifikáltuk a jelenlegi kódbázison: blokkeronként külön vizsgálat + adverzális ellenőrzés futott, és **mind a hat reprodukálódik** — több esetben súlyosabbnak bizonyult, mint az eredeti leírás (részletek az egyes szakaszokban). Az itt szereplő fájl- és sorhivatkozásokat két független menet ellenőrizte, de a fa mozog: implementálás előtt a kritikus sorokat érdemes újra megnézni.

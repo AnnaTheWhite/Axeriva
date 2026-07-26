@@ -21,7 +21,8 @@ The frontend has a single build-time variable read by Vite in
 | `UPLOAD_ROOT` | production | `./uploads` under the server cwd | Absolute path for uploaded project attachments — must point inside the persistent disk mount in production. |
 | `STRIPE_SECRET_KEY` | production | unset → Stripe client throws on first use | Stripe API key (`sk_test_...` / `sk_live_...`). Mode-checked at startup: a test key under `NODE_ENV=production` refuses to boot, a live key under `NODE_ENV=test` always refuses (see `config/stripeKeyMode.ts`). |
 | `ALLOW_TEST_STRIPE_KEY` | no | — | Escape hatch: allows startup with an `sk_test_…` key under `NODE_ENV=production` (staging deploy). Only the exact value `true` has any effect. Never set it on the live deploy. |
-| `STRIPE_PRICE_ID` | production | unset → checkout returns 500 with a clear error | The Axeriva Pro monthly price. `npm run stripe:setup` prints it. |
+| `STRIPE_PRICE_ID` | production | unset → checkout returns 500 with a clear error | The legacy Axeriva Pro monthly price. `npm run stripe:setup` prints it. |
+| `STRIPE_PRICE_STARTER_EUR` / `STRIPE_PRICE_STARTER_HUF` / `STRIPE_PRICE_PROFESSIONAL_EUR` / `STRIPE_PRICE_PROFESSIONAL_HUF` / `STRIPE_PRICE_BUSINESS_EUR` / `STRIPE_PRICE_BUSINESS_HUF` | production | unset → per-plan checkout reports a clear per-request error | Per-plan, per-currency Stripe Price IDs (S2.3). `npm run stripe:setup` creates and prints all six; they must come from the same Stripe account as `STRIPE_SECRET_KEY`. |
 | `STRIPE_WEBHOOK_SECRET` | production | unset → webhook returns 400 | Webhook signing secret (`whsec_...`). See [stripe-webhook-production-readiness.md](stripe-webhook-production-readiness.md). |
 | `RESEND_API_KEY` | production | unset → MockEmailService (emails logged, not sent) | Resend API key for real email delivery. |
 | `RESEND_FROM_EMAIL` | production | `Axeriva <onboarding@resend.dev>` | From-address for outgoing email. |
@@ -44,10 +45,11 @@ import in `index.ts`), before anything else starts:
   with code 1 and a `FATAL: missing required environment variable(s): ...`
   message naming each missing variable.
 - **`NODE_ENV=production`:** additionally `APP_URL`, `STRIPE_SECRET_KEY`,
-  `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
-  `RESEND_FROM_EMAIL` and `UPLOAD_ROOT` are all required — a half-configured
-  deploy fails at startup instead of surfacing later as broken checkout,
-  email or uploads.
+  `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, the six per-plan
+  `STRIPE_PRICE_{STARTER,PROFESSIONAL,BUSINESS}_{EUR,HUF}` ids,
+  `RESEND_API_KEY`, `RESEND_FROM_EMAIL` and `UPLOAD_ROOT` are all required —
+  a half-configured deploy fails at startup instead of surfacing later as
+  broken checkout, email or uploads.
 - **No silent placeholders:** the old `sk_test_placeholder` Stripe fallback
   is gone. In development without `STRIPE_SECRET_KEY` the server boots (with
   a warning), but any actual Stripe call throws

@@ -42,7 +42,7 @@
 
 - [ ] `STRIPE_SECRET_KEY` **live** kulcs (`sk_live_…`) — a Render env-ben ellenőrizve; az `ALLOW_TEST_STRIPE_KEY` **NINCS** beállítva (staging kivétel: lásd docs/environment.md). Test kulcs `NODE_ENV=production` alatt a deployt buktatja (config/stripeKeyMode.ts).
 - [ ] **Customer Portal konfiguráció elmentve a LIVE Stripe Dashboardon** (Settings → Billing → Customer portal → Save) — enélkül a `/subscription/portal` „No configuration provided" hibával áll el
-- [ ] Live mode Product + Price létrehozva (`npm run stripe:setup` live kulccsal), `STRIPE_PRICE_ID` beállítva
+- [ ] Live mode Product + Price létrehozva (`npm run stripe:setup` live kulccsal), `STRIPE_PRICE_ID` **és mind a hat per-plan `STRIPE_PRICE_*`** beállítva — a script mindet kiírja; `NODE_ENV=production` alatt mindegyik kötelező
 - [ ] Live webhook endpoint létrehozva a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
 - [ ] Webhook-kézbesítés sikeres (Stripe Dashboard → endpoint → Events, nincs failed delivery)
 - [ ] Checkout → előfizetés aktiválódik (Company.plan frissül) → Billing Portal elérhető
@@ -78,8 +78,8 @@
 
 - [ ] CORS csak az `APP_URL` origint engedi (idegen originről a hívás elutasítva)
 - [ ] `X-Powered-By` header nincs a válaszokban
-- [ ] Rate limiting / Helmet még **nincs** — K2 (Security Foundation) scope, kockázatként nyilvántartva
-- [ ] Admin (DEVELOPER) fiók erős jelszóval seedelve — a szerveren `node dist/scripts/seedDeveloper.js <email> <jelszó>` (**nem** `npm run seed:developer`: az `ts-node`-ot hív, ami production-installban nincs telepítve — lásd [render-deployment.md](render-deployment.md) 1.9), a credential nem a repóban él
+- [ ] Rate limiting és Helmet **működik**: ismételt hibás login 429-et ad `Retry-After` fejléccel (K2.1.3, `constants/rateLimits.ts`), a válaszokon ott vannak a Helmet security headerök (K2.2, `middleware/httpSecurity.ts`) — deploy után egyszer ellenőrizve
+- [x] Admin (DEVELOPER) fiók erős jelszóval seedelve — a szerveren `node dist/scripts/seedDeveloper.js <email> <jelszó>` (**nem** `npm run seed:developer`: az `ts-node`-ot hív, ami production-installban nincs telepítve — lásd [render-deployment.md](render-deployment.md) 1.9), a credential nem a repóban él *(végrehajtva és verifikálva: 2026-07-26 — login 200, role DEVELOPER, companyId null, /admin elérhető)*
 
 ## Deployment verification (közvetlenül deploy után)
 

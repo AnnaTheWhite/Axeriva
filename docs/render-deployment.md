@@ -38,9 +38,11 @@ konténer efemer fájlrendszeréről. Render Web Service-e ezt natívan támogat
    mielőtt a backend elindulna.
 2. Backend Web Service létrehozása diskkel + env varokkal → deploy.
 3. Backend URL ellenőrzése (`/health`).
-4. **DEVELOPER (platform-admin) fiók seedelése** — az adatbázis üres, ez az
+4. Stripe live setup (product/price + webhook) a backend URL-lel — **a seed
+   előtt kell**: `NODE_ENV=production` alatt a hat `STRIPE_PRICE_*` változó
+   nélkül a config-validáció a seed scriptet is kilépteti.
+5. **DEVELOPER (platform-admin) fiók seedelése** — az adatbázis üres, ez az
    egyetlen módja, hogy az `/admin` felület elérhetővé váljon (lásd 1.9 pont).
-5. Stripe live setup (product/price + webhook) a backend URL-lel.
 6. Frontend Static Site a backend URL-re mutató `VITE_API_URL`-lel → deploy.
 7. `APP_URL` beállítása a backendben a végleges frontend-domainre → redeploy.
 8. Post-deploy validáció (lásd checklist).
@@ -113,7 +115,13 @@ a mentési terv ellenőrizhetetlen; lásd [backup-restore.md](backup-restore.md)
 | `JWT_SECRET` | hosszú, véletlen string (pl. `openssl rand -hex 64`) — **ne** a dev placeholder |
 | `APP_URL` | `https://axeriva.com` — a frontend URL-je; ez a CORS engedélyezett origin ÉS az e-mailekbe/Stripe-redirectekbe épülő linkek alapja |
 | `STRIPE_SECRET_KEY` | `sk_live_...` — **test kulcs itt indulási hibát okoz**: `NODE_ENV=production` + `sk_test_…` esetén az API exit(1)-gyel megtagadja az indulást, tehát a deploy bukik (szándékos védelem, lásd `config/stripeKeyMode.ts`; staging kivétel: `ALLOW_TEST_STRIPE_KEY=true`) |
-| `STRIPE_PRICE_ID` | live Price ID — lásd 3. pont |
+| `STRIPE_PRICE_ID` | live Price ID (legacy „Axeriva Pro") — lásd 3. pont |
+| `STRIPE_PRICE_STARTER_EUR` | live per-plan Price ID — a `npm run stripe:setup` mind a hatot kiírja (3. pont) |
+| `STRIPE_PRICE_STARTER_HUF` | live per-plan Price ID — ugyanonnan |
+| `STRIPE_PRICE_PROFESSIONAL_EUR` | live per-plan Price ID — ugyanonnan |
+| `STRIPE_PRICE_PROFESSIONAL_HUF` | live per-plan Price ID — ugyanonnan |
+| `STRIPE_PRICE_BUSINESS_EUR` | live per-plan Price ID — ugyanonnan |
+| `STRIPE_PRICE_BUSINESS_HUF` | live per-plan Price ID — ugyanonnan |
 | `STRIPE_WEBHOOK_SECRET` | live webhook signing secret — lásd 4. pont |
 | `RESEND_API_KEY` | Resend API key (élesítés előtt rotálva!) |
 | `RESEND_FROM_EMAIL` | `Axeriva <noreply@axeriva.com>` |
@@ -199,6 +207,12 @@ npm run stripe:setup
 > live kulcs csak egy hangos figyelmeztetést vált ki, az indulás engedélyezett.
 > (`NODE_ENV=test` alatt a live kulcs fatális — a teszt-suite soha nem érhet
 > live accounthoz; lásd `config/stripeKeyMode.ts`.)
+
+A script idempotens, és **nem csak** a legacy `STRIPE_PRICE_ID`-t adja: minden
+self-serve csomaghoz (starter/professional/business) létrehozza a Productot és
+a valutánkénti (EUR/HUF) recurring Price-okat, majd kiírja mind a **hat**
+`STRIPE_PRICE_*` env-sort — mindet be kell másolni a Render env-be, mert
+`NODE_ENV=production` alatt mindegyik kötelező (`config.ts PRODUCTION_REQUIRED`).
 
 Idempotens: (újra)létrehozza az "Axeriva Pro" Productot és a havi Price-t
 **live mode**-ban, és kiírja a `STRIPE_PRICE_ID`-t — ezt másold a Render

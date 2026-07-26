@@ -16,11 +16,11 @@ CrewFlow/
 ├── server/         ← Backend (Express 5 + TypeScript + Prisma 6 + PostgreSQL)
 │   ├── prisma/     ← schema.prisma, migrációk (+ migrations-sqlite-archive/)
 │   ├── src/
-│   │   ├── routes/       ← 19 route-modul (a teljes API itt él, controller réteg nincs használatban)
+│   │   ├── routes/       ← 20 route-modul (a teljes API itt él, controller réteg nincs használatban)
 │   │   ├── middleware/   ← auth (JWT), role (RBAC), upload (multer), rateLimit, readOnly, httpSecurity, signedUploads
 │   │   ├── services/     ← activity, audit, email (Resend), geofence, storage, stripe, planAccess, readOnly
 │   │   ├── constants/    ← státusz/prioritás/kategória listák, plans/features/limits
-│   │   ├── tests/        ← 140 teszt 10 fájlban (vitest + supertest, valós PostgreSQL)
+│   │   ├── tests/        ← 198 teszt 16 fájlban (vitest + supertest, valós PostgreSQL)
 │   │   └── scripts/      ← seedDeveloper, stripeSetup
 │   └── uploads/    ← projekt-csatolmányok (diszken, UUID fájlnévvel)
 └── docs/           ← deploy, security, subscription és checklist dokumentáció
@@ -54,9 +54,10 @@ A multi-tenancy alapja a `companyId`: minden üzleti entitás céghez kötött, 
 
 ---
 
-## 3. Adatbázis-séma (17 modell)
+## 3. Adatbázis-séma (18 modell)
 
-22 migráció, 2026.06.15–06.21 között. Fő entitások és kapcsolataik:
+2 PostgreSQL-migráció (init + performance-indexek; a korábbi SQLite-migrációk
+a `migrations-sqlite-archive/` alatt archiválva). Fő entitások és kapcsolataik:
 
 - **Company** — tenant-gyökér. Branding/profil mezők (logó, számlázási adatok, adószám), Stripe-előfizetés mezők (`plan`, `subscriptionStatus`, `stripeCustomerId/SubscriptionId`, `subscriptionEndsAt`), soft-delete (`active`, `deletedAt`).
 - **User** — login-fiók. E-mail-verifikáció és jelszó-reset tokenekkel, soft-delete-tel. Opcionális `companyId` (DEVELOPER-nek nincs) és `employeeId` (EMPLOYEE-szerepnél köti a dolgozói rekordhoz).
@@ -152,7 +153,7 @@ Egyéb: `EmailVerificationBanner`, kétnyelvű UI (HU/EN), `AuthContext` a sessi
 
 ### Műszaki adósság / minőség
 
-*Lezárva a v1.0 #1–#3 során:* automatizált tesztek (140 teszt, `server/src/tests/`, valós PostgreSQL ellen), CI pipeline (`.github/workflows/ci.yml` — backend és frontend build blokkoló), SQLite → PostgreSQL migráció, valamint a `tsbuildinfo` / dev-adatbázis gitignore-olása.
+*Lezárva a v1.0 #1–#3.5 során:* automatizált tesztek (198 teszt, `server/src/tests/`, valós PostgreSQL ellen), CI pipeline (`.github/workflows/ci.yml` — backend és frontend build blokkoló), SQLite → PostgreSQL migráció, a `tsbuildinfo` / dev-adatbázis gitignore-olása, valamint a hat Launch Blocker (B1–B7, lásd [launch-blockers-plan.md](launch-blockers-plan.md)).
 
 Ami nyitva maradt:
 - **Frontend tesztek**: a `src/` alatt egyetlen teszt sincs; a teljes lefedettség backend-oldali.
@@ -174,7 +175,7 @@ npm run stripe:setup                            # Stripe product/price setup
 
 # Tesztek (külön PostgreSQL adatbázis kell: TEST_DATABASE_URL, a neve
 # tartalmazza a "test" szót — a globalSetup enélkül nem indul el)
-npm test                                        # vitest run, 140 teszt
+npm test                                        # vitest run, 198 teszt
 
 # Frontend
 npm install && npm run dev                      # Vite dev szerver
