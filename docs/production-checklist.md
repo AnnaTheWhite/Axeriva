@@ -79,7 +79,7 @@
 - [ ] CORS csak az `APP_URL` origint engedi (idegen originről a hívás elutasítva)
 - [ ] `X-Powered-By` header nincs a válaszokban
 - [ ] Rate limiting és Helmet **működik**: ismételt hibás login 429-et ad `Retry-After` fejléccel (K2.1.3, `constants/rateLimits.ts`), a válaszokon ott vannak a Helmet security headerök (K2.2, `middleware/httpSecurity.ts`) — deploy után egyszer ellenőrizve
-- [x] Admin (DEVELOPER) fiók erős jelszóval seedelve — a szerveren `node dist/scripts/seedDeveloper.js <email> <jelszó>` (**nem** `npm run seed:developer`: az `ts-node`-ot hív, ami production-installban nincs telepítve — lásd [render-deployment.md](render-deployment.md) 1.9), a credential nem a repóban él *(végrehajtva és verifikálva: 2026-07-26 — login 200, role DEVELOPER, companyId null, /admin elérhető)*
+- [x] Admin (DEVELOPER) fiók erős jelszóval seedelve — a szerveren `node dist/scripts/seedDeveloper.js <email> <jelszó>` (**nem** `npm run seed:developer`: az `ts-node`-ot hív, ami production-installban nincs telepítve — lásd [render-deployment.md](render-deployment.md) 1.9), a credential nem a repóban él *(lezárva 2026-07-26: az első seed tévesen az `axeriva_test` DB-be futott — a deploy-napi újraseedelés után az éles login verifikálva: 200, role DEVELOPER, companyId null, /admin elérhető; jelszó-rotáció és credential-utómunka: [public-launch-checklist.md](public-launch-checklist.md) P0.6–P0.8)*
 
 ## Deployment verification (közvetlenül deploy után)
 
