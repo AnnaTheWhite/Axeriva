@@ -49,10 +49,16 @@ egy fókuszált nap.
   (forgot-password → e-mail → új jelszó). A hash megjárta az `axeriva_test`-et,
   a jelszó kétszer a parancssort. *Mellékhaszon: ez egyben az éles Resend
   kézbesítés élő próbája.* Új jelszó a jelszókezelőbe.
-- [ ] **P0.7** 🔧 *5 perc* — **`axeriva_test` credential rotálása** a Render
-  dashboardon (az URL az éles URL mellett keringett a shellekben).
-  *Figyelem: a lokális teszt-futtatás allowlistelt parancsa a régi URL-t
-  tartalmazza — a következő Claude-sessionben az újat kell megadni.*
+- [ ] **P0.7** 🔧 *~15 perc* — **DB-credential rotálása.** A Render **nem
+  támogat jelszó-rotálást** meglévő credentialen ([Render docs:
+  Database Credentials](https://render.com/docs/postgresql-credentials)) — a
+  támogatott eljárás: **Info → Credentials → „+ New default credential"**
+  (az új user automatikusan a DB új default userévé válik, és az új
+  connection stringben az ő credentialje szerepel), majd a `DATABASE_URL`
+  frissítése a backendben + redeploy, végül **a régi default user törlése**
+  (csak akkor törölhető, ha már nem ő a default). Ez a mini-cutover ~2-3
+  perc kiesés. A törléssel válnak véglegesen hatástalanná a kósza URL-ek
+  (shell-history, allowlist-bejegyzés).
 - [ ] **P0.8** 🔧 *10 perc* — Shell-history takarítás a seedhez használt gépen
   (`(Get-PSReadlineOption).HistorySavePath`), és ellenőrzés, hogy egyetlen
   profil/env sem exportál távoli `DATABASE_URL`-t.
