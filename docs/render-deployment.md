@@ -196,6 +196,32 @@ Az assetek relatív gyökér-útvonalról (`/assets/...`) töltődnek — a Vite
 default `base: "/"` beállítása domain-gyökérre publikálva helyes, ehhez
 nem kell nyúlni.
 
+7. **Response headerök (kötelező — a H2 lezárása, lásd
+   [http-security.md](http-security.md))**: a Static Site **Settings →
+   Headers** fülén vedd fel az alábbi három sort. Figyelem: a Render
+   **nem olvas `public/_headers` fájlt** (az Netlify/Cloudflare Pages
+   mechanizmus) — kizárólag a Dashboard-beállítás él.
+
+   | Path | Name | Value |
+   |---|---|---|
+   | `/*` | `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://<API-ORIGIN>; connect-src 'self' https://<API-ORIGIN>; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests` |
+   | `/*` | `X-Content-Type-Options` | `nosniff` |
+   | `/*` | `Referrer-Policy` | `strict-origin-when-cross-origin` |
+
+   A `https://<API-ORIGIN>` **mindkét** előfordulását cseréld a backend
+   tényleges originjére — **pontosan arra, ami a `VITE_API_URL`-ben van**
+   (pl. `https://axeriva-api.onrender.com` vagy `https://api.axeriva.com`;
+   origin = séma + host, útvonal nélkül). Az `img-src`-ben az uploads-képek
+   és logók miatt kell, a `connect-src`-ben az API-hívások miatt; a `data:`
+   a legacy logókat és a beépített SVG-hátteret fedi. A `style-src
+   'unsafe-inline'` a React inline `style` attribútumai miatt szükséges
+   (strength meter, usage bar, naptár) — az érték a 2026-07-26-i builden
+   böngészőben validálva: nulla CSP-sértés a landing/login/register
+   oldalakon. Beállítás után ellenőrzés:
+   `curl -sI https://axeriva.com | findstr /i content-security` — a fejléc
+   jelenjen meg, és a live appban a DevTools-konzol maradjon „Refused to…"
+   üzenetek nélkül.
+
 ## 3. Stripe live mode — Product + Price
 
 ```powershell

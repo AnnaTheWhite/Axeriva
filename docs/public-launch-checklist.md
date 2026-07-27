@@ -72,14 +72,18 @@ hogy a release után is hibátlan.*
   előfizetés lemondható/refundálható. *Bizonyíték: a production-checklist
   Stripe-sorai (43–48) dátummal kipipálva.*
 
-### Frontend CSP — a H2 lezárása (≈30–60 perc)
+### Frontend CSP — a H2 lezárása (≈15 perc)
 
-- [ ] **P0.12** 💻 *30–60 perc* — `public/_headers` fájl a
-  [http-security.md](http-security.md) sablonja szerint (a security-assessment
-  a production-kitettséget ehhez kötötte); build után ellenőrzés, hogy a Vite
-  inline-style-jai nem törnek. Ez az egyetlen P0, ami kódot (konfig-fájlt)
-  érint — kérésre elkészítem. *Bizonyíték: a válasz-headerök közt CSP a live
-  frontenden.*
+- [ ] **P0.12** 🔧 *15 perc* — A három fejléc-sor felvétele a Static Site
+  **Settings → Headers** fülén, a [render-deployment.md](render-deployment.md)
+  2. pont 7. lépéséből másolva; a `<API-ORIGIN>` helyére a tényleges backend
+  origin kerül (= a `VITE_API_URL` értéke). **A Render nem olvas
+  `public/_headers` fájlt** — csak a Dashboard-beállítás él (ellenőrizve a
+  Render-doksiból, 2026-07-26). A CSP-érték a friss builden böngészőben
+  validálva: nulla sértés a landing/login/register oldalakon, a strength
+  meter inline style-jaival együtt. *Bizonyíték:
+  `curl -sI https://axeriva.com` mutatja a CSP-fejlécet, és a live appban a
+  konzol „Refused to…" üzenet nélkül marad a fő oldalakon.*
 
 ### Gyors üzemi ellenőrzések (≈35 perc)
 

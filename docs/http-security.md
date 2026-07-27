@@ -110,9 +110,12 @@ CORS szabályozza, nem a CORP.
 ## Frontend dokumentum CSP (deployment lépés — H2 lezárásához)
 
 A backend nem szolgálja ki a frontend HTML-t, ezért a H2-t lezáró
-dokumentum-CSP-t a **Render Static Site** fejléc-rétegén kell beállítani
-(pl. `public/_headers` fájl vagy a Render dashboard/`render.yaml`). Ajánlott
-kiindulás (a jelenlegi Vite-build inline stílusaihoz igazítandó):
+dokumentum-CSP-t a **Render Static Site** fejléc-rétegén kell beállítani.
+**Fontos:** a Render nem olvas `public/_headers` fájlt (az a
+Netlify/Cloudflare Pages mechanizmusa) — a fejlécek kizárólag a Dashboard
+**Settings → Headers** fülén állíthatók be. A pontos, dashboardra másolható
+sorok: [render-deployment.md](render-deployment.md) 2. pont, 7. lépés.
+Ajánlott kiindulás (a 2026-07-26-i buildre böngészőben validálva):
 ```
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://<API_HOST>; connect-src 'self' https://<API_HOST>; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests
