@@ -164,11 +164,11 @@ rögzíti. A kitöltetlen mezők a Render-oldali ellenőrzés után frissítend�
 
 | Tétel | Vállalás |
 |---|---|
-| Kézi deploy-előtti dump megőrzése | javasolt: 30 nap, utána törlés |
+| Kézi deploy-előtti dump megőrzése | **30 nap**, utána törlés (rögzítve: 2026-07-26) |
 | Szolgáltatói védelem | **PITR, 7 napos ablak** (Render Basic-256mb, 2026-07-26-án ellenőrizve); on-demand Export-fájlok ≥7 napig — külön napi backup-lista nincs |
 | **RPO** | a PITR-ablakon belül percek nagyságrendű (WAL-alapú); deploy-pillanatra 0 (kézi dump); **7 napnál régebbre visszaállás csak megőrzött kézi dumpból lehetséges** |
 | **RTO** | *(a drillben MÉRT idő — nem becslés)* |
-| Tárolási hely | *(kitöltendő — titkosított tároló, lásd lent)* |
+| Tárolási hely | `D:\Axeriva\Backups\` — **jelenleg titkosítás nélkül** (tudatos döntés, 2026-07-26: a BitLocker bevezetése külön biztonsági follow-up, lásd post-launch-backlog). A lenti titkosítási követelmény a célállapot; addig a mappa nem szinkronizálódhat felhőbe és nem osztható meg. |
 
 > 🔒 **Biztonság — a dump nem „csak egy fájl".** A dump a `User.password` bcrypt
 > hasheket, a teljes ügyfélállományt és a Stripe-azonosítókat

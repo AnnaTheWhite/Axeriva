@@ -24,10 +24,11 @@ egy fókuszált nap.
   on-demand Export ≥7 nap megőrzéssel — a tábla kitöltve a
   [render-deployment.md](render-deployment.md) 0. pontjában. Tier-váltás nem
   szükséges.
-- [ ] **P0.2** 🤔 *10 perc* — Ha a tieren nincs napi backup/PITR: döntés
-  (tier-váltás vs. vállalt kézi-dump RPO), beírva a
-  [backup-restore.md](backup-restore.md) 5–6. pontjába. Ugyanitt: dump-tárolási
-  hely (titkosított) + retention szám rögzítése.
+- [x] **P0.2** 🤔 *10 perc* — **Kész (2026-07-26):** tier-váltás nem kellett
+  (PITR él); tárolási hely `D:\Axeriva\Backups\` — egyelőre titkosítás nélkül
+  (tudatos kockázatvállalás, BitLocker follow-up a backlogban #0a) —,
+  retention 30 nap. Rögzítve a [backup-restore.md](backup-restore.md)
+  5. pontjában.
 - [ ] **P0.3** 🔧 *15 perc* — Azonnali éles mentés: `pg_dump --format=custom …`
   (PowerShell-változat a backup-restore.md 2. pontjában) + uploads-tar a teljes
   `/var/data/uploads`-ról a Render Shellből. *Bizonyíték: a két fájl megvan,
