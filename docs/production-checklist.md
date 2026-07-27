@@ -51,12 +51,12 @@
 
 ## Stripe
 
-- [ ] `STRIPE_SECRET_KEY` **live** kulcs (`sk_live_…`) — a Render env-ben ellenőrizve; az `ALLOW_TEST_STRIPE_KEY` **NINCS** beállítva (staging kivétel: lásd docs/environment.md). Test kulcs `NODE_ENV=production` alatt a deployt buktatja (config/stripeKeyMode.ts).
-- [ ] **Customer Portal konfiguráció elmentve a LIVE Stripe Dashboardon** (Settings → Billing → Customer portal → Save) — enélkül a `/subscription/portal` „No configuration provided" hibával áll el
+- [x] `STRIPE_SECRET_KEY` **live** kulcs (`sk_live_…`) — a Render env-ben ellenőrizve; az `ALLOW_TEST_STRIPE_KEY` **NINCS** beállítva (staging kivétel: lásd docs/environment.md). Test kulcs `NODE_ENV=production` alatt a deployt buktatja (config/stripeKeyMode.ts).
+- [x] **Customer Portal konfiguráció elmentve a LIVE Stripe Dashboardon** (Settings → Billing → Customer portal → Save) — enélkül a `/subscription/portal` „No configuration provided" hibával áll el
 - [ ] Live mode Product + Price létrehozva (`npm run stripe:setup` live kulccsal), `STRIPE_PRICE_ID` **és mind a hat per-plan `STRIPE_PRICE_*`** beállítva — a script mindet kiírja; `NODE_ENV=production` alatt mindegyik kötelező
-- [ ] Live webhook endpoint létrehozva a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
-- [ ] Webhook-kézbesítés sikeres (Stripe Dashboard → endpoint → Events, nincs failed delivery)
-- [ ] Checkout → előfizetés aktiválódik (Company.plan frissül) → Billing Portal elérhető
+- [x] Live webhook endpoint létrehozva a 3 eseménnyel, `STRIPE_WEBHOOK_SECRET` beállítva
+- [x] Webhook-kézbesítés sikeres *(2026-07-27: mind a 3 esemény 200 OK)* (Stripe Dashboard → endpoint → Events, nincs failed delivery)
+- [x] Checkout → előfizetés aktiválódik (Company.plan frissül) → Billing Portal elérhető *(2026-07-27: teljes live smoke — cancel/resume/delete is)*
 
 ## Resend (e-mail)
 
@@ -102,8 +102,8 @@
 
 ## Post-deployment validation (első 1–2 nap)
 
-- [ ] Redeploy-teszt: adat + feltöltött fájl megmarad
-- [ ] Stripe webhook-események hibamentesen dolgozódnak fel
+- [x] Redeploy-teszt: adat + feltöltött fájl megmarad *(2026-07-27, P0.13)*
+- [x] Stripe webhook-események hibamentesen dolgozódnak fel *(2026-07-27)*
 - [ ] Render metrics: memória/CPU stabil, nincs restart-loop
 - [ ] Log-átnézés: nincs ismétlődő `[error]` bejegyzés
 - [ ] Rollback-próba ismerete: a csapat tudja, hol van a "Rollback to this deploy" (lásd [render-deployment.md](render-deployment.md) 7. pont)

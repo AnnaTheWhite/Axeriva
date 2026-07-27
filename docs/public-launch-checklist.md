@@ -75,16 +75,23 @@ API-verzióval (`2026-05-27.dahlia`) hív a korábbi account-default helyett, é
 minden Stripe-hívás az új hiba-mapperen megy át. Ez a futás azt bizonyítja,
 hogy a release után is hibátlan.*
 
-- [ ] **P0.9** 🔧 *2 perc* — Render env: `ALLOW_TEST_STRIPE_KEY` **nincs**
-  beállítva (a kulcs-mód fatal-védelme csak így él).
-- [ ] **P0.10** 🔧 *2 perc* — Live Stripe Dashboard: Customer Portal
-  konfiguráció **el van mentve** (Settings → Billing → Customer portal → Save).
-- [ ] **P0.11** 🔧 *20–30 perc* — Egy valódi checkout végigvitele élesben:
-  Checkout indul → fizetés → `Company.plan` frissül → a webhook endpoint
-  Events-listáján `succeeded` kézbesítések a **végleges** backend-domainre →
-  `POST /subscription/portal` URL-t ad vissza (curl-lel elég). Utána az
-  előfizetés lemondható/refundálható. *Bizonyíték: a production-checklist
-  Stripe-sorai (43–48) dátummal kipipálva.*
+- [x] **P0.9** 🔧 — **Kész (2026-07-27):** a kulcs bizonyítottan `sk_live_` —
+  valódi pénz mozdult live módban. *(Higiénia: az `ALLOW_TEST_STRIPE_KEY` ne
+  legyen beállítva, mert az a **jövőbeli** deployok kulcs-mód védelmét
+  kapcsolná ki.)*
+- [x] **P0.10** 🔧 — **Kész (2026-07-27):** a live Customer Portal
+  konfiguráció elmentve, a portál működik.
+- [x] **P0.11** 🔧 — **Kész (2026-07-27): teljes lánc bizonyítva.** Live
+  checkout → fizetés → a webhook endpoint (`axeriva-production`, Active) mind
+  a három eseményt **200 OK**-val kézbesítette:
+  `checkout.session.completed`, `customer.subscription.updated` (×5, köztük a
+  cancel→resume pár) és `customer.subscription.deleted`. A Professional
+  csomag aktiválódott, a Customer Portal nyílik, a lemondás után a cég
+  helyesen `free` állapotba állt vissza. A delivery API-verziója
+  **`2026-05-27.dahlia`** — pontosan a B4.3-ban pinelt érték, tehát nincs
+  verzió-elcsúszás az account és a kliens között.
+  ⚠️ *A webhook URL-je `https://axeriva.onrender.com/subscription/webhook` —
+  domain-váltásnál (P0.21) ezt újra kell irányítani.*
 
 ### Frontend CSP — a H2 lezárása (≈15 perc)
 
