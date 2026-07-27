@@ -49,19 +49,21 @@ egy fókuszált nap.
   (forgot-password → e-mail → új jelszó). A hash megjárta az `axeriva_test`-et,
   a jelszó kétszer a parancssort. *Mellékhaszon: ez egyben az éles Resend
   kézbesítés élő próbája.* Új jelszó a jelszókezelőbe.
-- [ ] **P0.7** 🔧 *~15 perc* — **DB-credential rotálása.** A Render **nem
-  támogat jelszó-rotálást** meglévő credentialen ([Render docs:
-  Database Credentials](https://render.com/docs/postgresql-credentials)) — a
-  támogatott eljárás: **Info → Credentials → „+ New default credential"**
-  (az új user automatikusan a DB új default userévé válik, és az új
-  connection stringben az ő credentialje szerepel), majd a `DATABASE_URL`
-  frissítése a backendben + redeploy, végül **a régi default user törlése**
-  (csak akkor törölhető, ha már nem ő a default). Ez a mini-cutover ~2-3
-  perc kiesés. A törléssel válnak véglegesen hatástalanná a kósza URL-ek
-  (shell-history, allowlist-bejegyzés).
-- [ ] **P0.8** 🔧 *10 perc* — Shell-history takarítás a seedhez használt gépen
-  (`(Get-PSReadlineOption).HistorySavePath`), és ellenőrzés, hogy egyetlen
-  profil/env sem exportál távoli `DATABASE_URL`-t.
+- [x] **P0.7** 🔧 *~15 perc* — **Kész (2026-07-27):** a Render nem támogat
+  jelszó-rotálást ([docs](https://render.com/docs/postgresql-credentials)),
+  ezért a támogatott új-default-credential úton ment: `axeriva_product`
+  létrehozva → `DATABASE_URL` átállítva az új Internal URL-re → redeploy →
+  `/health` OK + DEVELOPER login OK → **a régi `axeriva_test_user` credential
+  törölve**. Ezzel minden korábbi connection string (shell-history,
+  allowlist-bejegyzés, session-fájlok) végleg hatástalan.
+- [x] **P0.8** 🔧 *10 perc* — **Nagyrészt tárgytalan a P0.7 után:** a
+  historyban és config-fájlokban ülő connection stringek a régi credential
+  törlésével halottá váltak. Ami maradt: a `.claude/settings.local.json`
+  allowlist-bejegyzése a régi teszt-URL-lel — **törlendő vagy cserélendő** a
+  lokálisra (`postgresql://axeriva_test_local:…@localhost:5432/axeriva_test`),
+  hogy egy jövőbeli session ne is próbálkozzon távolival (a kód már tiltja:
+  `ALLOW_REMOTE_TEST_DB` nélkül elutasít). A seedelt DEVELOPER-jelszó
+  rotálása külön tétel: **P0.6**.
 
 ### Stripe regressziós smoke (≈30–45 perc) — újraellenőrzés a B4 után
 
