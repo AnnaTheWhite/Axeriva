@@ -100,9 +100,14 @@ hogy a release után is hibátlan.*
 
 ### Gyors üzemi ellenőrzések (≈35 perc)
 
-- [ ] **P0.13** 🔧 *15–20 perc* — **Upload-perzisztencia próba**: attachment
-  feltöltése → redeploy → a fájl megvan, az aláírt URL 200. Néma hibamód —
-  ha az `UPLOAD_ROOT` rossz, minden ügyfélfájl elveszik a következő deploynál.
+- [x] **P0.13** 🔧 — **Kész (2026-07-27): perzisztens disk megerősítve.**
+  Funkcionális próba: kép feltöltve → „Deploy latest commit" → a kép
+  továbbra is elérhető. Infrastruktúra-bizonyíték a Render Shellből:
+  `df -h /var/data/uploads` → **`/dev/nvme21n1`, 4,9 GB, mountpoint
+  `/var/data`** (külön blokk-eszköz, nem az efemer overlay), a feltöltött
+  fájl a helyén, a könyvtár dátuma régebbi a deployoknál.
+  ⚠️ *Kapacitás-megjegyzés: a disk 4,9 GB, a csomag-kvóták viszont
+  5/25/100 GB — lásd post-launch-backlog #0c.*
 - [ ] **P0.14** 🔧 *5 perc* — `RESEND_API_KEY` rotálva (K1.1 óta nyitott) —
   ha a deploy során megtörtént, csak dátumozott pipa.
 - [ ] **P0.15** 🔧 *10 perc* — Uptime-monitor a `/health`-re (pl. UptimeRobot,
