@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { TEST_DATABASE_URL } from "./testDatabaseUrl";
+import { assertDisposableDatabase } from "./helpers/disposableDatabase";
 
 // Runs ONCE per `vitest` invocation, before any test file is loaded.
 //
@@ -25,35 +26,11 @@ const SERVER_ROOT = path.join(__dirname, "..", "..");
 // The suite TRUNCATES every table between tests (see helpers/db.ts). Pointed
 // at the wrong database that is unrecoverable data loss, and the only thing
 // standing between the two is an environment variable. So: refuse to run
-// unless the target database name marks itself as disposable.
-//
-// This is a deliberate belt-and-braces check, not a substitute for using a
-// separate database — it exists because the cost of the mistake is total and
-// the cost of the guard is one string comparison.
-const TEST_DB_NAME_MARKER = "test";
-
-function assertDisposableDatabase(url: string) {
-  let databaseName: string;
-
-  try {
-    // "postgresql://user:pass@host:5432/axeriva_test?schema=public" → "axeriva_test"
-    databaseName = new URL(url).pathname.replace(/^\//, "");
-  } catch {
-    throw new Error(
-      `Refusing to run the integration suite: DATABASE_URL is not a valid URL.\n` +
-        `Set TEST_DATABASE_URL to a throwaway PostgreSQL database.`
-    );
-  }
-
-  if (!databaseName.toLowerCase().includes(TEST_DB_NAME_MARKER)) {
-    throw new Error(
-      `Refusing to run the integration suite against database "${databaseName}".\n` +
-        `The suite drops and truncates every table, so its target database name must\n` +
-        `contain "${TEST_DB_NAME_MARKER}" (e.g. axeriva_test). Set TEST_DATABASE_URL\n` +
-        `to a database you are willing to lose.`
-    );
-  }
-}
+// unless the target database marks itself as disposable — by NAME and, since
+// the 2026-07 incident (production ran on a remote instance named
+// "axeriva_test" and a suite run wiped it), by HOST: remote targets need the
+// explicit ALLOW_REMOTE_TEST_DB=true opt-in. The rules themselves live in
+// helpers/disposableDatabase.ts as a pure, unit-tested function.
 
 export async function setup() {
   // NOT process.env.DATABASE_URL: globalSetup runs in Vitest's main process,
@@ -61,7 +38,7 @@ export async function setup() {
   // Both read the same resolved value from testDatabaseUrl.ts.
   const databaseUrl = TEST_DATABASE_URL;
 
-  assertDisposableDatabase(databaseUrl);
+  assertDisposableDatabase(databaseUrl, process.env.ALLOW_REMOTE_TEST_DB === "true");
 
   // stdio piped, not inherited: `migrate deploy` prints every applied
   // migration, which would bury the test reporter's output on every run. A

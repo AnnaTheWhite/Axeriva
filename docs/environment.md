@@ -85,12 +85,16 @@ cd server && npm test
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `TEST_DATABASE_URL` | test runs | `postgresql://postgres:postgres@localhost:5432/axeriva_test?schema=public` | Connection string the suite provisions and wipes. Read by `server/vitest.config.ts`; CI sets it to its `postgres` service container. |
+| `TEST_DATABASE_URL` | test runs | `postgresql://postgres:postgres@localhost:5432/axeriva_test?schema=public` | Connection string the suite provisions and wipes. Read by `server/vitest.config.ts`; CI sets it to its `postgres` service container. **Must point at a LOCAL database** (see `ALLOW_REMOTE_TEST_DB`). A local `.env` must never hold a remote live/test instance URL. |
+| `ALLOW_REMOTE_TEST_DB` | no | — | Escape hatch for the suite's host guard: only the exact value `true` lets the suite target a non-localhost database. Exists for deliberate, eyes-open setups only — in July 2026 the production database was named `axeriva_test` on a remote host and a suite run wiped it, which is why remote targets are refused by default. |
 
-Safety rail: `src/tests/globalSetup.ts` refuses to start unless the target
-database name contains `test`, so a mistyped variable cannot destroy real
-data. Everything else the suite needs (JWT secret, Stripe test keys) is set
-in `vitest.config.ts` — no `.env` and no secrets are involved.
+Safety rail: `src/tests/helpers/disposableDatabase.ts` (called from
+`globalSetup.ts`) refuses to start unless the target database name contains
+`test` **and** the host is local (`localhost`/`127.0.0.1`/`::1`) — a remote
+host needs the explicit `ALLOW_REMOTE_TEST_DB=true` opt-in, and even then the
+name rule still applies. Everything else the suite needs (JWT secret, Stripe
+test keys) is set in `vitest.config.ts` — no `.env` and no secrets are
+involved.
 
 ## Production setup
 
