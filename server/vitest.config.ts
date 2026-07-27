@@ -46,6 +46,18 @@ export default defineConfig({
       // the webhook route only verifies signatures locally.
       STRIPE_SECRET_KEY: "sk_test_axeriva_integration_suite",
       STRIPE_WEBHOOK_SECRET: "whsec_axeriva_integration_suite",
+      // Per-plan price IDs. Fake but distinct per plan AND per currency, so a
+      // test can assert WHICH price a plan change sends to Stripe — that is
+      // the whole point of the currency-matching rule in
+      // services/stripe/subscriptionChange.ts. Without these, priceIdFor()
+      // returns null and every plan-change path short-circuits into "no price
+      // configured", leaving the logic untestable.
+      STRIPE_PRICE_STARTER_EUR: "price_test_starter_eur",
+      STRIPE_PRICE_STARTER_HUF: "price_test_starter_huf",
+      STRIPE_PRICE_PROFESSIONAL_EUR: "price_test_professional_eur",
+      STRIPE_PRICE_PROFESSIONAL_HUF: "price_test_professional_huf",
+      STRIPE_PRICE_BUSINESS_EUR: "price_test_business_eur",
+      STRIPE_PRICE_BUSINESS_HUF: "price_test_business_huf",
       // RESEND_API_KEY intentionally unset → MockEmailService, so no test
       // can send a real email.
     },

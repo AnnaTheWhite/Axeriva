@@ -4,8 +4,10 @@ import { stripe } from "./stripeClient";
 import { applySubscriptionUpdate } from "./syncSubscription";
 import {
   isPurchasablePlan,
+  isStripeCurrency,
   normalizeCurrency,
   priceIdFor,
+  type PurchasablePlan,
   type StripeCurrency,
 } from "../../config/stripePricing";
 import { canUpgrade, canDowngrade, isManuallyManaged, getEffectivePlan } from "../planAccess";
@@ -77,6 +79,45 @@ function hasLiveSubscription(company: CompanyBilling): boolean {
   );
 }
 
+// Resolves the target plan's Price for an EXISTING subscription.
+//
+// Stripe pins a subscription's currency at creation: updating an item to a
+// price in a different currency is rejected with a plain 400 ("all prices
+// must have the same currency"), which the error mapper can only report as a
+// generic "Billing request failed". That is not a hypothetical — the
+// requested currency comes from the UI LANGUAGE (currencyForLanguage() in
+// the frontend), so a customer who subscribed in HUF and later switched the
+// interface to English sends "EUR" and walks straight into it.
+//
+// So the live subscription's own currency always wins. The requested
+// currency is only a fallback for the (unexpected) case where Stripe reports
+// a currency we don't sell in; paths with no subscription never reach here —
+// they hand off to Checkout, where the requested currency is correct because
+// the subscription does not exist yet.
+type TargetPrice =
+  | { ok: true; priceId: string; currency: StripeCurrency }
+  | { ok: false; status: number; error: string };
+
+function resolveTargetPrice(
+  targetPlan: PurchasablePlan,
+  subscription: Stripe.Subscription,
+  requestedCurrency: StripeCurrency
+): TargetPrice {
+  const existing = subscription.items.data[0]?.price?.currency;
+  const currency: StripeCurrency = isStripeCurrency(existing) ? existing : requestedCurrency;
+
+  const priceId = priceIdFor(targetPlan, currency);
+  if (!priceId) {
+    return {
+      ok: false,
+      status: 500,
+      error: `No Stripe price configured for ${targetPlan} (${currency.toUpperCase()}).`,
+    };
+  }
+
+  return { ok: true, priceId, currency };
+}
+
 // Releases the pending-downgrade schedule (if any) so the subscription
 // returns to normal, un-scheduled operation. Safe to call when none exists.
 async function releaseScheduleIfAny(subscription: Stripe.Subscription): Promise<void> {
@@ -140,15 +181,10 @@ export async function changePlan(
     return { ok: false, status: 400, error: "This is already the current plan." };
   }
 
+  // The currency the CALLER asked for. Only used where no live subscription
+  // exists — otherwise the subscription's own currency wins (see
+  // resolveTargetPrice).
   const resolvedCurrency: StripeCurrency = normalizeCurrency(currency);
-  const targetPriceId = priceIdFor(targetPlan, resolvedCurrency);
-  if (!targetPriceId) {
-    return {
-      ok: false,
-      status: 500,
-      error: `No Stripe price configured for ${targetPlan} (${resolvedCurrency.toUpperCase()}).`,
-    };
-  }
 
   // --- Upgrade: immediate, prorated, on the existing subscription ---------
   if (canUpgrade(company.plan, targetPlan)) {
@@ -161,6 +197,9 @@ export async function changePlan(
 
     const subscription = await stripe.subscriptions.retrieve(company.stripeSubscriptionId!);
 
+    const price = resolveTargetPrice(targetPlan, subscription, resolvedCurrency);
+    if (!price.ok) return price;
+
     // An upgrade supersedes any pending downgrade — release its schedule
     // first so the item update below applies to a plain subscription.
     await releaseScheduleIfAny(subscription);
@@ -171,7 +210,7 @@ export async function changePlan(
     }
 
     const updated = await stripe.subscriptions.update(company.stripeSubscriptionId!, {
-      items: [{ id: itemId, price: targetPriceId }],
+      items: [{ id: itemId, price: price.priceId }],
       proration_behavior: "create_prorations",
       // Upgrading is an explicit recommitment — clear a pending cancellation.
       cancel_at_period_end: false,
@@ -199,6 +238,11 @@ export async function changePlan(
       return { ok: false, status: 500, error: "Subscription has no billable item." };
     }
 
+    // Both schedule phases must share one currency — phase 1 reuses the
+    // subscription's current price, so phase 2 has to match it.
+    const price = resolveTargetPrice(targetPlan, subscription, resolvedCurrency);
+    if (!price.ok) return price;
+
     // Re-scheduling to a different downgrade target: drop the old schedule
     // first (exactly one schedule per subscription).
     await releaseScheduleIfAny(subscription);
@@ -220,7 +264,7 @@ export async function changePlan(
           end_date: item.current_period_end,
         },
         {
-          items: [{ price: targetPriceId, quantity: 1 }],
+          items: [{ price: price.priceId, quantity: 1 }],
         },
       ],
     });
