@@ -19,10 +19,11 @@ egy fókuszált nap.
 
 ### Backup-lánc (≈3 óra) — a saját tervünk szerint enélkül a launch blokkolt
 
-- [ ] **P0.1** 🔧 *5 perc* — A Render dashboardról kitölteni a DB-táblázatot a
-  [render-deployment.md](render-deployment.md) 0. pontjában: plan/tier,
-  PostgreSQL major verzió, napi backup (van-e + retention), PITR (van-e + ablak).
-  *Bizonyíték: a tábla kitöltve, commitolva.*
+- [x] **P0.1** 🔧 *5 perc* — ~~A Render dashboardról kitölteni a DB-táblázatot~~
+  **Kész (2026-07-26):** Basic-256mb, PostgreSQL **18**, PITR 7 napos ablakkal,
+  on-demand Export ≥7 nap megőrzéssel — a tábla kitöltve a
+  [render-deployment.md](render-deployment.md) 0. pontjában. Tier-váltás nem
+  szükséges.
 - [ ] **P0.2** 🤔 *10 perc* — Ha a tieren nincs napi backup/PITR: döntés
   (tier-váltás vs. vállalt kézi-dump RPO), beírva a
   [backup-restore.md](backup-restore.md) 5–6. pontjába. Ugyanitt: dump-tárolási
@@ -31,9 +32,10 @@ egy fókuszált nap.
   (PowerShell-változat a backup-restore.md 2. pontjában) + uploads-tar a teljes
   `/var/data/uploads`-ról a Render Shellből. *Bizonyíték: a két fájl megvan,
   méret > 0, a kijelölt titkosított tárolóban.*
-- [ ] **P0.4** 🔧 *~45 perc, egyszeri* — Lokális PostgreSQL telepítése a drillhez
-  (a gépen jelenleg nincs — pl. `winget install PostgreSQL.PostgreSQL.16`; csak
-  a drillhez kell, a suite továbbra is a Render teszt-DB-t használja).
+- [ ] **P0.4** 🔧 *~45 perc, egyszeri* — Lokális PostgreSQL telepítése a drillhez:
+  **18-as verzió kell** (a szerver PostgreSQL 18 — régebbi `pg_dump` kliens el
+  sem indul ellene): `winget install PostgreSQL.PostgreSQL.18`. Csak a drillhez
+  kell, a suite továbbra is a Render teszt-DB-t használja.
 - [ ] **P0.5** 🔧 *1,5–2 óra* — **Restore-drill** a P0.3 dumpjával:
   [backup-restore.md](backup-restore.md) D0–D8. A pass/fail mag a **D5**
   (második restore, már feltöltött célba). Dátum + mért RTO a Drill-naplóba;

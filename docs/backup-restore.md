@@ -165,8 +165,8 @@ rögzíti. A kitöltetlen mezők a Render-oldali ellenőrzés után frissítend�
 | Tétel | Vállalás |
 |---|---|
 | Kézi deploy-előtti dump megőrzése | javasolt: 30 nap, utána törlés |
-| Szolgáltatói napi backup retention | *(a tierhez járó érték — lásd render-deployment.md 0. pont táblázata)* |
-| **RPO** | a szolgáltatói napi mentés köze (≤24h); deploy-pillanatra 0 (kézi dump) |
+| Szolgáltatói védelem | **PITR, 7 napos ablak** (Render Basic-256mb, 2026-07-26-án ellenőrizve); on-demand Export-fájlok ≥7 napig — külön napi backup-lista nincs |
+| **RPO** | a PITR-ablakon belül percek nagyságrendű (WAL-alapú); deploy-pillanatra 0 (kézi dump); **7 napnál régebbre visszaállás csak megőrzött kézi dumpból lehetséges** |
 | **RTO** | *(a drillben MÉRT idő — nem becslés)* |
 | Tárolási hely | *(kitöltendő — titkosított tároló, lásd lent)* |
 

@@ -76,12 +76,12 @@ to the database` hibával kilép.
 **Az instance adatai és backup-képessége** *(a dashboardról töltendő ki — enélkül
 a mentési terv ellenőrizhetetlen; lásd [backup-restore.md](backup-restore.md))*:
 
-| Tétel | Érték |
+| Tétel | Érték *(dashboardról leolvasva: 2026-07-26)* |
 |---|---|
-| Render PostgreSQL plan/tier | *(kitöltendő)* |
-| PostgreSQL major verzió | *(kitöltendő — ehhez kell illeszkedő `pg_dump` kliens)* |
-| Napi automatikus backup | van / nincs — retention: *(nap)* |
-| Point-in-time recovery (PITR) | van / nincs — ablak: *(nap)* |
+| Render PostgreSQL plan/tier | **Basic-256mb** |
+| PostgreSQL major verzió | **18** — a `pg_dump`/`pg_restore` kliensnek is ≥18 kell (régebbi kliens `server version mismatch` hibával el sem indul) |
+| Napi automatikus backup | Külön napi backup-lista a Recovery oldalon **nem jelenik meg** — a védelmet a PITR adja (lásd alább), plusz on-demand **Export** (a fájlok ≥7 napig megőrizve) |
+| Point-in-time recovery (PITR) | **van — 7 napos** visszaállítási ablak |
 
 ## 1. Backend — Web Service
 
