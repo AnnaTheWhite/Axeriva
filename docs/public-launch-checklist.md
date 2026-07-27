@@ -47,10 +47,11 @@ egy fókuszált nap.
 
 ### Incidens-utómunka (≈20 perc) — credential-higiénia
 
-- [ ] **P0.6** 🔧 *5 perc* — **DEVELOPER-jelszó rotálása** az app reset-flow-ján
-  (forgot-password → e-mail → új jelszó). A hash megjárta az `axeriva_test`-et,
-  a jelszó kétszer a parancssort. *Mellékhaszon: ez egyben az éles Resend
-  kézbesítés élő próbája.* Új jelszó a jelszókezelőbe.
+- [x] **P0.6** 🔧 — **Kész (2026-07-27):** a DEVELOPER-jelszó rotálva az app
+  saját reset-flow-ján; a reset e-mail megérkezett, a link működött, az új
+  jelszóval a belépés sikeres. A parancssort megjárt credential ezzel
+  érvénytelen. *Egyben bizonyíték: az éles Resend-kézbesítés működik
+  (verifikáció/reset/meghívó levelek útja élő).*
 - [x] **P0.7** 🔧 *~15 perc* — **Kész (2026-07-27):** a Render nem támogat
   jelszó-rotálást ([docs](https://render.com/docs/postgresql-credentials)),
   ezért a támogatott új-default-credential úton ment: `axeriva_product`
@@ -108,8 +109,14 @@ hogy a release után is hibátlan.*
   fájl a helyén, a könyvtár dátuma régebbi a deployoknál.
   ⚠️ *Kapacitás-megjegyzés: a disk 4,9 GB, a csomag-kvóták viszont
   5/25/100 GB — lásd post-launch-backlog #0c.*
-- [ ] **P0.14** 🔧 *5 perc* — `RESEND_API_KEY` rotálva (K1.1 óta nyitott) —
-  ha a deploy során megtörtént, csak dátumozott pipa.
+- [ ] **P0.14** 🔧 *5 perc* — `RESEND_API_KEY` **rotálása** (K1.1 óta nyitott).
+  ⚠️ Nem azonos a kézbesítési próbával: a P0.6 bizonyította, hogy a Resend
+  *működik*, de a K1.1 audit azt kifogásolta, hogy egy élesnek látszó kulcs
+  ült a dev `.env`-ben — ha az a kulcs máig érvényes, bárki küldhet levelet a
+  `noreply@axeriva.com` nevében (phishing-vektor éles ügyfelek felé).
+  Teendő: Resend Dashboard → új API key → a Render env `RESEND_API_KEY`
+  cseréje → redeploy → **a régi kulcs visszavonása**. Ha a rotálás már
+  megtörtént korábban, csak dátumozott pipa.
 - [ ] **P0.15** 🔧 *10 perc* — Uptime-monitor a `/health`-re (pl. UptimeRobot,
   ingyenes) — a deploy-napi incidenst kézzel vettük észre; a következőt
   riasztás jelezze.
