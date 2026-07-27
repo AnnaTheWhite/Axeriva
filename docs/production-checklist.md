@@ -70,9 +70,9 @@
 
 *(A teljes eljárás, a verifikáció és a drill: [backup-restore.md](backup-restore.md).)*
 
-- [ ] Deploy előtti manuális DB-mentés: `pg_dump --format=custom --no-owner --no-privileges --file="axeriva-$(date +%F-%H%M).dump" "$DATABASE_URL"` — PowerShell-változat a backup-restore.md-ben
-- [ ] Rendszeres mentés: a szolgáltatói napi backup a mechanizmus (a tier képessége a render-deployment.md 0. pontjában dokumentálva); saját ütemezett dump-job **tudatosan nincs** (indoklás: backup-restore.md 6. pont)
-- [ ] Visszaállítás egyszer kipróbálva (`pg_restore --clean` **nem üres** adatbázisba, verifikációval — a backup-restore.md drillje, dátummal naplózva)
+- [x] Deploy előtti manuális DB-mentés: `pg_dump --format=custom --no-owner --no-privileges --file="axeriva-$(date +%F-%H%M).dump" "$DATABASE_URL"` — PowerShell-változat a backup-restore.md-ben *(első éles mentés: 2026-07-27, `D:\Axeriva\Backups\`)*
+- [x] Rendszeres mentés: a mechanizmus a szolgáltatói **PITR, 7 napos ablakkal** (Basic-256mb — render-deployment.md 0. pont); saját ütemezett dump-job **tudatosan nincs** (indoklás: backup-restore.md 6. pont). 7 napnál régebbre csak megőrzött kézi dumpból lehet visszaállni.
+- [x] Visszaállítás egyszer kipróbálva (`pg_restore --clean` **nem üres** adatbázisba, verifikációval — a backup-restore.md drillje) *(2026-07-27: **PASS**, mért RTO ~0,6 mp technikai / 10–15 perc teljes ciklus)*
 
 ## Security
 

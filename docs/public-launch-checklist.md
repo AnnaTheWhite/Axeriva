@@ -37,11 +37,13 @@ egy fókuszált nap.
   **18-as verzió kell** (a szerver PostgreSQL 18 — régebbi `pg_dump` kliens el
   sem indul ellene): `winget install PostgreSQL.PostgreSQL.18`. Csak a drillhez
   kell, a suite továbbra is a Render teszt-DB-t használja.
-- [ ] **P0.5** 🔧 *1,5–2 óra* — **Restore-drill** a P0.3 dumpjával:
-  [backup-restore.md](backup-restore.md) D0–D8. A pass/fail mag a **D5**
-  (második restore, már feltöltött célba). Dátum + mért RTO a Drill-naplóba;
-  utána pipálható a production-checklist Backups-szekciója.
-  *Bizonyíték: kitöltött drill-napló sor.*
+- [x] **P0.5** 🔧 — **Kész (2026-07-27): a drill PASS.** D3 (üres célba) és
+  **D5 (nem üres célba)** egyaránt exit 0, duplázódás nélkül; D4 verifikáció
+  mindkétszer átment; D6-ban a valódi backend elindult a visszaállított DB-re
+  és minden lekért végpont 200-at adott, a bcrypt hash-ek épek. Mért RTO:
+  ~0,6 mp technikai / 10–15 perc teljes ciklus — a
+  [backup-restore.md](backup-restore.md) drill-naplójában rögzítve.
+  *Marad: az uploads-csatolás ellenőrzése az első valódi feltöltés után.*
 
 ### Incidens-utómunka (≈20 perc) — credential-higiénia
 

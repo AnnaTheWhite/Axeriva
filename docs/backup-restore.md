@@ -155,7 +155,7 @@ bukása esetén a production-checklist restore-tétele nem pipálható, a launch
 
 | Dátum | Végrehajtó | D5 eredmény | Mért RTO | Megjegyzés |
 |---|---|---|---|---|
-| *(kitöltendő az első futáskor)* | | | | |
+| 2026-07-27 | Anna + Claude | **PASS** (exit 0, nincs duplázódás) | **~0,6 mp technikai** (restore 402 ms + verifikáció 155 ms); teljes emberi ciklus reálisan 10–15 perc | Forrás: az első éles dump (80 kB — 1 cég, 3 user, 1 employee, 1 projekt). Cél: lokális `axeriva_restore_drill`, PostgreSQL 18. D6 teljesült: a backend elindult a visszaállított DB-re, `prisma migrate status` „up to date", mindhárom bcrypt hash ép (`$2b$`, 10 rounds), `/admin/companies`, `/employees` (`accessRevoked` mezővel), `/dashboard`, `/subscription` mind 200, és a rossz jelszavas login `401 Invalid credentials`-t adott (nem „unknown email") — tehát a jelszó-összehasonlítás ténylegesen lefutott a visszaállított hash ellen. **Nem fedve:** helyes jelszavas login (a credential az operátornál) és az uploads-csatolás (a dumpban 0 `ProjectAttachment` — az első valódi feltöltés után ismétlendő). |
 
 ## 5. Retention, RPO, RTO, tárolási hely
 
@@ -167,7 +167,7 @@ rögzíti. A kitöltetlen mezők a Render-oldali ellenőrzés után frissítend�
 | Kézi deploy-előtti dump megőrzése | **30 nap**, utána törlés (rögzítve: 2026-07-26) |
 | Szolgáltatói védelem | **PITR, 7 napos ablak** (Render Basic-256mb, 2026-07-26-án ellenőrizve); on-demand Export-fájlok ≥7 napig — külön napi backup-lista nincs |
 | **RPO** | a PITR-ablakon belül percek nagyságrendű (WAL-alapú); deploy-pillanatra 0 (kézi dump); **7 napnál régebbre visszaállás csak megőrzött kézi dumpból lehetséges** |
-| **RTO** | *(a drillben MÉRT idő — nem becslés)* |
+| **RTO** | **~0,6 mp technikai** restore+verifikáció a jelenlegi adatmennyiségen (2026-07-27-i drillben mérve); a teljes incidens-ciklus (dump megkeresése, parancs kiadása, app átállítása, smoke) reálisan **10–15 perc**. Az adatmennyiség növekedésével a technikai rész nő — érdemes évente újramérni. |
 | Tárolási hely | `D:\Axeriva\Backups\` — **jelenleg titkosítás nélkül** (tudatos döntés, 2026-07-26: a BitLocker bevezetése külön biztonsági follow-up, lásd post-launch-backlog). A lenti titkosítási követelmény a célállapot; addig a mappa nem szinkronizálódhat felhőbe és nem osztható meg. |
 
 > 🔒 **Biztonság — a dump nem „csak egy fájl".** A dump a `User.password` bcrypt
