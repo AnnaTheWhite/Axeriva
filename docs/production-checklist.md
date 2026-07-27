@@ -3,6 +3,17 @@
 Élesítés előtti és utáni ellenőrzőlista. A deploy lépései:
 [render-deployment.md](render-deployment.md).
 
+> **Állapot-átfutás 2026-07-27 (P0.16).** A production él; a lista mind az 53
+> sora osztályozva lett a tényleges bizonyítékok ellen: **18 bizonyítottan
+> kész**, **18 valószínűleg kész, de nem igazolt**, **11 valós kockázat**,
+> **6 apró**. A pipálatlan dobozok tehát nem mind elmaradt munkát jelentenek —
+> a nyitott tételek sorrendezve a
+> [public-launch-checklist.md](public-launch-checklist.md)-ben (P0.17–P0.22)
+> élnek. **A legnagyobb hasznú egyetlen ellenőrzés:** a `/health` válasz
+> `environment` mezője — ha `production`, az a `config.ts` fail-fast
+> validációja miatt egyszerre igazolja mind a 16 kötelező env-változó
+> meglétét és a Stripe kulcs-módot.
+
 ## Environment
 
 - [ ] `NODE_ENV=production` beállítva a backenden (a `/health` `environment` mezője igazolja)

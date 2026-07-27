@@ -122,9 +122,51 @@ hogy a release után is hibátlan.*
   ellenőrzési időközzel, e-mail-értesítéssel. Induló állapot: **UP**, 100%
   uptime, 0 incidens. A deploy-napi incidenst még kézzel vettük észre — a
   következő kiesést már riasztás jelzi.
-- [ ] **P0.16** 📄 *30 perc* — A production-checklist végigjárása: ami a deploy
-  során elkészült, dátumozott pipát kap; ami nem, az ide (P0) vagy P1-be kerül.
-  *Az incidens pont a „kész, de nem rögzített" résben történt.*
+- [x] **P0.16** 📄 — **Kész (2026-07-27):** mindkét checklist végigolvasva,
+  **112 sor** osztályozva a session bizonyítékai ellen. Eredmény:
+  production-checklist 53 sor (18 bizonyítottan kész · 18 valószínűleg kész,
+  de nem igazolt · 11 valós kockázat · 6 apró), release-candidate-checklist
+  59 sor (29 · 6 · 10 · 14). Az átfutás **öt új P0-tételt** tárt fel (P0.17–P0.21
+  lent), amik nem szerepeltek az eredeti listán.
+
+### P0.16 által feltárt új tételek
+
+- [ ] **P0.17** 🔧 *2 perc* — **A legnagyobb hasznú egyetlen ellenőrzés:**
+  `curl -s https://<backend>/health` → olvasd el az `environment` mezőt.
+  Ha `production`, az **kaszkádol**: a `config.ts` `process.exit(1)`-et hív
+  bármely hiányzó `PRODUCTION_REQUIRED` változóra, tehát a puszta bootolás
+  bizonyítja **mind a 16 env-változó** meglétét — és a `stripeKeyMode` miatt
+  azt is, hogy a Stripe-kulcs `sk_live_` **vagy** `ALLOW_TEST_STRIPE_KEY=true`
+  (P0.9 fele ingyen zárul). Ha viszont `development`, akkor a szigorú
+  env-validáció, a produkciós CORS, a HSTS és a kulcs-mód védelem
+  **mind csendben ki van kapcsolva**.
+- [ ] **P0.18** 🔧 *15 perc* — **Uploads-mentés** (`tar` a teljes
+  `/var/data/uploads`-ról). Ez a P0.13 óta élessé vált: **valódi ügyfélfájl
+  van a diszken**, a DB-dump és a disk tartalma tehát már szétcsúszott. A
+  drill ezt a felét nem tudta fedni — most már tudja.
+- [ ] **P0.19** 🔧 *~20 perc* — **A két soha nem tesztelt fő folyamat élesben:**
+  (a) **regisztráció** új céggel → verifikációs e-mail → belépés (a termék
+  bejárati ajtaja, eddig csak a seedelt DEVELOPER-fiókot használtuk);
+  (b) **meghívó** → elfogadás → employee-belépés (a B3 óta ez a képernyő
+  változott is). Mindkettő Resend-transzportja már bizonyított.
+- [ ] **P0.20** 🔧 *5 perc* — **Rate limiting proxy mögött**: 6 gyors hibás
+  login → `429` + `Retry-After`. Ez a klasszikus kontroll, ami lokálisan
+  átmegy, de Renderen a load balancer miatt vagy egyáltalán nem véd, vagy
+  minden usert egy vödörbe tesz — csak élesben látszik. Ugyanebben a
+  körben: `curl -I` a security headerökre (HSTS, CSP, nosniff, nincs
+  `X-Powered-By`) — egy hívás, két sor lezárva.
+- [ ] **P0.21** 🤔 *döntés* — **Egyedi domain: most vagy soha (olcsón).** A
+  production ma `axeriva.onrender.com`-on szolgál. Ha lesz `axeriva.com` /
+  `api.axeriva.com`, azt **a Stripe live webhook beállítása ELŐTT** érdemes
+  megtenni — utána a webhook-URL-t újra kell irányítani, és egy elrontott
+  átállás **némán** töri el a fizetés-aktiválást (a Stripe egy nem figyelt
+  endpointra kézbesít). Az `axeriva.com` DNS már a kezedben van (a Resend
+  SPF/DKIM verifikálva), tehát most olcsó. *Alternatíva: tudatosan
+  onrender.com-on indulsz, és a váltás külön, tervezett művelet lesz.*
+- [ ] **P0.22** 🔧 *1 perc* — **`JWT_SECRET` szemrevételezése** a Render
+  env-panelen: hosszú, véletlen érték-e, nem a `.env.example` placeholderje.
+  A bootolás csak a *meglétét* bizonyítja; egy placeholder mellett bárki,
+  aki látta a repót, hamisíthat DEVELOPER-tokent.
 
 ---
 
