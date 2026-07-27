@@ -117,9 +117,11 @@ hogy a release után is hibátlan.*
   Teendő: Resend Dashboard → új API key → a Render env `RESEND_API_KEY`
   cseréje → redeploy → **a régi kulcs visszavonása**. Ha a rotálás már
   megtörtént korábban, csak dátumozott pipa.
-- [ ] **P0.15** 🔧 *10 perc* — Uptime-monitor a `/health`-re (pl. UptimeRobot,
-  ingyenes) — a deploy-napi incidenst kézzel vettük észre; a következőt
-  riasztás jelezze.
+- [x] **P0.15** 🔧 — **Kész (2026-07-27):** UptimeRobot, „Axeriva API Health"
+  monitor a `https://axeriva.onrender.com/health` endpointon, 5 perces
+  ellenőrzési időközzel, e-mail-értesítéssel. Induló állapot: **UP**, 100%
+  uptime, 0 incidens. A deploy-napi incidenst még kézzel vettük észre — a
+  következő kiesést már riasztás jelzi.
 - [ ] **P0.16** 📄 *30 perc* — A production-checklist végigjárása: ami a deploy
   során elkészült, dátumozott pipát kap; ami nem, az ide (P0) vagy P1-be kerül.
   *Az incidens pont a „kész, de nem rögzített" résben történt.*
