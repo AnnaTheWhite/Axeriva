@@ -306,17 +306,22 @@ szerint **előfeltétel**, a többi nyitott kérdés:
 
 ## 7. Ismert korlátok (implementáció után rögzítve, 2026-07-30)
 
-- **Flow-session hiba = elveszett ütemezett visszaváltás.** A Stripe-korlát
-  miatt a függő downgrade schedule-t a flow-session létrehozása *előtt* kell
-  feloldani; ha maga a session-létrehozás hiúsul meg (Stripe-kiesés, rossz
-  konfiguráció-id), a visszaváltás már törlődött, és csak hibaüzenet jelenik
-  meg — a felhasználónak újra kell ütemeznie. Ritka, pénzt nem veszít, de
-  meglepő lehet.
+- **Flow-session hiba: a visszaváltás automatikusan helyreáll.** A
+  Stripe-korlát miatt a függő downgrade schedule-t a flow-session létrehozása
+  *előtt* kell feloldani; ha maga a session-létrehozás hiúsul meg
+  (Stripe-kiesés, rossz konfiguráció-id), a schedule és a `pendingPlan`
+  **automatikusan visszaáll** (kompenzáció, teszt alatt). Maradék rés: ha a
+  helyreállító hívás is elhal ugyanabban a kiesésben, vagy a folyamat a
+  feloldás és a visszaállítás között omlik össze — ekkor hangos hibalog
+  jelzi, és a felhasználónak újra kell ütemeznie. Pénzveszteség nincs.
 - **Duplikátum-ablak maradéka.** A nyitott Checkout-sessionök lejáratása +
   a completion-kori egyeztetés (a beérkező duplikátum-előfizetés azonnali
   törlése) lezárja a dupla-előfizetés útjait, de a duplikátum *első* terhelése
-  megtörténhet — az audit log `manualRefundRequired` jelzéssel rögzíti, a
-  visszatérítés kézi lépés.
+  megtörténhet. A visszatérítés szándékosan kézi lépés (nincs automatikus
+  `refunds.create`), viszont az audit-bejegyzés minden azonosítót tartalmaz
+  az egykattintásos Dashboard-refundhoz: `paymentIntentId`, `invoiceId`,
+  `duplicateSubscriptionCanceled` (subscription id), `stripeCustomerId` +
+  `manualRefundRequired` jelzés.
 - **`ProcessedStripeEvent` növekedés.** A webhook-idempotencia tábla lassan,
   de korlát nélkül nő; időnkénti prune elegendő (ops-jegyzet a
   render-deployment.md-ben).

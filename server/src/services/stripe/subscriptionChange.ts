@@ -175,6 +175,37 @@ async function releaseScheduleIfAny(subscription: Stripe.Subscription): Promise<
   }
 }
 
+// Creates the two-phase period-end downgrade schedule on a plain
+// (un-scheduled) subscription: today's price until the end of the already-
+// paid period, the target price from then on; `release` detaches the
+// schedule afterwards so the subscription keeps renewing normally. Shared by
+// the downgrade branch and the upgrade branch's failure compensation (a
+// released schedule is restored when the flow-session creation itself fails).
+async function createDowngradeSchedule(
+  subscription: Stripe.Subscription,
+  item: Stripe.SubscriptionItem,
+  targetPriceId: string
+): Promise<void> {
+  const schedule = await stripe.subscriptionSchedules.create({
+    from_subscription: subscription.id,
+  });
+
+  const currentPhase = schedule.phases[0];
+  await stripe.subscriptionSchedules.update(schedule.id, {
+    end_behavior: "release",
+    phases: [
+      {
+        items: [{ price: item.price.id, quantity: 1 }],
+        start_date: currentPhase.start_date,
+        end_date: item.current_period_end,
+      },
+      {
+        items: [{ price: targetPriceId, quantity: 1 }],
+      },
+    ],
+  });
+}
+
 export async function changePlan(
   companyId: number,
   targetPlan: unknown,
@@ -281,8 +312,8 @@ export async function changePlan(
     const price = resolveTargetPrice(targetPlan, subscription, resolvedCurrency);
     if (!price.ok) return price;
 
-    const itemId = subscription.items.data[0]?.id;
-    if (!itemId) {
+    const item = subscription.items.data[0];
+    if (!item) {
       return { ok: false, status: 500, error: "Subscription has no billable item." };
     }
 
@@ -291,6 +322,7 @@ export async function changePlan(
     // schedule must go BEFORE the session is created (AC13). The upgrade
     // dialog told the customer this; if they abandon the hosted page the
     // downgrade stays cancelled, which the UI reflects on the next load.
+    const releasedPendingPlan = company.pendingPlan;
     await releaseScheduleIfAny(subscription);
     await prisma.company.update({ where: { id: company.id }, data: { pendingPlan: null } });
 
@@ -299,26 +331,61 @@ export async function changePlan(
     // performs the plan change itself. Confirmation triggers
     // customer.subscription.updated (webhook) and the return redirect
     // triggers the return-sync endpoint, so the app updates either way.
-    const flowSession = await stripe.billingPortal.sessions.create({
-      customer:
-        typeof subscription.customer === "string"
-          ? subscription.customer
-          : subscription.customer.id,
-      configuration: config.stripe.portalFlowConfigId,
-      ...(locale ? { locale } : {}),
-      return_url: `${config.frontendUrl}/subscription`,
-      flow_data: {
-        type: "subscription_update_confirm",
-        subscription_update_confirm: {
-          subscription: subscription.id,
-          items: [{ id: itemId, price: price.priceId, quantity: 1 }],
+    let flowSession: Stripe.BillingPortal.Session;
+    try {
+      flowSession = await stripe.billingPortal.sessions.create({
+        customer:
+          typeof subscription.customer === "string"
+            ? subscription.customer
+            : subscription.customer.id,
+        configuration: config.stripe.portalFlowConfigId,
+        ...(locale ? { locale } : {}),
+        return_url: `${config.frontendUrl}/subscription`,
+        flow_data: {
+          type: "subscription_update_confirm",
+          subscription_update_confirm: {
+            subscription: subscription.id,
+            items: [{ id: item.id, price: price.priceId, quantity: 1 }],
+          },
+          after_completion: {
+            type: "redirect",
+            redirect: { return_url: `${config.frontendUrl}/subscription?upgrade=confirmed` },
+          },
         },
-        after_completion: {
-          type: "redirect",
-          redirect: { return_url: `${config.frontendUrl}/subscription?upgrade=confirmed` },
-        },
-      },
-    });
+      });
+    } catch (error) {
+      // Compensation: the customer never reached the Stripe page (outage, bad
+      // configuration id), so the released downgrade schedule must be put
+      // back — otherwise a failed upgrade ATTEMPT would silently cancel a
+      // scheduled downgrade the customer still expects. Best-effort: if the
+      // restore itself fails (the same outage), the loud log below is the
+      // recovery breadcrumb; the original error still propagates to the
+      // error mapper either way.
+      if (releasedPendingPlan && isPurchasablePlan(releasedPendingPlan)) {
+        try {
+          const restorePrice = resolveTargetPrice(releasedPendingPlan, subscription, resolvedCurrency);
+          if (restorePrice.ok) {
+            await createDowngradeSchedule(subscription, item, restorePrice.priceId);
+            await prisma.company.update({
+              where: { id: company.id },
+              data: { pendingPlan: releasedPendingPlan },
+            });
+            console.warn(
+              `[billing] flow-session creation failed for company ${company.id} — ` +
+                `restored the pending downgrade to ${releasedPendingPlan}`
+            );
+          }
+        } catch (restoreError) {
+          console.error(
+            `[billing] flow-session creation failed for company ${company.id} AND the ` +
+              `pending downgrade to ${releasedPendingPlan} could not be restored — ` +
+              "the customer must re-schedule it manually",
+            restoreError
+          );
+        }
+      }
+      throw error;
+    }
 
     if (!flowSession.url) {
       return { ok: false, status: 502, error: "Stripe did not return a confirmation URL." };
@@ -370,27 +437,7 @@ export async function changePlan(
     // first (exactly one schedule per subscription).
     await releaseScheduleIfAny(subscription);
 
-    const schedule = await stripe.subscriptionSchedules.create({
-      from_subscription: subscription.id,
-    });
-
-    const currentPhase = schedule.phases[0];
-    await stripe.subscriptionSchedules.update(schedule.id, {
-      // Phase 1: today's price until the end of the already-paid period.
-      // Phase 2: the target price from then on. `release` detaches the
-      // schedule afterwards so the subscription keeps renewing normally.
-      end_behavior: "release",
-      phases: [
-        {
-          items: [{ price: item.price.id, quantity: 1 }],
-          start_date: currentPhase.start_date,
-          end_date: item.current_period_end,
-        },
-        {
-          items: [{ price: price.priceId, quantity: 1 }],
-        },
-      ],
-    });
+    await createDowngradeSchedule(subscription, item, price.priceId);
 
     await prisma.company.update({
       where: { id: company.id },

@@ -269,6 +269,54 @@ describe("change-plan guards", () => {
     expect(res.body.error).toMatch(/overdue/i);
   });
 
+  it("RESTORES the released downgrade schedule when the flow-session creation fails", async () => {
+    // Compensation path: the customer never reached the Stripe page, so a
+    // failed upgrade ATTEMPT must not silently cancel their scheduled
+    // downgrade.
+    const t = await subscribedTenant("professional");
+    await prisma.company.update({
+      where: { id: t.company.id },
+      data: { pendingPlan: "starter" },
+    });
+
+    vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue({
+      ...subscriptionFixture("huf", "price_test_professional_huf"),
+      schedule: "sub_sched_pending",
+    } as never);
+    vi.spyOn(stripe.subscriptionSchedules, "release").mockResolvedValue({
+      id: "sub_sched_pending",
+    } as never);
+    vi.spyOn(stripe.billingPortal.sessions, "create").mockRejectedValue(
+      new Error("stripe is down")
+    );
+    const scheduleCreate = vi
+      .spyOn(stripe.subscriptionSchedules, "create")
+      .mockResolvedValue({
+        id: "sub_sched_restored",
+        phases: [{ start_date: Math.floor(Date.now() / 1000) }],
+      } as never);
+    const scheduleUpdate = vi
+      .spyOn(stripe.subscriptionSchedules, "update")
+      .mockResolvedValue({ id: "sub_sched_restored" } as never);
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "business", currency: "HUF" });
+
+    // The original failure still surfaces as an error…
+    expect(res.status).toBeGreaterThanOrEqual(500);
+
+    // …but the downgrade schedule was re-created with the original target
+    // price and the pendingPlan marker survived.
+    expect(scheduleCreate).toHaveBeenCalledWith({ from_subscription: "sub_test_123" });
+    const phases = scheduleUpdate.mock.calls[0][1]!.phases!;
+    expect(phases[1].items![0].price).toBe("price_test_starter_huf");
+
+    const after = await prisma.company.findUnique({ where: { id: t.company.id } });
+    expect(after!.pendingPlan).toBe("starter");
+  });
+
   it("releases a pending downgrade schedule BEFORE creating the flow session (AC13)", async () => {
     const t = await subscribedTenant("starter");
     await prisma.company.update({

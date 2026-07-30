@@ -47,6 +47,10 @@ sync layer and the change engine.
    (return-sync), so the app updates without waiting for the webhook.
    Guards: `cancelAtPeriodEnd` → `409` (two-step UX: resume first);
    `past_due`/broken-open subscription → `409` (fix payment in the Portal).
+   Compensation: if the flow-session creation itself fails AFTER the pending
+   downgrade schedule was released, the schedule and `pendingPlan` are
+   restored (best-effort) before the error propagates — a failed upgrade
+   attempt never silently cancels a scheduled downgrade.
 5. **Without one** (registration trial, canceled sub): the endpoint answers
    `requires_checkout` and the frontend falls back to the existing
    `/subscription/checkout` flow — a duplicate subscription is never created.

@@ -463,11 +463,24 @@ describe("checkout.session.completed", () => {
     });
 
     vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue(
-      subscriptionFixture() as never
+      subscriptionFixture({ latest_invoice: "in_test_duplicate" }) as never
     );
     const cancel = vi
       .spyOn(stripe.subscriptions, "cancel")
       .mockResolvedValue(subscriptionFixture({ status: "canceled" }) as never);
+    vi.spyOn(stripe.invoices, "retrieve").mockResolvedValue({
+      id: "in_test_duplicate",
+      object: "invoice",
+      payments: {
+        object: "list",
+        data: [
+          {
+            id: "inpay_test_1",
+            payment: { type: "payment_intent", payment_intent: "pi_test_duplicate" },
+          },
+        ],
+      },
+    } as never);
 
     const res = await postWebhook(
       event("checkout.session.completed", {
@@ -486,6 +499,20 @@ describe("checkout.session.completed", () => {
     expect(after!.stripeSubscriptionId).toBe("sub_current_999");
     expect(after!.plan).toBe("professional");
     expect(after!.subscriptionStatus).toBe("active");
+
+    // Refund breadcrumbs: the audit entry carries every id a one-click
+    // Dashboard refund needs (no automated refunds.create — deliberate).
+    const audit = await prisma.auditLog.findFirst({
+      where: { companyId: tenant.company.id },
+      orderBy: { id: "desc" },
+    });
+    const metadata = JSON.parse(audit!.metadata!) as Record<string, unknown>;
+    expect(metadata.manualRefundRequired).toBe(true);
+    expect(metadata.duplicateSubscriptionCanceled).toBe("sub_test_123");
+    expect(metadata.keptSubscription).toBe("sub_current_999");
+    expect(metadata.stripeCustomerId).toBe("cus_test_123");
+    expect(metadata.invoiceId).toBe("in_test_duplicate");
+    expect(metadata.paymentIntentId).toBe("pi_test_duplicate");
   });
 
   it("answers a Stripe failure with a non-2xx and NO stack in the body (B4)", async () => {

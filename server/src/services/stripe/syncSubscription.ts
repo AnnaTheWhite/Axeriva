@@ -142,17 +142,56 @@ export async function reconcileCheckoutCompletion(
 
   if (holdsAnotherOpenSubscription) {
     await stripe.subscriptions.cancel(subscription.id);
+
+    // Refund breadcrumbs — the duplicate's initial charge is refunded
+    // MANUALLY (deliberate decision: no automated refunds.create). The audit
+    // entry carries every id needed for a one-click Dashboard refund:
+    // subscription, customer, invoice and payment intent. Collection is
+    // best-effort: a lookup failure must never undo the cancellation above,
+    // it only degrades the breadcrumbs to what the subscription object holds.
+    const duplicateCustomerId =
+      typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+    let duplicateInvoiceId =
+      typeof subscription.latest_invoice === "string"
+        ? subscription.latest_invoice
+        : subscription.latest_invoice?.id ?? null;
+    let duplicatePaymentIntentId: string | null = null;
+    if (duplicateInvoiceId) {
+      try {
+        const invoice = await stripe.invoices.retrieve(duplicateInvoiceId);
+        // Current API versions expose the invoice's payments as a list
+        // (invoice.payments) instead of the removed invoice.payment_intent.
+        const firstPayment = invoice.payments?.data?.[0]?.payment;
+        if (firstPayment?.type === "payment_intent" && firstPayment.payment_intent) {
+          duplicatePaymentIntentId =
+            typeof firstPayment.payment_intent === "string"
+              ? firstPayment.payment_intent
+              : firstPayment.payment_intent.id;
+        }
+      } catch (error) {
+        console.error(
+          `[stripe sync] could not resolve the payment intent of duplicate invoice ${duplicateInvoiceId}`,
+          error
+        );
+      }
+    }
+
     console.error(
       `[stripe sync] duplicate subscription ${subscription.id} canceled for company ${companyId} ` +
-        `(kept ${company!.stripeSubscriptionId}) — its initial charge needs a MANUAL REFUND`
+        `(kept ${company!.stripeSubscriptionId}) — its initial charge needs a MANUAL REFUND ` +
+        `(customer ${duplicateCustomerId}, invoice ${duplicateInvoiceId ?? "?"}, ` +
+        `payment_intent ${duplicatePaymentIntentId ?? "?"})`
     );
-    logAudit({
+    await logAudit({
       action: AUDIT_ACTIONS.SUBSCRIPTION_CHANGED,
       companyId,
       metadata: {
         duplicateSubscriptionCanceled: subscription.id,
         keptSubscription: company!.stripeSubscriptionId,
         manualRefundRequired: true,
+        stripeCustomerId: duplicateCustomerId,
+        invoiceId: duplicateInvoiceId,
+        paymentIntentId: duplicatePaymentIntentId,
       },
     });
     return "duplicate_canceled";
