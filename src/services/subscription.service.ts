@@ -42,8 +42,13 @@ export type SubscriptionStatus = {
 
 // Result of POST /subscription/change-plan — the backend decides what kind
 // of change applies; the UI only reacts to it.
+//
+// Design C: paid→paid upgrades never apply silently. The backend answers
+// `requires_upgrade_confirmation` with a Stripe-hosted confirmation URL — the
+// customer sees and approves the exact prorated amount THERE; the app only
+// redirects. (The former immediate "upgraded" kind no longer exists.)
 export type PlanChangeResponse =
-  | { ok: true; kind: "upgraded"; plan: string }
+  | { ok: true; kind: "requires_upgrade_confirmation"; url: string; plan: string }
   | { ok: true; kind: "downgrade_scheduled"; pendingPlan: string; effectiveAt: string | null }
   | { ok: true; kind: "downgrade_cancelled" }
   | { ok: true; kind: "requires_checkout" };
@@ -104,14 +109,17 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
-// S2.6 — upgrade (immediate) / downgrade (scheduled at period end) / cancel a
-// pending downgrade by re-selecting the current plan. When the backend
-// answers `requires_checkout`, the caller falls back to startCheckout().
+// S2.6 + Design C — upgrade (Stripe-hosted confirmation) / downgrade
+// (scheduled at period end) / cancel a pending downgrade by re-selecting the
+// current plan. When the backend answers `requires_checkout`, the caller
+// falls back to startCheckout(). `locale` asks Stripe to render its hosted
+// confirmation page in the app's current UI language.
 export async function changePlan(
   plan: PlanId,
-  currency?: "EUR" | "HUF"
+  currency?: "EUR" | "HUF",
+  locale?: "hu" | "en"
 ): Promise<PlanChangeResponse> {
-  return postJson<PlanChangeResponse>("/subscription/change-plan", { plan, currency });
+  return postJson<PlanChangeResponse>("/subscription/change-plan", { plan, currency, locale });
 }
 
 // S2.6 — cancel at period end (access continues until the paid period ends).
@@ -132,6 +140,21 @@ export async function syncCheckoutSession(sessionId: string): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ sessionId }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to sync subscription status");
+  }
+}
+
+// Design C return-sync (AC8) — reconciles the subscription right after
+// returning from the Stripe-hosted upgrade-confirmation page
+// (?upgrade=confirmed), without waiting for the webhook.
+export async function syncSubscriptionState(): Promise<void> {
+  const response = await apiFetch(`${API_URL}/subscription/sync-subscription`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {

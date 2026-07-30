@@ -24,6 +24,7 @@ The frontend has a single build-time variable read by Vite in
 | `STRIPE_PRICE_ID` | production | unset → checkout returns 500 with a clear error | The legacy Axeriva Pro monthly price. `npm run stripe:setup` prints it. |
 | `STRIPE_PRICE_STARTER_EUR` / `STRIPE_PRICE_STARTER_HUF` / `STRIPE_PRICE_PROFESSIONAL_EUR` / `STRIPE_PRICE_PROFESSIONAL_HUF` / `STRIPE_PRICE_BUSINESS_EUR` / `STRIPE_PRICE_BUSINESS_HUF` | production | unset → per-plan checkout reports a clear per-request error | Per-plan, per-currency Stripe Price IDs (S2.3). `npm run stripe:setup` creates and prints all six; they must come from the same Stripe account as `STRIPE_SECRET_KEY`. |
 | `STRIPE_WEBHOOK_SECRET` | production | unset → webhook returns 400 | Webhook signing secret (`whsec_...`). See [stripe-webhook-production-readiness.md](stripe-webhook-production-readiness.md). |
+| `STRIPE_PORTAL_FLOW_CONFIG_ID` | production | unset → paid→paid upgrades return a clear 500 | Design C — the dedicated Billing Portal configuration (`bpc_…`) used only by the hosted upgrade-confirmation flow (all six prices, `always_invoice`, `end_trial`). `npm run stripe:setup` creates it and prints the id. **Must come from the same Stripe account AND mode as `STRIPE_SECRET_KEY`** — a test-mode id on the live deploy boots cleanly but fails every upgrade at runtime (no livemode marker exists in `bpc_` ids). Rollout order matters: see [render-deployment.md](render-deployment.md). |
 | `RESEND_API_KEY` | production | unset → MockEmailService (emails logged, not sent) | Resend API key for real email delivery. |
 | `RESEND_FROM_EMAIL` | production | `Axeriva <onboarding@resend.dev>` | From-address for outgoing email. |
 | `STRIPE_PUBLISHABLE_KEY` | no | — | **Currently unused** — no frontend Stripe.js integration exists. Kept in `.env.example` only as a placeholder for a future client-side integration. |
@@ -47,9 +48,9 @@ import in `index.ts`), before anything else starts:
 - **`NODE_ENV=production`:** additionally `APP_URL`, `STRIPE_SECRET_KEY`,
   `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, the six per-plan
   `STRIPE_PRICE_{STARTER,PROFESSIONAL,BUSINESS}_{EUR,HUF}` ids,
-  `RESEND_API_KEY`, `RESEND_FROM_EMAIL` and `UPLOAD_ROOT` are all required —
-  a half-configured deploy fails at startup instead of surfacing later as
-  broken checkout, email or uploads.
+  `STRIPE_PORTAL_FLOW_CONFIG_ID`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` and
+  `UPLOAD_ROOT` are all required — a half-configured deploy fails at startup
+  instead of surfacing later as broken checkout, email or uploads.
 - **No silent placeholders:** the old `sk_test_placeholder` Stripe fallback
   is gone. In development without `STRIPE_SECRET_KEY` the server boots (with
   a warning), but any actual Stripe call throws

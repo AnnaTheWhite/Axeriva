@@ -1,4 +1,5 @@
 import Badge from "../ui/Badge";
+import Button from "../ui/Button";
 import { currencyForLanguage } from "../../config/pricing";
 import { useTranslation } from "../../i18n";
 import type { CompanySettings } from "../../services/companySettings.service";
@@ -14,15 +15,21 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-// Billing Information (S2.4) — read-only. Editing is out of scope; the
-// existing Company Profile section (Settings page) already owns editing
-// billingEmail/vatNumber/etc., so this view-only card just displays them.
+// Billing Information (S2.4 + Design C) — read-only rows; editing is out of
+// scope (the Company Profile section owns that). The card is also the primary
+// entry point to the Stripe Customer Portal (AC18): payment method, invoices,
+// cancel and resume live there — plan changes are disabled in the portal's
+// configuration, so every plan change stays on this page.
 export default function BillingInfoCard({
   settings,
   hasStripeCustomer,
+  onOpenPortal,
+  isPortalDisabled,
 }: {
   settings: CompanySettings;
   hasStripeCustomer: boolean;
+  onOpenPortal: () => void;
+  isPortalDisabled: boolean;
 }) {
   const { t, language } = useTranslation();
 
@@ -49,6 +56,17 @@ export default function BillingInfoCard({
           }
         />
       </dl>
+
+      {hasStripeCustomer && (
+        <div className="mt-6">
+          <Button variant="secondary" onClick={onOpenPortal} disabled={isPortalDisabled}>
+            {t("subscription.billingInfo.managePortal")}
+          </Button>
+          <p className="mt-2 text-xs text-slate-500">
+            {t("subscription.billingInfo.managePortalHint")}
+          </p>
+        </div>
+      )}
     </section>
   );
 }

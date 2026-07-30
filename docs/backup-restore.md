@@ -95,7 +95,9 @@ tér vissza.
 ### Verifikáció (a visszaállítás kötelező része)
 
 ```sql
--- 18 modell (schema.prisma) + _prisma_migrations = 19
+-- 19 modell (schema.prisma, a ProcessedStripeEvent-tel) + _prisma_migrations = 20
+-- (2026-07-29 előtti dumpnál még 19 — a checkout_mandatory_upgrades migráció
+-- utáni restart hozza be a 20.-at a migrate deploy útján)
 SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';
 
 SELECT 'Company' AS t, COUNT(*) FROM "Company"
@@ -141,7 +143,7 @@ legyen üres — üres dump visszaállítása semmit nem bizonyít.
 | D1 | Dump a 2. pont parancsával + uploads-tar a **teljes** `UPLOAD_ROOT`-ról | a fájl létezik, mérete > 0 |
 | D2 | `CREATE DATABASE axeriva_restore_drill;` lokálisan. **A restore előtt írasd ki és olvasd el a cél connection stringet** | — |
 | D3 | Első restore (üres célba) a 3. pont parancsával | exit 0, hibaüzenet nélkül |
-| D4 | Verifikáció (3. pont): tábla-darabszám = 19; a sorszámok **pontosan** egyeznek a forráséval; `_prisma_migrations` minden sora `finished_at IS NOT NULL`; `npx prisma migrate status` zöld | mind átmegy |
+| D4 | Verifikáció (3. pont): tábla-darabszám = 20 (2026-07-29 előtti dumpnál 19); a sorszámok **pontosan** egyeznek a forráséval; `_prisma_migrations` minden sora `finished_at IS NOT NULL`; `npx prisma migrate status` zöld | mind átmegy |
 | D5 | **MÁSODIK restore, ugyanarra a — most már feltöltött — adatbázisra.** Ez a drill lényegi lépése | exit 0, és D4 újra átmegy (nincs duplázódás, nincs félkész állapot) |
 | D6 | Alkalmazásszintű ellenőrzés: backend indítása a drill DB-vel + kicsomagolt uploads-szal. (a) belépés visszaállított fiókkal (bcrypt hashek épek); (b) a projekt megnyílik, az attachment listázódik; (c) az attachment-lista **aláírt** URL-je (`?exp=…&sig=…`) 200-at ad helyes content type-pal | mindhárom teljesül. ⚠️ A DB-beli nyers `fileUrl` GET-elése NEM érvényes ellenőrzés: aláírás nélkül szándékosan 404 (signedUploads.middleware) |
 | D7 | RTO-mérés: D3 kezdetétől D6 végéig eltelt idő | ez a szám kerül a lenti táblába |

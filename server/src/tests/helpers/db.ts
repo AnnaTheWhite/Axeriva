@@ -25,6 +25,8 @@ const DELETE_ORDER = [
   () => prisma.employee.deleteMany(),
   () => prisma.customer.deleteMany(),
   () => prisma.company.deleteMany(),
+  // No FK relations — order is irrelevant, listed last for clarity.
+  () => prisma.processedStripeEvent.deleteMany(),
 ];
 
 export async function resetDatabase() {

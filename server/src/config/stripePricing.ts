@@ -124,12 +124,15 @@ export function planForPriceId(priceId: string | null | undefined): PlanId | "pr
 // Centralized so the checkout route never maps plans -> prices itself.
 
 export type CheckoutPriceResolution =
-  | { ok: true; priceId: string; trialDays: number }
+  | { ok: true; priceId: string; trialDays: number; plan: PurchasablePlan | null; currency: StripeCurrency | null }
   | { ok: false; status: number; error: string };
 
 // Resolves the Stripe Price for a checkout request.
-//   - No plan given  -> legacy single-price flow (backward compatible).
-//   - starter/professional/business -> that plan's price for the currency.
+//   - No plan given  -> legacy single-price flow (backward compatible);
+//     `plan`/`currency` are null (single fixed price, nothing to re-resolve).
+//   - starter/professional/business -> that plan's price for the currency,
+//     with the resolved plan/currency echoed back so the checkout route can
+//     re-resolve against the Stripe customer's pinned currency (AC4).
 //   - enterprise / founder / unknown -> rejected (not self-serve purchasable).
 export function resolveCheckoutPrice(
   plan: unknown,
@@ -140,7 +143,7 @@ export function resolveCheckoutPrice(
     if (!config.stripe.priceId) {
       return { ok: false, status: 500, error: "Stripe is not configured (missing STRIPE_PRICE_ID)." };
     }
-    return { ok: true, priceId: config.stripe.priceId, trialDays: 0 };
+    return { ok: true, priceId: config.stripe.priceId, trialDays: 0, plan: null, currency: null };
   }
 
   if (!isPurchasablePlan(plan)) {
@@ -164,5 +167,5 @@ export function resolveCheckoutPrice(
     };
   }
 
-  return { ok: true, priceId, trialDays: PLAN_TRIAL_DAYS[plan] };
+  return { ok: true, priceId, trialDays: PLAN_TRIAL_DAYS[plan], plan, currency: resolvedCurrency };
 }

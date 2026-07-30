@@ -57,8 +57,13 @@ function subscriptionFixture(currency: string, priceId: string) {
   };
 }
 
+// The hosted-confirmation session the upgrade path creates (Design C).
+function flowSessionFixture() {
+  return { id: "bps_test_123", url: "https://billing.stripe.com/session/test" };
+}
+
 describe("change-plan currency matching", () => {
-  it("upgrades using the SUBSCRIPTION's currency, not the requested one", async () => {
+  it("offers the Stripe-hosted confirmation in the SUBSCRIPTION's currency, not the requested one", async () => {
     // The regression case: subscribed in HUF, UI later switched to English so
     // the frontend sends EUR. Sending the EUR price to Stripe would 400.
     const t = await subscribedTenant("starter");
@@ -66,11 +71,10 @@ describe("change-plan currency matching", () => {
     vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue(
       subscriptionFixture("huf", "price_test_starter_huf") as never
     );
-    const update = vi
-      .spyOn(stripe.subscriptions, "update")
-      .mockResolvedValue(
-        subscriptionFixture("huf", "price_test_professional_huf") as never
-      );
+    const update = vi.spyOn(stripe.subscriptions, "update");
+    const flowCreate = vi
+      .spyOn(stripe.billingPortal.sessions, "create")
+      .mockResolvedValue(flowSessionFixture() as never);
 
     const res = await request(app)
       .post("/subscription/change-plan")
@@ -78,28 +82,34 @@ describe("change-plan currency matching", () => {
       .send({ plan: "professional", currency: "EUR" });
 
     expect(res.status).toBe(200);
-    expect(res.body.kind).toBe("upgraded");
+    expect(res.body.kind).toBe("requires_upgrade_confirmation");
+    expect(res.body.url).toBe("https://billing.stripe.com/session/test");
+
+    // Design C: the plan change itself must NEVER happen here — the customer
+    // approves it on Stripe's hosted page.
+    expect(update).not.toHaveBeenCalled();
 
     // The assertion that matters: the HUF price, matching the subscription.
-    expect(update).toHaveBeenCalledWith(
-      "sub_test_123",
-      expect.objectContaining({
-        items: [{ id: "si_test_123", price: "price_test_professional_huf" }],
-      })
-    );
+    const params = flowCreate.mock.calls[0][0]!;
+    expect(params.configuration).toBe("bpc_test_upgrade_flow");
+    expect(params.flow_data).toMatchObject({
+      type: "subscription_update_confirm",
+      subscription_update_confirm: {
+        subscription: "sub_test_123",
+        items: [{ id: "si_test_123", price: "price_test_professional_huf", quantity: 1 }],
+      },
+    });
   });
 
-  it("upgrades in EUR when the subscription itself is EUR", async () => {
+  it("offers the confirmation in EUR when the subscription itself is EUR", async () => {
     const t = await subscribedTenant("starter");
 
     vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue(
       subscriptionFixture("eur", "price_test_starter_eur") as never
     );
-    const update = vi
-      .spyOn(stripe.subscriptions, "update")
-      .mockResolvedValue(
-        subscriptionFixture("eur", "price_test_professional_eur") as never
-      );
+    const flowCreate = vi
+      .spyOn(stripe.billingPortal.sessions, "create")
+      .mockResolvedValue(flowSessionFixture() as never);
 
     const res = await request(app)
       .post("/subscription/change-plan")
@@ -107,12 +117,13 @@ describe("change-plan currency matching", () => {
       .send({ plan: "professional", currency: "EUR" });
 
     expect(res.status).toBe(200);
-    expect(update).toHaveBeenCalledWith(
-      "sub_test_123",
-      expect.objectContaining({
-        items: [{ id: "si_test_123", price: "price_test_professional_eur" }],
-      })
-    );
+    expect(res.body.kind).toBe("requires_upgrade_confirmation");
+    const params = flowCreate.mock.calls[0][0]!;
+    expect(params.flow_data).toMatchObject({
+      subscription_update_confirm: {
+        items: [{ id: "si_test_123", price: "price_test_professional_eur", quantity: 1 }],
+      },
+    });
   });
 
   it("ignores a mismatched requested currency on DOWNGRADE scheduling too", async () => {
@@ -161,6 +172,135 @@ describe("change-plan guards", () => {
     expect(res.status).toBe(200);
     expect(res.body.kind).toBe("requires_checkout");
     expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  it("answers requires_checkout when the registration trial re-selects its own plan (AC2)", async () => {
+    // Live DB-only trial: plan starter, status trialing, NO Stripe objects.
+    // Design C lets the owner pay for Starter while the trial still runs —
+    // before, this was a 400 "already the current plan".
+    const t = await createTenant({ plan: "starter", subscriptionStatus: "trialing" });
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "starter", currency: "HUF" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.kind).toBe("requires_checkout");
+  });
+
+  it("blocks an upgrade while a cancellation is pending (AC11, two-step UX)", async () => {
+    const t = await subscribedTenant("starter");
+    await prisma.company.update({
+      where: { id: t.company.id },
+      data: { cancelAtPeriodEnd: true },
+    });
+    const flowCreate = vi.spyOn(stripe.billingPortal.sessions, "create");
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "professional", currency: "EUR" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/resume/i);
+    expect(flowCreate).not.toHaveBeenCalled();
+  });
+
+  it("blocks an upgrade while the subscription is past_due (AC12)", async () => {
+    const t = await subscribedTenant("starter", "past_due");
+    const flowCreate = vi.spyOn(stripe.billingPortal.sessions, "create");
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "professional", currency: "EUR" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/overdue/i);
+    expect(flowCreate).not.toHaveBeenCalled();
+  });
+
+  it("blocks a DOWNGRADE while the subscription is past_due (AC12)", async () => {
+    const t = await subscribedTenant("business", "past_due");
+    const retrieve = vi.spyOn(stripe.subscriptions, "retrieve");
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "professional", currency: "HUF" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/overdue/i);
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  it("blocks a downgrade while a cancellation is pending (AC11 symmetry)", async () => {
+    const t = await subscribedTenant("business");
+    await prisma.company.update({
+      where: { id: t.company.id },
+      data: { cancelAtPeriodEnd: true },
+    });
+    const scheduleCreate = vi.spyOn(stripe.subscriptionSchedules, "create");
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "professional", currency: "HUF" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/resume/i);
+    expect(scheduleCreate).not.toHaveBeenCalled();
+  });
+
+  it("answers 409 (not requires_checkout) when the assigned plan is re-selected over an unpaid subscription", async () => {
+    // The dead-end-loop fix: unpaid drops plan to "free" (effective starter),
+    // the Starter card shows Subscribe, but /checkout would 409 on the kept
+    // subscription id — change-plan must give the blocked-state answer
+    // directly instead of bouncing the client to a refusing endpoint.
+    const t = await subscribedTenant("free", "unpaid");
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "starter", currency: "HUF" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/overdue/i);
+  });
+
+  it("releases a pending downgrade schedule BEFORE creating the flow session (AC13)", async () => {
+    const t = await subscribedTenant("starter");
+    await prisma.company.update({
+      where: { id: t.company.id },
+      data: { pendingPlan: "starter" },
+    });
+
+    vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue({
+      ...subscriptionFixture("huf", "price_test_starter_huf"),
+      schedule: "sub_sched_pending",
+    } as never);
+    const release = vi
+      .spyOn(stripe.subscriptionSchedules, "release")
+      .mockResolvedValue({ id: "sub_sched_pending" } as never);
+    const flowCreate = vi
+      .spyOn(stripe.billingPortal.sessions, "create")
+      .mockResolvedValue(flowSessionFixture() as never);
+
+    const res = await request(app)
+      .post("/subscription/change-plan")
+      .set(authHeader(t.token))
+      .send({ plan: "professional", currency: "HUF" });
+
+    expect(res.status).toBe(200);
+    expect(release).toHaveBeenCalledWith("sub_sched_pending");
+    // Schedule released and marker cleared before the hosted page opens —
+    // abandoning that page leaves the downgrade cancelled, never half-alive.
+    expect(release.mock.invocationCallOrder[0]).toBeLessThan(
+      flowCreate.mock.invocationCallOrder[0]
+    );
+    const after = await prisma.company.findUnique({ where: { id: t.company.id } });
+    expect(after!.pendingPlan).toBeNull();
   });
 
   it("rejects a non-purchasable plan without touching Stripe", async () => {

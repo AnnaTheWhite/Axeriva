@@ -543,6 +543,15 @@
       "scheduled": "A visszaváltás a számlázási időszak végére ütemezve.",
       "cancelled": "A függő visszaváltás törölve — a jelenlegi csomagodon maradsz."
     },
+    "upgrade": {
+      "confirmTitle": "Váltás erre: {{plan}}",
+      "confirmMessage": "Átirányítunk a Stripe biztonságos oldalára, ahol látod a most fizetendő, időarányos összeget, és ott hagyhatod jóvá a váltást erre: {{plan}}. A jelenlegi csomagod fel nem használt időszaka jóváíródik.",
+      "pendingDowngradeNote": "Az ütemezett visszaváltás törlésre kerül.",
+      "confirmCta": "Tovább a Stripe oldalára",
+      "blockedCancelPending": "Csomagváltás előtt folytasd az előfizetést.",
+      "blockedPastDue": "Először rendezd a fizetési módot — a „Számlák és fizetési mód” gombbal éred el a Stripe portált.",
+      "syncFailed": "A csomagváltás megerősítve — az adatok frissítése még folyamatban van, frissítsd az oldalt egy pillanat múlva."
+    },
     "cancellation": {
       "pendingBadge": "Lemondás folyamatban",
       "cancellationDate": "Lemondás dátuma",
@@ -566,15 +575,21 @@
       "currency": "Pénznem",
       "stripeCustomer": "Stripe ügyfél",
       "stripeConnected": "Csatlakoztatva",
-      "stripeNotConnected": "Még nincs csatlakoztatva"
+      "stripeNotConnected": "Még nincs csatlakoztatva",
+      "managePortal": "Számlák és fizetési mód",
+      "managePortalHint": "A Stripe biztonságos portálján kezelheted a fizetési módot, a számlákat és a lemondást."
     },
     "invoices": {
       "title": "Számlaelőzmények",
       "emptyTitle": "Még nincs számla",
-      "emptyDesc": "A számláid az első fizetés után itt fognak megjelenni."
+      "emptyDesc": "A számláid az első fizetés után itt fognak megjelenni.",
+      "portalDesc": "A számláid a Stripe biztonságos portálján érhetők el.",
+      "openPortal": "Számlák megnyitása"
     },
     "trial": {
-      "bannerMessage": "Jelenleg próbaidőszakban vagy. A teljes próbaidőszak-részletek egy későbbi frissítésben lesznek elérhetők."
+      "bannerMessage": "Jelenleg próbaidőszakban vagy. A teljes próbaidőszak-részletek egy későbbi frissítésben lesznek elérhetők.",
+      "endsOn": "Próbaidőszak — vége: {{date}}",
+      "subscribeCta": "Előfizetés indítása"
     },
     "checkout": {
       "success": "Az előfizetés frissült.",

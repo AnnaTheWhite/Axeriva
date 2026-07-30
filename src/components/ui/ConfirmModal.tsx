@@ -7,6 +7,11 @@ type ConfirmModalProps = {
   message: string;
   confirmText?: string;
   cancelText?: string;
+  // Confirm-button styling. "danger" (default) is the red destructive style
+  // every existing call site relies on; "primary" is for confirmations of a
+  // positive action (e.g. the Design C upgrade dialog before the Stripe
+  // redirect), where red would read as a warning.
+  tone?: "danger" | "primary";
   onConfirm: () => void;
   onClose: () => void;
 };
@@ -17,12 +22,17 @@ export default function ConfirmModal({
   message,
   confirmText,
   cancelText,
+  tone = "danger",
   onConfirm,
   onClose,
 }: ConfirmModalProps) {
   const { t } = useTranslation();
   const resolvedConfirmText = confirmText ?? t("common.delete");
   const resolvedCancelText = cancelText ?? t("common.cancel");
+  const confirmClass =
+    tone === "primary"
+      ? "rounded-xl border border-orange-500/30 bg-orange-500/10 px-5 py-2 font-medium text-orange-300 transition hover:bg-orange-500/20"
+      : "rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-2 font-medium text-red-400 transition hover:bg-red-500/20";
 
   return (
     <Modal
@@ -53,21 +63,7 @@ export default function ConfirmModal({
             {resolvedCancelText}
           </button>
 
-          <button
-            onClick={onConfirm}
-            className="
-              rounded-xl
-              border
-              border-red-500/30
-              bg-red-500/10
-              px-5
-              py-2
-              font-medium
-              text-red-400
-              transition
-              hover:bg-red-500/20
-            "
-          >
+          <button onClick={onConfirm} className={confirmClass}>
             {resolvedConfirmText}
           </button>
         </div>

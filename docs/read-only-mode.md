@@ -17,7 +17,9 @@ paid subscription and no live trial**:
 | `active`, period not ended (paid) | No |
 | `active` + `cancelAtPeriodEnd`, still in period | No (access until period end) |
 | `canceled` (period ended / Stripe deleted) | **Yes** |
-| `past_due` (failed renewal) | **Yes** |
+| `past_due`, period not ended (failed charge, Stripe dunning running) | No — grace (Design C, AC17) |
+| `past_due`, period ended | **Yes** |
+| `unpaid` (dunning gave up) | **Yes** |
 | `inactive` (never subscribed) | **Yes** |
 | Founder (`plan = founder`) | **Never** |
 | Enterprise (`plan = enterprise`) | **Never** |
@@ -32,6 +34,13 @@ renewal → `past_due`), and `isReadOnly` reads those. Local registration
 trials (no Stripe subscription) flip to read-only purely by their
 `subscriptionEndsAt` passing. Resuming or upgrading sets the status back to
 `active`/`trialing`, which immediately restores writes — no manual step.
+
+**past_due grace (Design C, 2026-07-29):** a failed charge no longer locks
+the company. During Stripe's dunning cycle the customer keeps write access
+(and their paid plan — the sync layer no longer drops it to `free`), while
+the billing UI blocks plan changes and points them at the Billing Portal to
+fix the card. When dunning gives up, Stripe emits `canceled` or `unpaid`,
+which are read-only as before. See docs/checkout-only-upgrades-ux.md §3/AC17.
 
 ## Allowed while read-only
 

@@ -123,8 +123,37 @@ a mentési terv ellenőrizhetetlen; lásd [backup-restore.md](backup-restore.md)
 | `STRIPE_PRICE_BUSINESS_EUR` | live per-plan Price ID — ugyanonnan |
 | `STRIPE_PRICE_BUSINESS_HUF` | live per-plan Price ID — ugyanonnan |
 | `STRIPE_WEBHOOK_SECRET` | live webhook signing secret — lásd 4. pont |
+| `STRIPE_PORTAL_FLOW_CONFIG_ID` | live portál flow-konfiguráció id (`bpc_…`) — Design C, a `npm run stripe:setup` hozza létre és írja ki. **Ugyanabból az accountból és módból kell származnia, mint a `STRIPE_SECRET_KEY`** (a `bpc_` id-ben nincs test/live jelölés — rossz módú id-vel az indulás sikeres, de minden upgrade elhasal futáskor). Lásd a lenti Design C rollout-sorrendet. |
 | `RESEND_API_KEY` | Resend API key (élesítés előtt rotálva!) |
 | `RESEND_FROM_EMAIL` | `Axeriva <noreply@axeriva.com>` |
+
+#### Design C rollout-sorrend (2026-07-30 — kötelező, különben a deploy bukik)
+
+A `STRIPE_PORTAL_FLOW_CONFIG_ID` a Design C commit óta production-kötelező,
+és az értékét csak az ÚJ `stripe:setup` tudja előállítani. A helyes sorrend:
+
+1. **Deploy ELŐTT, lokálisan**, a live kulccsal: `npm run stripe:setup` —
+   beállítja a price-ok `tax_behavior`-ját (egyirányú művelet a live
+   price-okon!), létrehozza/frissíti a flow-konfigurációt, és kiírja a
+   `STRIPE_PORTAL_FLOW_CONFIG_ID` sort.
+2. A Render Environmentben **beállítani** az új változót.
+3. A Stripe Dashboardban a **default** Customer Portal konfigurációból a
+   csomagváltást **kikapcsolni** (fizetési mód, számlák, lemondás, folytatás
+   maradjon), és a **Billing → Revenue recovery → Retries → „If all retries
+   fail"** beállítást **cancel** vagy **mark unpaid** értékre állítani (a
+   „leave as-is" a past_due türelmi állapotot végtelenítené).
+4. **Csak ezután** pusholni a commitot (a Render a pushra deployol).
+
+Ha a sorrend felborul: a boot `FATAL: missing … STRIPE_PORTAL_FLOW_CONFIG_ID`
+hibával elszáll — a korábbi verzió szolgál tovább (nincs leállás), de a
+pipeline minden további deployt blokkol, amíg a változó be nincs állítva.
+Fontos: a start command (`prisma migrate deploy && node dist/index.js`) a
+migrációt MÁR lefuttatta, mielőtt a config-validáció elbukik — a bukott
+deploy-ablakban a RÉGI kód regisztrál cégeket `trialConsumedAt` nélkül.
+Cutover után egy egyszeri
+`UPDATE "Company" SET "trialConsumedAt" = "createdAt" WHERE "trialConsumedAt" IS NULL;`
+zárja ezt a rést. Megjegyzés: a `ProcessedStripeEvent` webhook-idempotencia
+tábla lassan, de korlát nélkül nő (3 eseménytípus) — évi egyszeri prune elég.
 
 `PORT`-ot a Render maga adja — nem kell beállítani, a szerver a
 `config.port`-on keresztül felveszi. `NODE_ENV=production` mellett a fenti

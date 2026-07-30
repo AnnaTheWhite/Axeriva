@@ -6,11 +6,17 @@ import { isManuallyManaged } from "./planAccess";
 // code re-derives this rule.
 //
 // A company is Read-only when it has no active paid subscription and no live
-// trial. Concretely, write access requires an "active" or "trialing" Stripe
-// status whose current period has not yet ended; everything else — inactive
-// (the default before any subscription), canceled after the period end,
-// past_due (failed renewal), or a trial/subscription whose end date has
-// passed — is Read-only.
+// trial. Concretely, write access requires an "active", "trialing" or
+// "past_due" Stripe status whose current period has not yet ended; everything
+// else — inactive (the default before any subscription), canceled after the
+// period end, unpaid (dunning gave up), or a trial/subscription whose end
+// date has passed — is Read-only.
+//
+// past_due is a GRACE state (Design C, AC17): a failed renewal or a failed
+// upgrade proration charge puts the subscription into Stripe's dunning cycle,
+// during which the customer keeps write access and fixes the card in the
+// Billing Portal. If dunning gives up, Stripe moves the subscription to
+// canceled (customer.subscription.deleted) or unpaid — both read-only.
 //
 // Founder and Enterprise are operator-managed (isManuallyManaged) and are
 // NEVER read-only, exactly like the Stripe webhook guard never overwrites
@@ -23,10 +29,12 @@ export type ReadOnlyCompany = {
 };
 
 // Stripe statuses that grant write access — while still within their period.
-const WRITABLE_STATUSES = new Set(["active", "trialing"]);
+// past_due is deliberately writable (grace during Stripe dunning, see above).
+const WRITABLE_STATUSES = new Set(["active", "trialing", "past_due"]);
 
 // Does the company have a LIVE subscription or trial right now? True only for
-// an "active"/"trialing" status whose period has not yet elapsed. This is the
+// a WRITABLE status (active/trialing/past_due-grace) whose period has not yet
+// elapsed. This is the
 // "active subscription" half of the eligibility rule — deliberately separate
 // from the "assigned plan" (company.plan), so the billing UI and the
 // plan-change service can tell "on Starter, actively subscribed" apart from

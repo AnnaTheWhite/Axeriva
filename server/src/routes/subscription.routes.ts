@@ -1,11 +1,25 @@
 import { Router } from "express";
+import Stripe from "stripe";
 import prisma from "../database/prisma";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
 import { stripe } from "../services/stripe/stripeClient";
-import { applySubscriptionUpdate } from "../services/stripe/syncSubscription";
-import { changePlan, setCancelAtPeriodEnd } from "../services/stripe/subscriptionChange";
-import { resolveCheckoutPrice } from "../config/stripePricing";
+import {
+  applySubscriptionUpdate,
+  reconcileCheckoutCompletion,
+} from "../services/stripe/syncSubscription";
+import {
+  changePlan,
+  setCancelAtPeriodEnd,
+  hasBlockingSubscription,
+  normalizePortalLocale,
+} from "../services/stripe/subscriptionChange";
+import {
+  resolveCheckoutPrice,
+  isStripeCurrency,
+  priceIdFor,
+  type StripeCurrency,
+} from "../config/stripePricing";
 import { getLimit, getEffectivePlan } from "../services/planAccess";
 import { isReadOnly, hasActiveSubscription } from "../services/readOnly";
 import { config } from "../config";
@@ -103,11 +117,9 @@ router.get("/", async (req, res) => {
 // Only the BUSINESS_OWNER who owns the company can subscribe — not DEVELOPER
 // (platform operator) and not EMPLOYEE.
 //
-// Trial scope (S2.3 vs S2.5): `trial_period_days` / `payment_method_collection`
-// below are Stripe Checkout Session PARAMETERS ONLY — they tell Stripe how to
-// run the session. This route does not implement any trial business logic:
-// no "has this company already had a trial" check, no app-side trial-state
-// tracking, no read-only/expiry enforcement. All of that is S2.5.
+// Design C trial rule (AC1): the registration trial is the company's only
+// trial. `trialConsumedAt` suppresses trial_period_days forever after, which
+// also forces card collection (payment_method_collection stays default).
 router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
   const { plan, currency } = (req.body ?? {}) as { plan?: string; currency?: string };
 
@@ -124,7 +136,75 @@ router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => 
     return res.status(404).json({ error: "Company not found" });
   }
 
+  // Design C duplicate guard (AC3): a company holding a not-closed Stripe
+  // subscription (live, or broken-but-open like past_due) must never create a
+  // second one. Closed subscriptions (canceled/incomplete_expired) pass — the
+  // re-subscribe path depends on that, since the stored subscription id is
+  // deliberately kept for history.
+  if (hasBlockingSubscription(company)) {
+    return res.status(409).json({
+      error: "An open subscription already exists — manage it from the billing page.",
+    });
+  }
+
+  // AC1 — trial suppression: once consumed, never again.
+  const trialDays = company.trialConsumedAt ? 0 : resolution.trialDays;
+
+  // The stored Stripe customer is verified before use. A customer deleted in
+  // the Dashboard (cleanup, GDPR) or missing in this account/mode would make
+  // every checkout fail forever — instead, a dead reference is dropped so the
+  // lazy-create branch below builds a fresh customer (self-healing).
   let stripeCustomerId = company.stripeCustomerId;
+  let pinnedCurrency: string | null = null;
+  if (stripeCustomerId) {
+    try {
+      const customer = await stripe.customers.retrieve(stripeCustomerId);
+      if (customer.deleted) {
+        stripeCustomerId = null;
+      } else if (isStripeCurrency(customer.currency)) {
+        pinnedCurrency = customer.currency;
+      }
+    } catch (error) {
+      if ((error as Stripe.errors.StripeError)?.code === "resource_missing") {
+        stripeCustomerId = null;
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // AC4 — currency pinning for returning customers: Stripe fixes a Customer's
+  // currency at their first invoice, so a canceled HUF customer re-subscribing
+  // from an English UI must NOT be sent to an EUR Checkout (it would fail).
+  // The customer's pinned currency wins over the UI-language one.
+  let priceId = resolution.priceId;
+  if (resolution.plan && resolution.currency && pinnedCurrency && pinnedCurrency !== resolution.currency) {
+    const pinnedPriceId = priceIdFor(resolution.plan, pinnedCurrency as StripeCurrency);
+    if (!pinnedPriceId) {
+      return res.status(500).json({
+        error: `No Stripe price configured for ${resolution.plan} (${pinnedCurrency.toUpperCase()}).`,
+      });
+    }
+    priceId = pinnedPriceId;
+  }
+
+  // AC3, first layer at session granularity: expire any still-open Checkout
+  // sessions of this customer before creating a new one. Sessions stay
+  // completable for ~24h — without this, an abandoned or second-tab session
+  // could later complete NEXT TO the one being created now. (The second
+  // layer, completion-time reconciliation, lives in syncSubscription.ts.)
+  if (stripeCustomerId) {
+    const openSessions = await stripe.checkout.sessions.list({
+      customer: stripeCustomerId,
+      status: "open",
+      limit: 100,
+    });
+    for (const openSession of openSessions.data) {
+      // Racing an in-flight completion is fine — expire() then errors and the
+      // reconciliation layer handles the completed one.
+      await stripe.checkout.sessions.expire(openSession.id).catch(() => {});
+    }
+  }
 
   if (!stripeCustomerId) {
     const user = await prisma.user.findUnique({
@@ -148,17 +228,20 @@ router.post("/checkout", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: stripeCustomerId,
-    line_items: [{ price: resolution.priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${config.frontendUrl}/subscription?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${config.frontendUrl}/subscription?checkout=cancelled`,
     subscription_data: {
       metadata: { companyId: String(company.id) },
-      // Starter carries a 14-day trial (Stripe-side prep only; trial business
-      // logic is a later story).
-      ...(resolution.trialDays > 0 ? { trial_period_days: resolution.trialDays } : {}),
+      // Only a company that has never consumed its trial gets one (AC1) —
+      // in practice that is nobody after the Design C migration, since the
+      // registration trial sets trialConsumedAt. Kept parameterized so the
+      // rule lives in data, not in a hardcoded zero.
+      ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
     },
-    // With a trial, don't force a card up front.
-    ...(resolution.trialDays > 0 ? { payment_method_collection: "if_required" as const } : {}),
+    // Without a trial the card is always collected (Stripe default); the
+    // trial-only "if_required" relaxation follows the same suppressed value.
+    ...(trialDays > 0 ? { payment_method_collection: "if_required" as const } : {}),
     metadata: { companyId: String(company.id) },
   });
 
@@ -208,26 +291,61 @@ router.post("/sync", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
 
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
-  await applySubscriptionUpdate(
+  // AC3 second layer: if this session completed NEXT TO an already-open
+  // subscription, the incoming duplicate is canceled instead of applied.
+  const outcome = await reconcileCheckoutCompletion(
     req.user!.companyId!,
     subscription,
     typeof session.customer === "string" ? session.customer : undefined
   );
 
+  return res.json({ synced: true, duplicate: outcome === "duplicate_canceled" });
+});
+
+// Design C return-sync (AC8) — reconciles the company's subscription right
+// after returning from the Stripe-hosted upgrade-confirmation page
+// (?upgrade=confirmed). The confirmation itself already happened on Stripe's
+// side; this pulls the fresh subscription state so the UI doesn't have to
+// wait for the customer.subscription.updated webhook. Same
+// second-path-not-replacement contract as POST /sync above.
+router.post("/sync-subscription", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
+  const company = await prisma.company.findUnique({
+    where: { id: req.user!.companyId! },
+    select: { stripeSubscriptionId: true },
+  });
+
+  if (!company?.stripeSubscriptionId) {
+    return res.status(400).json({ error: "No subscription to sync" });
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(company.stripeSubscriptionId);
+  await applySubscriptionUpdate(req.user!.companyId!, subscription);
+
   return res.json({ synced: true });
 });
 
-// S2.6 — change the company's plan. Upgrades apply immediately on the
-// existing Stripe subscription (prorated); downgrades are scheduled for the
-// end of the current billing period; selecting the current plan while a
-// downgrade is pending cancels that downgrade. Returns `requires_checkout`
-// when there is no live subscription to modify (the frontend then falls back
-// to the existing /checkout flow — no duplicate subscription is ever
-// created). All business rules live in services/stripe/subscriptionChange.ts.
+// S2.6 + Design C — change the company's plan. Paid→paid upgrades answer
+// `requires_upgrade_confirmation` with a Stripe-hosted confirmation URL (the
+// customer approves the prorated charge THERE — no silent
+// subscriptions.update); downgrades are scheduled for the end of the current
+// billing period; selecting the current plan while a downgrade is pending
+// cancels that downgrade. Returns `requires_checkout` when there is no Stripe
+// subscription to modify (the frontend then falls back to the existing
+// /checkout flow). All business rules live in
+// services/stripe/subscriptionChange.ts.
 router.post("/change-plan", requireRole(ROLES.BUSINESS_OWNER), async (req, res) => {
-  const { plan, currency } = (req.body ?? {}) as { plan?: string; currency?: string };
+  const { plan, currency, locale } = (req.body ?? {}) as {
+    plan?: string;
+    currency?: string;
+    locale?: string;
+  };
 
-  const result = await changePlan(req.user!.companyId!, plan, currency);
+  const result = await changePlan(
+    req.user!.companyId!,
+    plan,
+    currency,
+    normalizePortalLocale(locale)
+  );
   if (!result.ok) {
     return res.status(result.status).json({ error: result.error });
   }

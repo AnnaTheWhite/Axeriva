@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import prisma from "../../database/prisma";
 import { stripe } from "./stripeClient";
-import { applySubscriptionUpdate } from "./syncSubscription";
+import { applySubscriptionUpdate, CLOSED_SUBSCRIPTION_STATUSES } from "./syncSubscription";
 import {
   isPurchasablePlan,
   isStripeCurrency,
@@ -12,6 +12,7 @@ import {
 } from "../../config/stripePricing";
 import { canUpgrade, canDowngrade, isManuallyManaged, getEffectivePlan } from "../planAccess";
 import { hasActiveSubscription } from "../readOnly";
+import { config } from "../../config";
 
 // S2.6 — the ONE place plan-change (upgrade / downgrade / cancel / resume)
 // business logic lives. Routes are thin wrappers; the frontend only renders
@@ -21,10 +22,15 @@ import { hasActiveSubscription } from "../readOnly";
 // every state write funnels through applySubscriptionUpdate, so no mapping
 // or tier rule is duplicated here.
 //
-// Stripe mechanics:
-//   - Upgrade: immediate. The existing subscription's single item is updated
-//     to the target price with proration. Stripe then reports the new price,
-//     and the shared sync layer maps price → plan as it always has.
+// Stripe mechanics (Design C, docs/checkout-only-upgrades-ux.md):
+//   - Upgrade: NEVER a silent subscriptions.update. With a live subscription
+//     the customer is sent to Stripe's hosted confirmation page (Billing
+//     Portal `subscription_update_confirm` flow, dedicated configuration with
+//     always_invoice): they see the exact prorated amount there and approve
+//     it themselves. Stripe then performs the update and emits
+//     customer.subscription.updated, which the shared sync layer applies —
+//     plus the return-sync endpoint applies it immediately on return.
+//     Without a live subscription the existing Checkout flow takes over.
 //   - Downgrade: never immediate. A Subscription Schedule keeps the current
 //     price until the end of the current billing period, then switches to the
 //     target price. When Stripe flips the phase it emits
@@ -36,11 +42,22 @@ import { hasActiveSubscription } from "../readOnly";
 //     which the existing webhook already handles).
 
 export type PlanChangeResult =
-  | { ok: true; kind: "upgraded"; plan: string }
+  | { ok: true; kind: "requires_upgrade_confirmation"; url: string; plan: string }
   | { ok: true; kind: "downgrade_scheduled"; pendingPlan: string; effectiveAt: Date | null }
   | { ok: true; kind: "downgrade_cancelled" }
   | { ok: true; kind: "requires_checkout" }
   | { ok: false; status: number; error: string };
+
+// Locales the hosted Stripe pages are asked to render in — mirrors the app's
+// two UI languages. Anything else falls back to Stripe's auto-detection.
+const PORTAL_LOCALES = ["hu", "en"] as const;
+export type PortalLocale = (typeof PORTAL_LOCALES)[number];
+
+export function normalizePortalLocale(value: unknown): PortalLocale | undefined {
+  return typeof value === "string" && (PORTAL_LOCALES as readonly string[]).includes(value)
+    ? (value as PortalLocale)
+    : undefined;
+}
 
 export type CancellationResult =
   | { ok: true; cancelAtPeriodEnd: boolean }
@@ -53,6 +70,7 @@ type CompanyBilling = {
   stripeSubscriptionId: string | null;
   subscriptionStatus: string;
   subscriptionEndsAt: Date | null;
+  cancelAtPeriodEnd: boolean;
 };
 
 async function loadCompany(companyId: number): Promise<CompanyBilling | null> {
@@ -65,6 +83,7 @@ async function loadCompany(companyId: number): Promise<CompanyBilling | null> {
       stripeSubscriptionId: true,
       subscriptionStatus: true,
       subscriptionEndsAt: true,
+      cancelAtPeriodEnd: true,
     },
   });
 }
@@ -78,6 +97,34 @@ function hasLiveSubscription(company: CompanyBilling): boolean {
     (company.subscriptionStatus === "active" || company.subscriptionStatus === "trialing")
   );
 }
+
+// Design C duplicate guard (AC3/AC12): true when the company holds a Stripe
+// subscription that is NOT closed (CLOSED_SUBSCRIPTION_STATUSES lives in
+// syncSubscription.ts, shared with the completion-time reconciliation) —
+// i.e. Checkout must be refused. Everything not-closed that still has an id
+// is either live (modify via the confirmation flow) or broken-but-open
+// (past_due/unpaid/incomplete → the payment must be fixed in the Billing
+// Portal; a second subscription must never be created next to it). Note this
+// deliberately includes past_due, the exact leak the technical plan's review
+// flagged: markSubscriptionCanceled never clears stripeSubscriptionId, so the
+// canceled check is on STATUS, not on the id's presence.
+export function hasBlockingSubscription(company: {
+  stripeSubscriptionId: string | null;
+  subscriptionStatus: string;
+}): boolean {
+  return (
+    Boolean(company.stripeSubscriptionId) &&
+    !CLOSED_SUBSCRIPTION_STATUSES.has(company.subscriptionStatus)
+  );
+}
+
+// The error every "broken-but-open subscription" path answers with — the
+// frontend shows its localized blocked-state message instead (AC12).
+const OVERDUE_RESULT = {
+  ok: false as const,
+  status: 409,
+  error: "Subscription payment is overdue — settle the open invoice first.",
+};
 
 // Resolves the target plan's Price for an EXISTING subscription.
 //
@@ -131,7 +178,8 @@ async function releaseScheduleIfAny(subscription: Stripe.Subscription): Promise<
 export async function changePlan(
   companyId: number,
   targetPlan: unknown,
-  currency: unknown
+  currency: unknown,
+  locale?: PortalLocale
 ): Promise<PlanChangeResult> {
   if (!isPurchasablePlan(targetPlan)) {
     return {
@@ -168,14 +216,20 @@ export async function changePlan(
       });
       return { ok: true, kind: "downgrade_cancelled" };
     }
-    // (b) Hotfix — assigned to this plan but with NO active subscription/trial
-    // (expired trial, or a subscription that ended). Re-selecting it means
-    // "subscribe again", so hand off to Checkout instead of rejecting it as
-    // "already the current plan". Uses the same status/expiry rule
-    // (hasActiveSubscription) the billing UI uses to choose "Subscribe" vs
-    // the disabled "Current plan", so the two never disagree. A company that
-    // IS actively subscribed/trialing still gets the 400 below.
-    if (!hasActiveSubscription(company)) {
+    // (b) Assigned to this plan but with NO active subscription/trial
+    // (expired trial, or a subscription that ended), OR on the DB-only
+    // registration trial (active, but with no Stripe subscription behind it —
+    // Design C/AC2 lets the owner pay for Starter while the trial still
+    // runs). Both mean "subscribe for real" → hand off to Checkout. A company
+    // with a live PAID subscription on this plan still gets the 400 below.
+    if (!hasActiveSubscription(company) || !company.stripeSubscriptionId) {
+      // …unless a broken-but-open subscription (unpaid, elapsed past_due)
+      // still exists: /checkout would 409 on it, so answering
+      // requires_checkout here would send the client into a dead-end loop.
+      // Same 409 as the upgrade branch → same blocked-state UX (AC12).
+      if (hasBlockingSubscription(company)) {
+        return OVERDUE_RESULT;
+      }
       return { ok: true, kind: "requires_checkout" };
     }
     return { ok: false, status: 400, error: "This is already the current plan." };
@@ -186,13 +240,40 @@ export async function changePlan(
   // resolveTargetPrice).
   const resolvedCurrency: StripeCurrency = normalizeCurrency(currency);
 
-  // --- Upgrade: immediate, prorated, on the existing subscription ---------
+  // --- Upgrade: Stripe-hosted confirmation on the existing subscription ----
   if (canUpgrade(company.plan, targetPlan)) {
     if (!hasLiveSubscription(company)) {
-      // No live Stripe subscription to modify (e.g. registration trial or a
-      // canceled subscription) — the existing Checkout flow creates a fresh
-      // one; never create a duplicate subscription here.
+      // A broken-but-open subscription (past_due/unpaid/incomplete) must be
+      // fixed in the Billing Portal first — neither a duplicate Checkout nor
+      // a confirmation flow may run next to it (AC12).
+      if (hasBlockingSubscription(company)) {
+        return OVERDUE_RESULT;
+      }
+      // No Stripe subscription at all (registration trial, canceled/expired) —
+      // the existing Checkout flow creates a fresh one; never create a
+      // duplicate subscription here.
       return { ok: true, kind: "requires_checkout" };
+    }
+
+    // The hosted confirmation page cannot withdraw a pending cancellation, so
+    // upgrading while one is set would let the customer pay a proration for a
+    // subscription that dies at period end. Explicit two-step UX instead
+    // (AC11): resume first, then upgrade. The frontend blocks this before
+    // calling; this guard makes the rule hold for direct API calls too.
+    if (company.cancelAtPeriodEnd) {
+      return {
+        ok: false,
+        status: 409,
+        error: "A cancellation is pending — resume the subscription before changing plans.",
+      };
+    }
+
+    if (!config.stripe.portalFlowConfigId) {
+      return {
+        ok: false,
+        status: 500,
+        error: "Stripe is not configured (missing STRIPE_PORTAL_FLOW_CONFIG_ID).",
+      };
     }
 
     const subscription = await stripe.subscriptions.retrieve(company.stripeSubscriptionId!);
@@ -200,35 +281,77 @@ export async function changePlan(
     const price = resolveTargetPrice(targetPlan, subscription, resolvedCurrency);
     if (!price.ok) return price;
 
-    // An upgrade supersedes any pending downgrade — release its schedule
-    // first so the item update below applies to a plain subscription.
-    await releaseScheduleIfAny(subscription);
-
     const itemId = subscription.items.data[0]?.id;
     if (!itemId) {
       return { ok: false, status: 500, error: "Subscription has no billable item." };
     }
 
-    const updated = await stripe.subscriptions.update(company.stripeSubscriptionId!, {
-      items: [{ id: itemId, price: price.priceId }],
-      proration_behavior: "create_prorations",
-      // Upgrading is an explicit recommitment — clear a pending cancellation.
-      cancel_at_period_end: false,
+    // An upgrade supersedes any pending downgrade — and Stripe refuses to run
+    // the confirmation flow on a schedule-managed subscription, so the
+    // schedule must go BEFORE the session is created (AC13). The upgrade
+    // dialog told the customer this; if they abandon the hosted page the
+    // downgrade stays cancelled, which the UI reflects on the next load.
+    await releaseScheduleIfAny(subscription);
+    await prisma.company.update({ where: { id: company.id }, data: { pendingPlan: null } });
+
+    // The hosted confirmation page (Design C): Stripe shows the exact
+    // prorated amount and the customer approves it THERE — this service never
+    // performs the plan change itself. Confirmation triggers
+    // customer.subscription.updated (webhook) and the return redirect
+    // triggers the return-sync endpoint, so the app updates either way.
+    const flowSession = await stripe.billingPortal.sessions.create({
+      customer:
+        typeof subscription.customer === "string"
+          ? subscription.customer
+          : subscription.customer.id,
+      configuration: config.stripe.portalFlowConfigId,
+      ...(locale ? { locale } : {}),
+      return_url: `${config.frontendUrl}/subscription`,
+      flow_data: {
+        type: "subscription_update_confirm",
+        subscription_update_confirm: {
+          subscription: subscription.id,
+          items: [{ id: itemId, price: price.priceId, quantity: 1 }],
+        },
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: `${config.frontendUrl}/subscription?upgrade=confirmed` },
+        },
+      },
     });
 
-    await prisma.company.update({ where: { id: company.id }, data: { pendingPlan: null } });
-    await applySubscriptionUpdate(company.id, updated);
+    if (!flowSession.url) {
+      return { ok: false, status: 502, error: "Stripe did not return a confirmation URL." };
+    }
 
-    return { ok: true, kind: "upgraded", plan: targetPlan };
+    return { ok: true, kind: "requires_upgrade_confirmation", url: flowSession.url, plan: targetPlan };
   }
 
   // --- Downgrade: scheduled at period end via a Subscription Schedule -----
   if (canDowngrade(company.plan, targetPlan)) {
     if (!hasLiveSubscription(company)) {
+      // Broken-but-open (past_due/unpaid): same blocked-state answer as the
+      // upgrade branch — "no active subscription" would be factually wrong
+      // for a live-but-dunning subscription (AC12).
+      if (hasBlockingSubscription(company)) {
+        return OVERDUE_RESULT;
+      }
       return {
         ok: false,
         status: 400,
         error: "No active subscription to downgrade — there is nothing to schedule.",
+      };
+    }
+
+    // Symmetry with the upgrade branch (AC11): a subscription that dies at
+    // period end has no next phase to downgrade into — resume first. (The
+    // reverse order is already handled: cancelling abandons a pending
+    // downgrade in setCancelAtPeriodEnd.)
+    if (company.cancelAtPeriodEnd) {
+      return {
+        ok: false,
+        status: 409,
+        error: "A cancellation is pending — resume the subscription before changing plans.",
       };
     }
 

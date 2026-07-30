@@ -112,16 +112,21 @@ describe("webhook signature verification", () => {
   });
 });
 
+// The updated handler re-retrieves the subscription's CURRENT state from
+// Stripe instead of trusting the event's snapshot (ordering guard) — every
+// updated-event test therefore mocks subscriptions.retrieve with the state
+// the test wants Stripe to report "now".
+function mockFreshSubscription(fixture: Record<string, unknown>) {
+  return vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue(fixture as never);
+}
+
 describe("customer.subscription.updated", () => {
   it("writes status, period end and Stripe ids onto the company", async () => {
     const company = await createCompany({ plan: "starter", subscriptionStatus: "inactive" });
+    const fixture = subscriptionFixture({ metadata: { companyId: String(company.id) } });
+    mockFreshSubscription(fixture);
 
-    const res = await postWebhook(
-      event(
-        "customer.subscription.updated",
-        subscriptionFixture({ metadata: { companyId: String(company.id) } })
-      )
-    );
+    const res = await postWebhook(event("customer.subscription.updated", fixture));
 
     expect(res.status).toBe(200);
 
@@ -132,12 +137,57 @@ describe("customer.subscription.updated", () => {
     expect(after!.cancelAtPeriodEnd).toBe(false);
   });
 
+  it("applies the subscription's FRESH state, not the event's snapshot (ordering guard)", async () => {
+    // A delayed old-price snapshot must not revert a just-confirmed upgrade:
+    // the handler re-retrieves, and what Stripe reports NOW wins.
+    const company = await createCompany({ plan: "professional", subscriptionStatus: "active" });
+    mockFreshSubscription(
+      subscriptionFixture({
+        metadata: { companyId: String(company.id) },
+        items: {
+          object: "list",
+          data: [
+            {
+              id: "si_test_123",
+              price: { id: "price_test_professional_huf" },
+              current_period_end: PERIOD_END,
+            },
+          ],
+        },
+      })
+    );
+
+    // Stale snapshot still carrying the old starter price.
+    await postWebhook(
+      event(
+        "customer.subscription.updated",
+        subscriptionFixture({
+          metadata: { companyId: String(company.id) },
+          items: {
+            object: "list",
+            data: [
+              {
+                id: "si_test_123",
+                price: { id: "price_test_starter_huf" },
+                current_period_end: PERIOD_END,
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("professional");
+  });
+
   it("resolves the company by stripeCustomerId when metadata carries no id", async () => {
     const company = await createCompany({ subscriptionStatus: "inactive" });
     await prisma.company.update({
       where: { id: company.id },
       data: { stripeCustomerId: "cus_test_123" },
     });
+    mockFreshSubscription(subscriptionFixture());
 
     await postWebhook(event("customer.subscription.updated", subscriptionFixture()));
 
@@ -145,36 +195,146 @@ describe("customer.subscription.updated", () => {
     expect(after!.subscriptionStatus).toBe("active");
   });
 
-  it("drops the paid plan when the subscription goes past_due", async () => {
+  it("records trialConsumedAt when a Stripe-side trial materializes (AC1 hardening)", async () => {
+    const company = await createCompany({ plan: "starter", subscriptionStatus: "inactive" });
+    const fixture = subscriptionFixture({
+      status: "trialing",
+      metadata: { companyId: String(company.id) },
+    });
+    mockFreshSubscription(fixture);
+
+    await postWebhook(event("customer.subscription.updated", fixture));
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.subscriptionStatus).toBe("trialing");
+    expect(after!.trialConsumedAt).not.toBeNull();
+  });
+
+  it("KEEPS the paid plan when the subscription goes past_due (grace, AC17)", async () => {
+    // Design C: past_due is Stripe's dunning window — dropping the plan to
+    // "free" here would lock the whole company read-only over one bounced
+    // charge. The plan (and write access) survive until Stripe gives up
+    // (canceled/unpaid).
     const company = await createCompany({ plan: "professional", subscriptionStatus: "active" });
+    const fixture = subscriptionFixture({
+      status: "past_due",
+      metadata: { companyId: String(company.id) },
+    });
+    mockFreshSubscription(fixture);
+
+    await postWebhook(event("customer.subscription.updated", fixture));
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.subscriptionStatus).toBe("past_due");
+    expect(after!.plan).toBe("professional");
+  });
+
+  it("still drops the paid plan when the subscription goes unpaid", async () => {
+    const company = await createCompany({ plan: "professional", subscriptionStatus: "past_due" });
+    const fixture = subscriptionFixture({
+      status: "unpaid",
+      metadata: { companyId: String(company.id) },
+    });
+    mockFreshSubscription(fixture);
+
+    await postWebhook(event("customer.subscription.updated", fixture));
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.subscriptionStatus).toBe("unpaid");
+    expect(after!.plan).toBe("free");
+  });
+
+  it("ignores a dead update for a subscription the company no longer holds (stale-event guard)", async () => {
+    // The old subscription's terminal events can arrive AFTER the customer
+    // already re-subscribed — they must never overwrite the live one. The
+    // re-retrieve confirms the old subscription is dead NOW.
+    const company = await createCompany({ plan: "professional", subscriptionStatus: "active" });
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_current_999" },
+    });
+    const fixture = subscriptionFixture({
+      status: "canceled",
+      metadata: { companyId: String(company.id) },
+    });
+    mockFreshSubscription(fixture);
+
+    await postWebhook(event("customer.subscription.updated", fixture));
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.subscriptionStatus).toBe("active");
+    expect(after!.plan).toBe("professional");
+    expect(after!.stripeSubscriptionId).toBe("sub_current_999");
+  });
+
+  it("drops a redelivered snapshot whose subscription Stripe now reports dead — even if the payload says active", async () => {
+    // The Scenario-A corruption from the review: a failed-then-redelivered
+    // 'active' event for OLD subscription A arriving after the company moved
+    // to B. The payload says active; the re-retrieve says canceled → skipped.
+    const company = await createCompany({ plan: "professional", subscriptionStatus: "active" });
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_current_999" },
+    });
+    mockFreshSubscription(
+      subscriptionFixture({
+        status: "canceled",
+        metadata: { companyId: String(company.id) },
+      })
+    );
 
     await postWebhook(
       event(
         "customer.subscription.updated",
         subscriptionFixture({
-          status: "past_due",
+          status: "active",
           metadata: { companyId: String(company.id) },
         })
       )
     );
 
     const after = await prisma.company.findUnique({ where: { id: company.id } });
-    expect(after!.subscriptionStatus).toBe("past_due");
-    expect(after!.plan).toBe("free");
+    expect(after!.stripeSubscriptionId).toBe("sub_current_999");
+    expect(after!.plan).toBe("professional");
+  });
+
+  it("skips a redelivered event id entirely (idempotency, AC16)", async () => {
+    const company = await createCompany({ plan: "starter", subscriptionStatus: "inactive" });
+    const fixture = subscriptionFixture({ metadata: { companyId: String(company.id) } });
+    mockFreshSubscription(fixture);
+    const original = event("customer.subscription.updated", fixture);
+
+    const first = await postWebhook(original);
+    expect(first.status).toBe(200);
+
+    // A redelivery reuses the event id — even if the payload were tampered
+    // into something destructive, the ledger skips it before any handler.
+    const redelivered = {
+      ...original,
+      data: {
+        object: subscriptionFixture({
+          status: "canceled",
+          metadata: { companyId: String(company.id) },
+        }),
+      },
+    };
+    const second = await postWebhook(redelivered);
+    expect(second.status).toBe(200);
+    expect(second.body.duplicate).toBe(true);
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.subscriptionStatus).toBe("active");
   });
 
   it("mirrors cancel_at_period_end", async () => {
     const company = await createCompany();
+    const fixture = subscriptionFixture({
+      cancel_at_period_end: true,
+      metadata: { companyId: String(company.id) },
+    });
+    mockFreshSubscription(fixture);
 
-    await postWebhook(
-      event(
-        "customer.subscription.updated",
-        subscriptionFixture({
-          cancel_at_period_end: true,
-          metadata: { companyId: String(company.id) },
-        })
-      )
-    );
+    await postWebhook(event("customer.subscription.updated", fixture));
 
     const after = await prisma.company.findUnique({ where: { id: company.id } });
     expect(after!.cancelAtPeriodEnd).toBe(true);
@@ -182,16 +342,13 @@ describe("customer.subscription.updated", () => {
 
   it("NEVER overwrites a manually managed plan (founder)", async () => {
     const company = await createCompany({ plan: "founder", subscriptionStatus: "active" });
+    const fixture = subscriptionFixture({
+      status: "canceled",
+      metadata: { companyId: String(company.id) },
+    });
+    mockFreshSubscription(fixture);
 
-    await postWebhook(
-      event(
-        "customer.subscription.updated",
-        subscriptionFixture({
-          status: "canceled",
-          metadata: { companyId: String(company.id) },
-        })
-      )
-    );
+    await postWebhook(event("customer.subscription.updated", fixture));
 
     const after = await prisma.company.findUnique({ where: { id: company.id } });
     expect(after!.plan).toBe("founder");
@@ -225,6 +382,31 @@ describe("customer.subscription.deleted", () => {
     // A fully-ended subscription has nothing pending and nothing to cancel.
     expect(after!.cancelAtPeriodEnd).toBe(false);
     expect(after!.pendingPlan).toBeNull();
+  });
+
+  it("ignores subscription.deleted for a stale subscription id (id-aware, AC15)", async () => {
+    // A late deleted event for the OLD subscription (already replaced through
+    // a fresh Checkout) must not drop a live company to free/canceled.
+    const company = await createCompany({ plan: "professional", subscriptionStatus: "active" });
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_current_999" },
+    });
+
+    await postWebhook(
+      event(
+        "customer.subscription.deleted",
+        subscriptionFixture({
+          status: "canceled",
+          metadata: { companyId: String(company.id) },
+        })
+      )
+    );
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("professional");
+    expect(after!.subscriptionStatus).toBe("active");
+    expect(after!.stripeSubscriptionId).toBe("sub_current_999");
   });
 
   it("NEVER cancels a manually managed plan (enterprise)", async () => {
@@ -268,6 +450,42 @@ describe("checkout.session.completed", () => {
     expect(after!.subscriptionStatus).toBe("active");
     expect(after!.stripeCustomerId).toBe("cus_test_123");
     expect(after!.stripeSubscriptionId).toBe("sub_test_123");
+  });
+
+  it("cancels a duplicate subscription completed NEXT TO an existing open one (AC3, second layer)", async () => {
+    // A still-open session completing after another subscription already
+    // exists is the only way a duplicate can materialize — reconciliation
+    // cancels the incoming one and keeps the company on its current state.
+    const tenant = await createTenant({ plan: "professional", subscriptionStatus: "active" });
+    await prisma.company.update({
+      where: { id: tenant.company.id },
+      data: { stripeSubscriptionId: "sub_current_999", stripeCustomerId: "cus_test_123" },
+    });
+
+    vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue(
+      subscriptionFixture() as never
+    );
+    const cancel = vi
+      .spyOn(stripe.subscriptions, "cancel")
+      .mockResolvedValue(subscriptionFixture({ status: "canceled" }) as never);
+
+    const res = await postWebhook(
+      event("checkout.session.completed", {
+        id: "cs_test_duplicate",
+        object: "checkout.session",
+        customer: "cus_test_123",
+        subscription: "sub_test_123",
+        metadata: { companyId: String(tenant.company.id) },
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(cancel).toHaveBeenCalledWith("sub_test_123");
+
+    const after = await prisma.company.findUnique({ where: { id: tenant.company.id } });
+    expect(after!.stripeSubscriptionId).toBe("sub_current_999");
+    expect(after!.plan).toBe("professional");
+    expect(after!.subscriptionStatus).toBe("active");
   });
 
   it("answers a Stripe failure with a non-2xx and NO stack in the body (B4)", async () => {

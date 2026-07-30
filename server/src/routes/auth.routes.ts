@@ -149,7 +149,16 @@ router.post("/register", registerLimiter, async (req, res) => {
     data: {
       name: companyName,
       plan: "starter",
-      ...(trialEndsAt ? { subscriptionStatus: "trialing", subscriptionEndsAt: trialEndsAt } : {}),
+      // Design C — the registration trial is the company's one-and-only
+      // trial: recording it here is what lets Checkout suppress
+      // trial_period_days forever after (business rule 4).
+      ...(trialEndsAt
+        ? {
+            subscriptionStatus: "trialing",
+            subscriptionEndsAt: trialEndsAt,
+            trialConsumedAt: new Date(),
+          }
+        : {}),
     },
   });
 

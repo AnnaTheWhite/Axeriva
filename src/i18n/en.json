@@ -543,6 +543,15 @@
       "scheduled": "Downgrade scheduled for the end of the billing period.",
       "cancelled": "Pending downgrade cancelled — you stay on your current plan."
     },
+    "upgrade": {
+      "confirmTitle": "Upgrade to {{plan}}",
+      "confirmMessage": "We'll take you to Stripe's secure page, where you can see the exact prorated amount due today and approve the switch to {{plan}} there. The unused portion of your current plan is credited.",
+      "pendingDowngradeNote": "Your scheduled downgrade will be cancelled.",
+      "confirmCta": "Continue to Stripe",
+      "blockedCancelPending": "Resume your subscription before changing plans.",
+      "blockedPastDue": "Please settle your payment method first — open the Stripe portal with the \"Invoices & payment method\" button.",
+      "syncFailed": "Your upgrade is confirmed — we're still refreshing the details; reload the page in a moment."
+    },
     "cancellation": {
       "pendingBadge": "Cancellation pending",
       "cancellationDate": "Cancellation date",
@@ -566,15 +575,21 @@
       "currency": "Currency",
       "stripeCustomer": "Stripe customer",
       "stripeConnected": "Connected",
-      "stripeNotConnected": "Not connected yet"
+      "stripeNotConnected": "Not connected yet",
+      "managePortal": "Invoices & payment method",
+      "managePortalHint": "Manage your payment method, invoices and cancellation on Stripe's secure portal."
     },
     "invoices": {
       "title": "Invoice History",
       "emptyTitle": "No invoices yet",
-      "emptyDesc": "Your invoices will appear here after your first payment."
+      "emptyDesc": "Your invoices will appear here after your first payment.",
+      "portalDesc": "Your invoices are available on Stripe's secure portal.",
+      "openPortal": "Open invoices"
     },
     "trial": {
-      "bannerMessage": "You're currently on a trial. Full trial details will be available in a future update."
+      "bannerMessage": "You're currently on a trial. Full trial details will be available in a future update.",
+      "endsOn": "Trial — ends on {{date}}",
+      "subscribeCta": "Subscribe now"
     },
     "checkout": {
       "success": "Subscription updated.",

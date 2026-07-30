@@ -12,10 +12,13 @@ import { useTranslation } from "../i18n";
 import {
   getSubscriptionStatus,
   syncCheckoutSession,
+  syncSubscriptionState,
   cancelSubscription,
   resumeSubscription,
+  startPortal,
   type SubscriptionStatus,
 } from "../services/subscription.service";
+import { redirectTo } from "../services/api";
 import { getCompanySettings, type CompanySettings } from "../services/companySettings.service";
 
 // Billing Settings (S2.4 + S2.6). Assembles the S2.1 pricing config, the
@@ -36,6 +39,7 @@ export default function SubscriptionPage() {
 
   const checkoutResult = searchParams.get("checkout");
   const sessionId = searchParams.get("session_id");
+  const upgradeResult = searchParams.get("upgrade");
 
   function loadAll() {
     Promise.all([getSubscriptionStatus(), getCompanySettings()])
@@ -67,9 +71,19 @@ export default function SubscriptionPage() {
         .catch(() => setMessage(t("subscription.checkout.syncFailed")));
     } else if (checkoutResult === "cancelled") {
       setMessage(t("subscription.checkout.cancelled"));
+    } else if (upgradeResult === "confirmed") {
+      // Design C return-sync (AC8): the customer just approved the upgrade on
+      // Stripe's hosted confirmation page — pull the fresh subscription state
+      // instead of waiting for the customer.subscription.updated webhook.
+      syncSubscriptionState()
+        .then(() => {
+          setMessage(t("subscription.currentPlan.upgraded"));
+          loadAll();
+        })
+        .catch(() => setMessage(t("subscription.upgrade.syncFailed")));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkoutResult, sessionId]);
+  }, [checkoutResult, sessionId, upgradeResult]);
 
   // Cancel / resume (S2.6): fire the endpoint, surface the outcome, refetch.
   // isActionInFlight also disables the plan-change buttons below so only one
@@ -89,6 +103,22 @@ export default function SubscriptionPage() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("subscription.loadError"));
     } finally {
+      setIsActionInFlight(false);
+    }
+  }
+
+  // Design C — the Stripe Customer Portal is the ONLY payment-method /
+  // invoice surface (plan changes are disabled in its configuration, AC18).
+  // Entry points: the Billing Information card and the invoice empty state.
+  async function openPortal() {
+    setMessage(null);
+    setIsActionInFlight(true);
+    try {
+      const url = await startPortal();
+      redirectTo(url);
+      // Leaving the page — keep the buttons disabled meanwhile.
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("subscription.loadError"));
       setIsActionInFlight(false);
     }
   }
@@ -120,7 +150,11 @@ export default function SubscriptionPage() {
     <div className="p-4 sm:p-8">
       <PageHeader title={t("subscription.title")} subtitle={t("subscription.subtitle")} />
 
-      <TrialBanner subscriptionStatus={status.subscriptionStatus} />
+      <TrialBanner
+        subscriptionStatus={status.subscriptionStatus}
+        subscriptionEndsAt={status.subscriptionEndsAt}
+        showSubscribeCta={!status.stripeSubscriptionId}
+      />
 
       {message && (
         <p className="mb-6 rounded-lg bg-orange-500/10 px-4 py-3 text-sm text-orange-300">{message}</p>
@@ -139,22 +173,25 @@ export default function SubscriptionPage() {
         <UsageCard usage={status.usage} limits={status.limits} />
       </div>
 
-      <h2 className="mb-4 text-lg font-semibold text-white">{t("subscription.plans.title")}</h2>
+      <h2 id="plans" className="mb-4 text-lg font-semibold text-white">
+        {t("subscription.plans.title")}
+      </h2>
       <div className="mb-8">
         <BillingPlansSection
           currentPlan={status.effectivePlan}
           hasActiveSubscription={status.hasActiveSubscription}
+          hasStripeSubscription={Boolean(status.stripeSubscriptionId)}
+          subscriptionStatus={status.subscriptionStatus}
+          cancelAtPeriodEnd={status.cancelAtPeriodEnd}
           pendingPlan={status.pendingPlan}
           isManaged={status.effectivePlan === "founder" || status.effectivePlan === "enterprise"}
           disabled={isActionInFlight}
           onCheckoutError={setMessage}
           onChanged={(kind) => {
             setMessage(
-              kind === "upgraded"
-                ? t("subscription.currentPlan.upgraded")
-                : kind === "downgrade_scheduled"
-                  ? t("subscription.downgrade.scheduled")
-                  : t("subscription.downgrade.cancelled")
+              kind === "downgrade_scheduled"
+                ? t("subscription.downgrade.scheduled")
+                : t("subscription.downgrade.cancelled")
             );
             loadAll();
           }}
@@ -163,8 +200,17 @@ export default function SubscriptionPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BillingInfoCard settings={settings} hasStripeCustomer={status.hasStripeCustomer} />
-        <InvoiceHistoryCard />
+        <BillingInfoCard
+          settings={settings}
+          hasStripeCustomer={status.hasStripeCustomer}
+          onOpenPortal={() => void openPortal()}
+          isPortalDisabled={isActionInFlight || isPlanChangeInFlight}
+        />
+        <InvoiceHistoryCard
+          hasStripeCustomer={status.hasStripeCustomer}
+          onOpenPortal={() => void openPortal()}
+          isPortalDisabled={isActionInFlight || isPlanChangeInFlight}
+        />
       </div>
     </div>
   );

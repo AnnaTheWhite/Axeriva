@@ -73,6 +73,14 @@ model Company {
   cancelAtPeriodEnd Boolean @default(false)
   pendingPlan       String?
 
+  // Design C (docs/checkout-only-upgrades-ux.md) — when this company consumed
+  // its one-and-only Starter trial. Set at registration (the trial starts
+  // there); once set, Checkout never grants trial_period_days to this company
+  // again. Backfilled to createdAt for every pre-existing company: each of
+  // them registered through the trial-granting path, and business rule 4 says
+  // no company gets a second trial.
+  trialConsumedAt DateTime?
+
   // Soft-delete / archive — set together either when the owning
   // BUSINESS_OWNER deletes their account (account.routes.ts) or explicitly
   // archives the company (C1.7, companyArchive.routes.ts). Both paths reuse
@@ -107,6 +115,17 @@ model Company {
   // Not @unique: that would be a CONSTRAINT, which could fail on existing data
   // and change behaviour — indexes here are additive only.
   @@index([stripeCustomerId])
+}
+
+// Design C — webhook idempotency ledger. One row per successfully handled
+// Stripe event id; the webhook skips events it has already processed, so a
+// redelivery can never double-apply a state write or re-send the
+// subscription-confirmed email. Absolute state writes make duplicates mostly
+// harmless anyway — this makes them entirely harmless.
+model ProcessedStripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }
 
 model User {

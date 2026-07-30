@@ -197,9 +197,41 @@ describe("lapse conditions", () => {
     expect(res.status).toBe(403);
   });
 
-  it("a past_due subscription is read-only", async () => {
+  it("a past_due subscription within its period is NOT read-only (dunning grace, AC17)", async () => {
+    // Design C: past_due is Stripe's dunning window — the customer keeps
+    // write access and fixes the card in the Billing Portal. Read-only would
+    // lock the whole company over one bounced charge. If dunning gives up,
+    // the subscription becomes canceled/unpaid — those ARE read-only (below).
     const t = await createTenant({
       subscriptionStatus: "past_due",
+      subscriptionEndsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+
+    const res = await request(app)
+      .post("/customers")
+      .set(authHeader(t.token))
+      .send({ name: "Allowed" });
+
+    expect(res.status).toBeLessThan(400);
+  });
+
+  it("a past_due subscription whose period has elapsed IS read-only", async () => {
+    const t = await createTenant({
+      subscriptionStatus: "past_due",
+      subscriptionEndsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    const res = await request(app)
+      .post("/customers")
+      .set(authHeader(t.token))
+      .send({ name: "Nope" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("an unpaid subscription is read-only (dunning gave up)", async () => {
+    const t = await createTenant({
+      subscriptionStatus: "unpaid",
       subscriptionEndsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
 

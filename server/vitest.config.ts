@@ -58,6 +58,10 @@ export default defineConfig({
       STRIPE_PRICE_PROFESSIONAL_HUF: "price_test_professional_huf",
       STRIPE_PRICE_BUSINESS_EUR: "price_test_business_eur",
       STRIPE_PRICE_BUSINESS_HUF: "price_test_business_huf",
+      // Design C — the hosted upgrade-confirmation flow's dedicated portal
+      // configuration. Fake but present, so the upgrade path is testable
+      // (billingPortal.sessions.create is spied, never called for real).
+      STRIPE_PORTAL_FLOW_CONFIG_ID: "bpc_test_upgrade_flow",
       // RESEND_API_KEY intentionally unset → MockEmailService, so no test
       // can send a real email.
     },

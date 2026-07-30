@@ -53,6 +53,12 @@ const PRODUCTION_REQUIRED = [
   "STRIPE_PRICE_PROFESSIONAL_HUF",
   "STRIPE_PRICE_BUSINESS_EUR",
   "STRIPE_PRICE_BUSINESS_HUF",
+  // Design C — the dedicated Billing Portal configuration used ONLY for the
+  // hosted upgrade-confirmation flow (subscription_update enabled with the
+  // six prices, always_invoice, end_trial). Created by `npm run stripe:setup`.
+  // Required in production so paid→paid upgrades fail at startup, not at the
+  // customer's first upgrade attempt.
+  "STRIPE_PORTAL_FLOW_CONFIG_ID",
   "RESEND_API_KEY",
   "RESEND_FROM_EMAIL",
   "UPLOAD_ROOT",
@@ -135,6 +141,12 @@ export const config = {
     // the legacy "pro" mapping in the webhook.
     priceId: readEnv("STRIPE_PRICE_ID") ?? null,
     webhookSecret: readEnv("STRIPE_WEBHOOK_SECRET") ?? null,
+    // Design C — dedicated portal configuration for the hosted
+    // upgrade-confirmation flow. The DEFAULT portal configuration (used by
+    // POST /subscription/portal) keeps plan changes disabled; this one
+    // exists solely so subscription_update_confirm flow sessions can offer
+    // the six prices with always_invoice + end_trial.
+    portalFlowConfigId: readEnv("STRIPE_PORTAL_FLOW_CONFIG_ID") ?? null,
     // Per-plan, per-currency Stripe Price IDs (S2.3). Required in production
     // (see PRODUCTION_REQUIRED above — fails fast at startup if missing);
     // optionally unset in development until `npm run stripe:setup` has been

@@ -1,9 +1,11 @@
 # Checkout-kötelező upgrade — technikai terv
 
-*Készült: 2026-07-27. Státusz: **TERV — implementáció nem kezdődött el.**
-Módszer: állapot-térkép a valós kódból → három független design → adverzális
-bírálat mindegyikre. A bírálat kettőt elutasított, egyet feltételekkel
-elfogadott.*
+*Készült: 2026-07-27. Státusz: **IMPLEMENTÁLVA (2026-07-29)** — a Design C-t
+Anna jóváhagyta, a képernyő-szintű specifikáció és az átvételi kritériumok a
+[checkout-only-upgrades-ux.md](checkout-only-upgrades-ux.md)-ben; ez a
+dokumentum a döntés-előzményt őrzi. Módszer: állapot-térkép a valós kódból →
+három független design → adverzális bírálat mindegyikre. A bírálat kettőt
+elutasított, egyet feltételekkel elfogadott.*
 
 ---
 
@@ -184,7 +186,7 @@ nagyobb pénzügyi kockázat.
 | Fájl | Mi változik |
 |---|---|
 | `services/stripe/subscriptionChange.ts` | Az upgrade ág **nem hív** `subscriptions.update`-et: élő előfizetésnél új `{ kind: "requires_upgrade_confirmation", url }` eredményt ad (hosztolt megerősítő oldal), élő előfizetés nélkül a meglévő `requires_checkout`. Downgrade, `downgrade_cancelled`, `isManuallyManaged`, enterprise-elutasítás **változatlan**. |
-| `routes/subscription.routes.ts` | `POST /checkout`: **új szerveroldali guard** (van-e `stripeSubscriptionId` → 409); trial-elnyomás, ha a cég már fogyasztott trialt; a Checkout pénznemének rögzítése a meglévő előfizetéséhez. `POST /change-plan`: az új `kind` átvezetése. |
+| `routes/subscription.routes.ts` | `POST /checkout`: **új szerveroldali guard** — *pontosítva 2026-07-29 (UX-doksi 3. szakasz):* 409, ha van `stripeSubscriptionId` ÉS az előfizetés nincs lezárva (`canceled`/`incomplete_expired`); a puszta „van-e id" blokkolta volna a lemondott cég újra-előfizetését, mert a `markSubscriptionCanceled` nem törli az id-t. Trial-elnyomás, ha a cég már fogyasztott trialt; a Checkout pénznemének rögzítése a Stripe customer pinelt pénzneméhez. `POST /change-plan`: az új `kind` átvezetése. |
 | `routes/stripeWebhook.routes.ts` | A `customer.subscription.updated` marad a fő út (a hosztolt megerősítés ezt váltja ki). **Idempotencia-őr** bevezetése (lásd lent). |
 | `services/stripe/syncSubscription.ts` | `markSubscriptionCanceled` legyen **id-tudatos**: csak akkor írjon `free`/`canceled`-et, ha az esemény a cég **aktuális** előfizetéséről szól. |
 | `prisma/schema.prisma` | **Migráció:** `trialConsumedAt DateTime?` a `Company`-n. Opcionálisan egy `ProcessedStripeEvent` tábla az idempotenciához. |

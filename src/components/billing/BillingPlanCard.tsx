@@ -7,9 +7,12 @@ export type BillingPlanAction =
   | "current"
   | "upgrade"
   | "downgrade"
-  // Assigned this plan but no active subscription/trial (expired) → subscribe
-  // again via a fresh Checkout session.
+  // Assigned this plan but no active subscription/trial (expired), or on the
+  // DB-only registration trial (Design C/AC2) → subscribe via Checkout.
   | "subscribe"
+  // This is the current plan while a period-end downgrade is pending —
+  // re-selecting it cancels the downgrade ("Maradok a jelenlegi csomagon").
+  | "keep"
   | "contact"
   // Founder/Enterprise companies: catalog is visible, self-serve changes are
   // not offered (operator-managed).
@@ -99,6 +102,12 @@ export default function BillingPlanCard({
         ) : action === "current" ? (
           <Button variant="secondary" className="w-full" disabled>
             {t("subscription.plans.current")}
+          </Button>
+        ) : action === "keep" ? (
+          <Button variant="secondary" className="w-full" onClick={onAction} disabled={actionDisabled}>
+            {isProcessing
+              ? t("subscription.plans.processing")
+              : t("subscription.downgrade.keepCurrent")}
           </Button>
         ) : action === "subscribe" ? (
           <Button className="w-full" onClick={onAction} disabled={actionDisabled}>
