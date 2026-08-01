@@ -13,6 +13,7 @@ import app from "./app";
 import { config } from "./config";
 import prisma from "./database/prisma";
 import { startQueue, stopQueue } from "./services/queue";
+import { registerNotificationWorkers } from "./services/notifications/workers";
 
 let server: Server | null = null;
 let shuttingDown = false;
@@ -32,6 +33,10 @@ async function start() {
   // will silently drop.
   try {
     await startQueue();
+    // N1.5 — the notification workers (dispatch, email, sweep). Registered
+    // after the queue is up and before the socket opens, so a request can
+    // never produce a notification nothing is listening for.
+    await registerNotificationWorkers();
   } catch (error) {
     console.error("FATAL: cannot start the job queue.", error);
     process.exit(1);

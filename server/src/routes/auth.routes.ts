@@ -3,7 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import prisma from "../database/prisma";
 import { ROLES } from "../constants/roles";
-import { emailService } from "../services/email";
+import { notify } from "../services/notifications/notify";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { signAuthToken } from "../utils/authToken";
 import { hashToken } from "../utils/tokenHash";
@@ -16,7 +16,6 @@ import { logAudit } from "../services/audit/auditLog";
 import { AUDIT_ACTIONS } from "../constants/auditActions";
 import { PLAN_TRIAL_DAYS } from "../config/stripePricing";
 import { PASSWORD_RESET_TTL_MS, VERIFICATION_TTL_MS } from "../constants/tokenTtl";
-import { resolveLocale } from "../i18n";
 import { config } from "../config";
 
 const router = Router();
@@ -180,28 +179,21 @@ router.post("/register", registerLimiter, async (req, res) => {
   // enumeration-safe body (no session), and the frontend logs in via a
   // separate POST /auth/login right after — see GENERIC_REGISTER_RESPONSE.
 
-  // N1.3 — both emails render in the recipient's language. At registration
-  // the user has no language of their own yet, so this resolves to the
-  // company's; both rows are already in hand, so no extra query.
-  const emailContext = {
-    locale: resolveLocale({
-      userLanguage: user.language,
-      companyLanguage: company.language,
-    }),
-  };
-
-  // Two separate emails, two separate concerns: the welcome email is just a
-  // greeting, the verification email is the one with the actionable link.
-  // Neither failing should fail registration itself — log and move on.
-  emailService.sendWelcomeEmail(user.email, company.name, emailContext).catch((error) => {
-    console.error("[auth] welcome email failed", error);
+  // N1.5 — both emails go through the notification pipeline: recorded in the
+  // outbox, sent by a worker, retried on failure. Locale is resolved from the
+  // recipient there, so no context is passed here. notify() never throws, so
+  // registration cannot fail because of a notification.
+  await notify({
+    type: "auth.welcome",
+    companyId: company.id,
+    context: { email: user.email, companyName: company.name },
   });
 
-  emailService
-    .sendVerificationEmail(user.email, buildVerifyLink(verificationToken), emailContext)
-    .catch((error) => {
-      console.error("[auth] verification email failed", error);
-    });
+  await notify({
+    type: "auth.verify_email",
+    companyId: company.id,
+    context: { email: user.email, verifyLink: buildVerifyLink(verificationToken) },
+  });
 
   logAuthEvent(AuthEvent.REGISTRATION_SUCCEEDED, {
     req,
@@ -454,21 +446,14 @@ router.post("/resend-verification", verifyEmailLimiter, authMiddleware, async (r
     },
   });
 
-  try {
-    await emailService.sendVerificationEmail(
-      user.email,
-      buildVerifyLink(verificationToken),
-      {
-        locale: resolveLocale({
-          userLanguage: user.language,
-          companyLanguage: user.company?.language,
-        }),
-      }
-    );
-  } catch (error) {
-    console.error("[auth] resend verification email failed", error);
-    return res.status(502).json({ error: "Failed to send verification email" });
-  }
+  // N1.5 — queued rather than sent inline. The 502 this used to return on a
+  // provider hiccup is gone on purpose: the job is durable and will retry, so
+  // reporting failure to a user whose email is on its way was misleading.
+  await notify({
+    type: "auth.verify_email",
+    companyId: user.companyId,
+    context: { email: user.email, verifyLink: buildVerifyLink(verificationToken) },
+  });
 
   logAuthEvent(AuthEvent.EMAIL_VERIFICATION_REQUESTED, {
     req,
@@ -543,16 +528,13 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     },
   });
 
-  emailService
-    .sendPasswordResetEmail(user.email, buildResetLink(resetToken), {
-      locale: resolveLocale({
-        userLanguage: user.language,
-        companyLanguage: user.company?.language,
-      }),
-    })
-    .catch((error) => {
-      console.error("[auth] password reset email failed", error);
-    });
+  // companyId is null for a platform operator (DEVELOPER) — which is exactly
+  // why NotificationEvent.companyId is nullable (N1.5 migration).
+  await notify({
+    type: "auth.password_reset",
+    companyId: user.companyId,
+    context: { email: user.email, resetLink: buildResetLink(resetToken) },
+  });
 
   return res.json(genericResponse);
 });

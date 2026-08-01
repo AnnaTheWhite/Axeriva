@@ -6,7 +6,7 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { blockWritesWhenReadOnly } from "../middleware/readOnly.middleware";
 import { requireRole } from "../middleware/role.middleware";
 import { ROLES } from "../constants/roles";
-import { emailService } from "../services/email";
+import { notify } from "../services/notifications/notify";
 import { isEmployeeLimitReached } from "../utils/planLimits";
 import { signAuthToken } from "../utils/authToken";
 import { hashToken } from "../utils/tokenHash";
@@ -18,7 +18,6 @@ import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { logAudit } from "../services/audit/auditLog";
 import { AUDIT_ACTIONS } from "../constants/auditActions";
 import { INVITE_TTL_MS } from "../constants/tokenTtl";
-import { resolveLocale } from "../i18n";
 import { config } from "../config";
 
 const router = Router();
@@ -84,22 +83,15 @@ router.post(
 
     const inviteLink = buildInviteLink(token);
 
-    // The invitation itself is already saved at this point — don't let a
-    // flaky email provider (rate limit, sandbox restrictions, an outage)
-    // fail the whole request. The owner can still see/share `inviteLink`
-    // from the response (the EmployeesPage UI already does this) even if
-    // the email never lands.
-    try {
-      // N1.3 — the invitee has no account yet, so the inviting company's
-      // language is the only signal available (and the right one: they are
-      // being invited into that company's workspace). The company row is
-      // already loaded above.
-      await emailService.sendInvitationEmail(emailCheck.email, inviteLink, company.name, {
-        locale: resolveLocale({ companyLanguage: company.language }),
-      });
-    } catch (error) {
-      console.error("[invites] invitation email failed", error);
-    }
+    // N1.5 — queued. The try/catch that used to guard this is no longer
+    // needed: notify() never throws, and a provider outage now costs a retry
+    // instead of the invitation email. The owner can still see/share
+    // `inviteLink` from the response either way.
+    await notify({
+      type: "employees.invitation",
+      companyId: company.id,
+      context: { email: emailCheck.email, inviteLink, companyName: company.name },
+    });
 
     logAudit({
       action: AUDIT_ACTIONS.INVITATION_SENT,

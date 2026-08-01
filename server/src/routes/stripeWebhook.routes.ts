@@ -8,9 +8,7 @@ import {
   markSubscriptionCanceled,
   reconcileCheckoutCompletion,
 } from "../services/stripe/syncSubscription";
-import { emailService } from "../services/email";
-import { resolveLocale } from "../i18n";
-import { ROLES } from "../constants/roles";
+import { notify } from "../services/notifications/notify";
 import { config } from "../config";
 
 const router = Router();
@@ -120,36 +118,40 @@ router.post("/", async (req, res) => {
 
         // Recorded only AFTER the state write succeeded, so a failure above
         // still returns non-2xx and Stripe redelivers (self-healing). The
-        // email is sent only on the FIRST recording — at-most-once even
-        // across concurrent duplicate deliveries.
-        const firstDelivery = await markEventProcessed(event.id, event.type);
+        // return value is no longer read: at-most-once for the notification is
+        // now enforced by its dedupeKey (below), which holds even if this
+        // ledger write and the notify() ever drift apart.
+        await markEventProcessed(event.id, event.type);
 
         // First-time activation only — customer.subscription.updated also
         // fires on renewals/plan changes, which shouldn't re-send this.
         const company = await prisma.company.findUnique({
           where: { id: companyId },
         });
-        const owner = await prisma.user.findFirst({
-          where: { companyId, role: ROLES.BUSINESS_OWNER },
-        });
 
-        if (outcome === "applied" && firstDelivery && company && owner) {
-          emailService
-            .sendSubscriptionConfirmedEmail(
-              owner.email,
-              company.name,
-              company.plan === "pro" ? "Axeriva Pro" : company.plan,
-              // N1.3 — both rows are already loaded above for the send itself.
-              {
-                locale: resolveLocale({
-                  userLanguage: owner.language,
-                  companyLanguage: company.language,
-                }),
-              }
-            )
-            .catch((error) => {
-              console.error("[stripe webhook] subscription confirmation email failed", error);
-            });
+        if (outcome === "applied" && company) {
+          // N1.5 — recipient resolution (the company's owner) now lives in the
+          // notification module, so the findFirst that used to be here is gone.
+          //
+          // The dedupeKey carries the Stripe event id, which makes at-most-once
+          // a property of the DATA rather than of this handler's control flow:
+          // the previous `firstDelivery` gate only held because the ledger
+          // write happened to sit in the same function. A redelivery now
+          // collides on the unique index instead.
+          //
+          // Nothing is rendered or sent here: notify() writes one row and
+          // returns, so the 2xx this webhook owes Stripe is never waiting on an
+          // email — the constraint stripe-webhook-production-readiness.md
+          // spells out.
+          await notify({
+            type: "billing.subscription_created",
+            companyId,
+            dedupeKey: `billing.subscription_created/${event.id}`,
+            context: {
+              companyName: company.name,
+              planName: company.plan === "pro" ? "Axeriva Pro" : company.plan,
+            },
+          });
         }
       }
 

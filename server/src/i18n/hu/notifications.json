@@ -38,7 +38,12 @@
       "subject": "A(z) {{planName}} előfizetésed aktív",
       "intro": "Köszönjük az előfizetést!",
       "body": "A(z) {{companyName}} mostantól a(z) {{planName}} csomagot használja. Teljes hozzáférésed van a munkatársakhoz, projektekhez, beosztáshoz és munkaidő-nyilvántartáshoz.",
-      "manage": "Az előfizetésedet bármikor kezelheted vagy lemondhatod az Axeriva Előfizetés oldalán."
+      "manage": "Az előfizetésedet bármikor kezelheted vagy lemondhatod az Axeriva Előfizetés oldalán.",
+      "inApp": {
+        "title": "A(z) {{planName}} előfizetésed aktív",
+        "body": "A(z) {{companyName}} mostantól teljes hozzáféréssel rendelkezik. A csomagot bármikor kezelheted.",
+        "cta": "Számlázás megnyitása"
+      }
     }
   }
 }

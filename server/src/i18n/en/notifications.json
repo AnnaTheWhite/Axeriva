@@ -38,7 +38,12 @@
       "subject": "Your {{planName}} subscription is active",
       "intro": "Thanks for subscribing!",
       "body": "{{companyName}} is now on the {{planName}} plan. You have full access to employees, projects, scheduling, and time tracking.",
-      "manage": "You can manage or cancel your subscription anytime from the Subscription page in Axeriva."
+      "manage": "You can manage or cancel your subscription anytime from the Subscription page in Axeriva.",
+      "inApp": {
+        "title": "Your {{planName}} subscription is active",
+        "body": "{{companyName}} now has full access. You can manage the plan any time.",
+        "cta": "View billing"
+      }
     }
   }
 }

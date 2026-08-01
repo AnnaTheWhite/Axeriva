@@ -62,8 +62,17 @@ export default defineConfig({
       // configuration. Fake but present, so the upgrade path is testable
       // (billingPortal.sessions.create is spied, never called for real).
       STRIPE_PORTAL_FLOW_CONFIG_ID: "bpc_test_upgrade_flow",
-      // RESEND_API_KEY intentionally unset → MockEmailService, so no test
-      // can send a real email.
+      // MUST be set to an empty string, not merely omitted. config.ts calls
+      // dotenv.config(), which does not override variables already present in
+      // process.env — so anything vitest sets here is protected, and anything
+      // it leaves out is filled in from the developer's real server/.env.
+      // Omitting this line therefore handed the suite the LIVE Resend key and
+      // the live from-address: the only thing preventing real delivery was
+      // that the test factories happen to use @example.com, which Resend
+      // rejects. readEnv() treats "" as unset, so this selects
+      // MockEmailService deterministically. Pinned by emailSafety.test.ts.
+      RESEND_API_KEY: "",
+      RESEND_FROM_EMAIL: "Axeriva Test <test@example.invalid>",
     },
   },
 });

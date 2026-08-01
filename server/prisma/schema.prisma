@@ -674,8 +674,11 @@ model NotificationEvent {
   // every other status/type column in this schema).
   type String
 
-  companyId Int
-  company   Company @relation(fields: [companyId], references: [id])
+  // Optional: platform operators (DEVELOPER) belong to no company, and the
+  // auth notifications they receive — password reset above all — are about a
+  // USER, not a tenant. A required column here would have broken that flow.
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
 
   // THE idempotency backbone (plan §3.4). Format: <type>/<scope>/<discriminator>.
   // A daily trial-reminder sweep can therefore run any number of times and
@@ -719,8 +722,9 @@ model Notification {
   eventId Int
   event   NotificationEvent @relation(fields: [eventId], references: [id])
 
-  companyId Int
-  company   Company @relation(fields: [companyId], references: [id])
+  // Nullable for the same reason as NotificationEvent.companyId.
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
 
   // Scalar, not a relation — same rationale as AuditLog.userId.
   userId Int
@@ -755,8 +759,9 @@ model NotificationDelivery {
   eventId Int
   event   NotificationEvent @relation(fields: [eventId], references: [id])
 
-  companyId Int
-  company   Company @relation(fields: [companyId], references: [id])
+  // Nullable for the same reason as NotificationEvent.companyId.
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
 
   // NOTIFICATION_CHANNELS: "EMAIL" | "IN_APP" | "PUSH" | "SMS".
   channel String
