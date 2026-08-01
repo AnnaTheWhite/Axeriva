@@ -207,16 +207,27 @@ export async function sweepPendingEvents(olderThanSeconds = 60): Promise<number>
 export async function sweepPendingDeliveries(olderThanSeconds = 1800): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanSeconds * 1000);
 
+  // The two channels need DIFFERENT retry semantics, which N1.7.3 separates.
+  //
+  // EMAIL: pg-boss owns the retries once a worker has the job, so the sweep
+  // only rescues rows no worker ever picked up — attempts = 0. Re-enqueuing a
+  // row mid-retry would run a second copy alongside pg-boss's own.
+  //
+  // IN_APP: there is no queue behind it; the dispatcher calls it inline and
+  // (since N1.7.2) swallows the throw so one channel's failure cannot abort the
+  // other. That makes THIS sweep the only retry mechanism it has, so it must
+  // keep picking the row up — bounded by IN_APP_MAX_ATTEMPTS, after which
+  // deliverInApp marks it failed and it stops being `pending` at all. Under a
+  // flat attempts = 0 filter an in-app row would have been tried exactly once
+  // and then abandoned in `pending` forever.
   const stranded = await prisma.notificationDelivery.findMany({
     where: {
       status: "pending",
-      // N1.7.2 — IN_APP included. It was EMAIL-only, which left an in-app row
-      // whose inline delivery threw stuck in `pending` with no recovery path
-      // at all: the DISPATCH retry short-circuits on the event's status, so
-      // nothing was ever coming back for it.
-      channel: { in: ["EMAIL", "IN_APP"] },
-      attempts: 0,
       createdAt: { lt: cutoff },
+      OR: [
+        { channel: "EMAIL", attempts: 0 },
+        { channel: "IN_APP" },
+      ],
     },
     select: { id: true, channel: true },
     take: 100,
@@ -231,6 +242,16 @@ export async function sweepPendingDeliveries(olderThanSeconds = 1800): Promise<n
       } catch (error) {
         console.error(`[notify] sweep could not deliver in-app ${delivery.id}`, error);
       }
+      // N1.7.3 — the dispatcher redacts after ITS in-app call; this path had no
+      // equivalent, so a token-bearing event settled here kept its plaintext.
+      // Not reachable with today's registry (every sensitive type is
+      // EMAIL-only) but the asymmetry is exactly how H1 came back the first
+      // time.
+      const settled = await prisma.notificationDelivery.findUnique({
+        where: { id: delivery.id },
+        select: { eventId: true },
+      });
+      if (settled) await redactEventContextIfSettled(settled.eventId);
       continue;
     }
 

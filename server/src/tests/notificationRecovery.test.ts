@@ -35,6 +35,114 @@ afterAll(async () => {
   await stopQueue();
 });
 
+describe("N1.7.3 — registry invariants the pipeline silently depends on", () => {
+  it("gives every IN_APP type its in-app copy", () => {
+    // `inApp` is optional in the type, so a registry entry can list IN_APP in
+    // `channels` with no copy — and N1.8/N1.9 are queued to add exactly the
+    // kinds of types that would. deliverInApp then throws deterministically on
+    // every attempt. Before N1.7.3 that was an infinite loop: the dispatcher
+    // swallows the throw (so pg-boss never retries or dead-letters), and the
+    // sweep re-selected the row forever. Cheaper to make it impossible here.
+    const broken = Object.entries(NOTIFICATION_TYPES)
+      .filter(([, d]) => (d.channels as readonly string[]).includes("IN_APP"))
+      .filter(([, d]) => !("inApp" in d))
+      .map(([key]) => key);
+
+    expect(broken).toEqual([]);
+  });
+
+  it("gives every EMAIL type a template branch in the channel", async () => {
+    // The compile-time exhaustiveness guard in email.channel.ts catches a type
+    // with no case, but only if someone runs tsc. This is the runtime twin.
+    const { deliverEmail } = await import("../services/notifications/channels/email.channel");
+    expect(typeof deliverEmail).toBe("function");
+
+    const emailTypes = Object.entries(NOTIFICATION_TYPES)
+      .filter(([, d]) => (d.channels as readonly string[]).includes("EMAIL"))
+      .map(([key]) => key);
+
+    // Five today; the assertion exists so ADDING one is a deliberate act that
+    // updates this list and the switch together.
+    expect(emailTypes.sort()).toEqual([
+      "auth.password_reset",
+      "auth.verify_email",
+      "auth.welcome",
+      "billing.subscription_created",
+      "employees.invitation",
+    ]);
+  });
+});
+
+describe("N1.7.3 — a deterministically failing in-app delivery terminates", () => {
+  it("stops retrying and marks the row failed instead of looping forever", async () => {
+    // The exact scenario: an IN_APP delivery whose type has no in-app copy.
+    // Simulated with a type that is EMAIL-only in the registry, which makes
+    // deliverInApp throw "has no in-app copy" every single time.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "auth.welcome",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X" }),
+        status: "fanned_out",
+      },
+    });
+    const delivery = await prisma.notificationDelivery.create({
+      data: {
+        eventId: event.id,
+        companyId: tenant.company.id,
+        channel: "IN_APP",
+        recipientUserId: tenant.owner.id,
+        recipientAddress: tenant.owner.email,
+        locale: "en",
+        status: "pending",
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+
+    // Four sweeps: three real attempts, then the give-up.
+    for (let i = 0; i < 4; i++) await sweepPendingDeliveries();
+
+    const after = await prisma.notificationDelivery.findUnique({ where: { id: delivery.id } });
+    expect(after!.status).toBe("failed");
+    expect(after!.lastError).toContain("gave up");
+
+    // And it is no longer selected, so the loop is genuinely over.
+    expect(await sweepPendingDeliveries()).toBe(0);
+  });
+
+  it("still retries an in-app delivery that failed transiently", async () => {
+    // The bound must not turn every in-app hiccup into a permanent failure.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X", planName: "Starter" }),
+        status: "fanned_out",
+      },
+    });
+    const delivery = await prisma.notificationDelivery.create({
+      data: {
+        eventId: event.id,
+        companyId: tenant.company.id,
+        channel: "IN_APP",
+        recipientUserId: tenant.owner.id,
+        recipientAddress: tenant.owner.email,
+        locale: "en",
+        status: "pending",
+        attempts: 1,
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+
+    expect(await sweepPendingDeliveries()).toBe(1);
+
+    const after = await prisma.notificationDelivery.findUnique({ where: { id: delivery.id } });
+    expect(after!.status).toBe("delivered");
+  });
+});
+
 describe("N1.7.2 — H4: the idempotency key actually reaches the transport", () => {
   // The N1.7.1 test for this asserted that two deliverEmail() calls produced
   // the same providerMessageId — which passes whether or not a key is sent,
@@ -76,16 +184,45 @@ describe("N1.7.2 — H4: the idempotency key actually reaches the transport", ()
     expect(await keyPassedTo(deliveryId)).toBe(`notif-delivery-${deliveryId}`);
   });
 
-  it("gives co-recipients of one event DIFFERENT keys", async () => {
-    // Derived from the event id instead, two recipients would collide on
-    // Resend's idempotency window and the second person would silently never
-    // receive their copy. Nothing enforced this before.
-    const first = await deliveryFor("A");
-    const second = await deliveryFor("B");
+  it("gives two recipients of the SAME event different keys", async () => {
+    // N1.7.3 rewrote this. The N1.7.2 version compared two deliveries from two
+    // different TENANTS — i.e. two different events — so it passed unchanged
+    // when the key was derived from the event id, which is the precise mutation
+    // it claimed to forbid. Verified: the old assertion held under that change.
+    //
+    // Two deliveries of ONE event is the only shape that discriminates. If the
+    // key came from the event id these would collide in Resend's idempotency
+    // window and the second recipient would silently never get their copy.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X", planName: "Starter" }),
+        status: "fanned_out",
+      },
+    });
 
-    const keyA = await keyPassedTo(first);
-    const keyB = await keyPassedTo(second);
+    const [first, second] = await Promise.all(
+      ["a@example.com", "b@example.com"].map((address) =>
+        prisma.notificationDelivery.create({
+          data: {
+            eventId: event.id,
+            companyId: tenant.company.id,
+            channel: "EMAIL",
+            recipientAddress: address,
+            locale: "en",
+            status: "pending",
+          },
+        })
+      )
+    );
 
+    const keyA = await keyPassedTo(first.id);
+    const keyB = await keyPassedTo(second.id);
+
+    expect(keyA).toBe(`notif-delivery-${first.id}`);
+    expect(keyB).toBe(`notif-delivery-${second.id}`);
     expect(keyA).not.toBe(keyB);
   });
 });
@@ -229,6 +366,25 @@ describe("N1.7.1 — H1: sensitive context is not kept after the send", () => {
     await recordDeadLetter({ deliveryId: delivery.id });
 
     const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
+    expect(after!.context).not.toContain("LEAKED");
+  });
+
+  it("drops the link when the event fails before it ever dispatches", async () => {
+    // markFailed's redaction call (unknown type / corrupt context) had no test —
+    // deleting that one line left the suite green.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "auth.not_a_real_type",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ resetLink: "https://axeriva.com/reset/LEAKED" }),
+      },
+    });
+
+    await dispatchEvent(event.id);
+
+    const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
+    expect(after!.status).toBe("failed");
     expect(after!.context).not.toContain("LEAKED");
   });
 
@@ -490,6 +646,91 @@ describe("N1.7.1 — H5 / M4: nothing is left stranded", () => {
     // Still pending — the sweep enqueues, the worker delivers.
     const after = await prisma.notificationDelivery.findUnique({ where: { id: delivery.id } });
     expect(after!.status).toBe("pending");
+  });
+
+  it("counts the attempt BEFORE the send, so the sweep cannot duplicate it", async () => {
+    // H5's actual fix, which the re-verification found had no test. The
+    // discriminating property: after deliverEmail runs, `attempts` must already
+    // have been incremented by the CLAIM — under N1.7.1 it was incremented only
+    // after the provider call resolved, so a row read attempts=0 for the whole
+    // duration of the request and the sweep could enqueue a duplicate beneath
+    // an in-flight send.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X", planName: "Starter" }),
+        status: "fanned_out",
+      },
+    });
+    const delivery = await prisma.notificationDelivery.create({
+      data: {
+        eventId: event.id,
+        companyId: tenant.company.id,
+        channel: "EMAIL",
+        recipientAddress: tenant.owner.email,
+        locale: "en",
+        status: "pending",
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+
+    // Observe `attempts` from inside the send, i.e. exactly the window the
+    // sweep used to be able to look into.
+    let attemptsDuringSend = -1;
+    const spy = vi
+      .spyOn(emailService, "sendSubscriptionConfirmedEmail")
+      .mockImplementation(async () => {
+        const row = await prisma.notificationDelivery.findUnique({
+          where: { id: delivery.id },
+        });
+        attemptsDuringSend = row!.attempts;
+        return { messageId: "mock_probe" };
+      });
+
+    try {
+      await deliverEmail(delivery.id);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(attemptsDuringSend).toBe(1);
+  });
+
+  it("lets only one of two concurrent workers actually send", async () => {
+    // The claim is a compare-and-set, so a redelivered job racing the original
+    // must not produce a second send.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X", planName: "Starter" }),
+        status: "fanned_out",
+      },
+    });
+    const delivery = await prisma.notificationDelivery.create({
+      data: {
+        eventId: event.id,
+        companyId: tenant.company.id,
+        channel: "EMAIL",
+        recipientAddress: tenant.owner.email,
+        locale: "en",
+        status: "pending",
+      },
+    });
+
+    const spy = vi.spyOn(emailService, "sendSubscriptionConfirmedEmail");
+    try {
+      await Promise.all([deliverEmail(delivery.id), deliverEmail(delivery.id)]);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const after = await prisma.notificationDelivery.findUnique({ where: { id: delivery.id } });
+    expect(after!.attempts).toBe(1);
   });
 
   it("never re-queues a delivery a worker is already retrying", async () => {
