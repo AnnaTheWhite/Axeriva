@@ -73,6 +73,11 @@ export default defineConfig({
       // MockEmailService deterministically. Pinned by emailSafety.test.ts.
       RESEND_API_KEY: "",
       RESEND_FROM_EMAIL: "Axeriva Test <test@example.invalid>",
+      // N1.6 — the webhook tests sign their own payloads with this, exactly
+      // as the Stripe webhook tests do. Svix secrets are base64 after the
+      // "whsec_" prefix, so this has to be decodable or verify() throws on
+      // the secret rather than on the signature.
+      RESEND_WEBHOOK_SECRET: "whsec_YXhlcml2YS10ZXN0LXdlYmhvb2stc2VjcmV0",
     },
   },
 });

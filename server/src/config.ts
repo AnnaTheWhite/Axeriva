@@ -174,6 +174,14 @@ export const config = {
   resend: {
     apiKey: readEnv("RESEND_API_KEY") ?? null,
     fromEmail: readEnv("RESEND_FROM_EMAIL") ?? "Axeriva <onboarding@resend.dev>",
+    // N1.6 — Svix signing secret for the delivery-event webhook
+    // (POST /notifications/webhook/resend). Deliberately NOT in
+    // PRODUCTION_REQUIRED: without it the endpoint refuses every request with
+    // a 400, which loses delivery TELEMETRY but breaks nothing that sends
+    // mail. Making it fatal at boot would turn a missing nice-to-have into an
+    // outage — the opposite of the trade STRIPE_WEBHOOK_SECRET makes, where a
+    // missed event means money state drifts.
+    webhookSecret: readEnv("RESEND_WEBHOOK_SECRET") ?? null,
   },
 
   // N1.4 — the durable job queue (pg-boss). No new service and no new

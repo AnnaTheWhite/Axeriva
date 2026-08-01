@@ -113,9 +113,11 @@ a mögötte lévő adat már valós.
 | **Tartalom** | `POST /notifications/webhook/resend` **raw-body + Svix**-verifikációval (a Stripe-webhook mintájára); `EmailEvent` írás (PK = Svix esemény-id → replay-védelem); `NotificationDelivery.status` frissítés; bounce/complaint → `EmailSuppression`. |
 | **Kész, ha** | Hamis aláírás 400; ugyanaz az esemény kétszer → no-op; bounce után a cím tényleg blokkolt; `email.sent` **nem** jelenik meg „kézbesítve"-ként. |
 | **Tesztek** | Aláírás-verifikáció (valós Svix-aláírással, hálózat nélkül); idempotencia; suppression-hatás. |
-| **Deploy** | + Resend Dashboard: webhook-endpoint regisztráció. |
+| **Deploy** | + Resend Dashboard: webhook-endpoint regisztráció, + `RESEND_WEBHOOK_SECRET` env. |
 | **Kockázat** | Alacsony. |
 | **Függ** | N1.5 |
+| **Állapot (2026-08-01)** | **KÉSZ.** 345/345 teszt (14 új). Az aláírás-ellenőrzés valós Svix-aláírással fut, hálózat nélkül — hamis titok, meghamisított payload, hiányzó fejléc és **elavult timestamp** mind 400. Replay: a Svix esemény-id az `EmailEvent` elsődleges kulcsa, tehát az újrakézbesítés ütközik. `email.sent` **nem** jelenik meg „delivered"-ként. A bounce-kezelés megkülönbözteti a permanens és az átmeneti hibát: telített postafiók nem tilt le címet örökre. |
+| **Eltérés a tervtől** | A `RESEND_WEBHOOK_SECRET` **nem** production-kötelező. Hiánya esetén a végpont 400-at ad: elveszik a kézbesítési telemetria, de semmi nem törik. Boot-hibává tenni azt jelentené, hogy egy hiányzó „jó, ha van" leviszi az API-t — a `STRIPE_WEBHOOK_SECRET`-nél ez fordítva helyes, mert ott az elmaradt esemény pénzügyi állapotot csúsztat el. |
 
 ### N1.7 — Notification API + frontend harang  🟡 *új felület*
 

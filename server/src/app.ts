@@ -27,6 +27,7 @@ import attachmentsRoutes from "./routes/attachments.routes";
 import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import accessRoutes from "./routes/access.routes";
 import employeeAccessRoutes from "./routes/employeeAccess.routes";
+import resendWebhookRoutes from "./routes/resendWebhook.routes";
 import { stripeErrorHandler } from "./services/stripe/stripeErrors";
 // Importing this must NOT construct pg-boss — services/queue is
 // side-effect-free by design, precisely so app.ts stays mountable in tests.
@@ -103,6 +104,15 @@ if (!config.isProduction && !config.isTest) {
 // route must be registered with express.raw() before the global
 // express.json() below would otherwise consume the body first.
 app.use("/subscription/webhook", express.raw({ type: "application/json" }), stripeWebhookRoutes);
+
+// N1.6 — Resend delivery events. Same constraint as the Stripe webhook above:
+// the Svix signature covers the RAW bytes, so this must be mounted with
+// express.raw() before the global express.json() would consume the body.
+app.use(
+  "/notifications/webhook/resend",
+  express.raw({ type: "application/json" }),
+  resendWebhookRoutes
+);
 
 // Default 100kb is too small for a base64-encoded logo upload (see
 // POST /company/settings, BrandingSection on the frontend).
