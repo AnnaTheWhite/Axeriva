@@ -10,7 +10,12 @@
     // N1.2 — the i18n catalogs are JSON, mirroring the frontend's
     // en.json/hu.json convention so a string can move between the two engines
     // unchanged. tsc copies imported JSON into dist/ alongside the emitted JS.
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    // N1.3 — email templates are React Email (.tsx). The automatic runtime
+    // emits require("react/jsx-runtime"), which CommonJS resolves fine, so no
+    // per-file React import is needed. This affects ONLY src/emails/**; every
+    // other server file is still plain .ts.
+    "jsx": "react-jsx"
   },
   "include": ["src"],
   // The integration suite is run by Vitest (which type-checks and transpiles

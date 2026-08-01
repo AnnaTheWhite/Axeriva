@@ -17,11 +17,11 @@ import { RATE_LIMITS } from "../constants/rateLimits";
 import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { logAudit } from "../services/audit/auditLog";
 import { AUDIT_ACTIONS } from "../constants/auditActions";
+import { INVITE_TTL_MS } from "../constants/tokenTtl";
+import { resolveLocale } from "../i18n";
 import { config } from "../config";
 
 const router = Router();
-
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const inviteAcceptLimiter = createRateLimiter({
   name: "invite-accept",
@@ -90,7 +90,13 @@ router.post(
     // from the response (the EmployeesPage UI already does this) even if
     // the email never lands.
     try {
-      await emailService.sendInvitationEmail(emailCheck.email, inviteLink, company.name);
+      // N1.3 — the invitee has no account yet, so the inviting company's
+      // language is the only signal available (and the right one: they are
+      // being invited into that company's workspace). The company row is
+      // already loaded above.
+      await emailService.sendInvitationEmail(emailCheck.email, inviteLink, company.name, {
+        locale: resolveLocale({ companyLanguage: company.language }),
+      });
     } catch (error) {
       console.error("[invites] invitation email failed", error);
     }

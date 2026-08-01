@@ -15,12 +15,11 @@ import { AuthEvent, logAuthEvent } from "../services/audit/authAudit";
 import { logAudit } from "../services/audit/auditLog";
 import { AUDIT_ACTIONS } from "../constants/auditActions";
 import { PLAN_TRIAL_DAYS } from "../config/stripePricing";
+import { PASSWORD_RESET_TTL_MS, VERIFICATION_TTL_MS } from "../constants/tokenTtl";
+import { resolveLocale } from "../i18n";
 import { config } from "../config";
 
 const router = Router();
-
-const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
-const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 // Timing-attack mitigation (K2.1.8): a valid bcrypt hash of a random value,
 // generated ONCE at module load — never per request, and no plaintext
@@ -181,15 +180,25 @@ router.post("/register", registerLimiter, async (req, res) => {
   // enumeration-safe body (no session), and the frontend logs in via a
   // separate POST /auth/login right after — see GENERIC_REGISTER_RESPONSE.
 
+  // N1.3 — both emails render in the recipient's language. At registration
+  // the user has no language of their own yet, so this resolves to the
+  // company's; both rows are already in hand, so no extra query.
+  const emailContext = {
+    locale: resolveLocale({
+      userLanguage: user.language,
+      companyLanguage: company.language,
+    }),
+  };
+
   // Two separate emails, two separate concerns: the welcome email is just a
   // greeting, the verification email is the one with the actionable link.
   // Neither failing should fail registration itself — log and move on.
-  emailService.sendWelcomeEmail(user.email, company.name).catch((error) => {
+  emailService.sendWelcomeEmail(user.email, company.name, emailContext).catch((error) => {
     console.error("[auth] welcome email failed", error);
   });
 
   emailService
-    .sendVerificationEmail(user.email, buildVerifyLink(verificationToken))
+    .sendVerificationEmail(user.email, buildVerifyLink(verificationToken), emailContext)
     .catch((error) => {
       console.error("[auth] verification email failed", error);
     });
@@ -422,6 +431,9 @@ router.get("/verify-email/:token", async (req, res) => {
 router.post("/resend-verification", verifyEmailLimiter, authMiddleware, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.userId },
+    // N1.3 — the company's language is the fallback when the user has none.
+    // An include on the existing lookup, not a second round trip.
+    include: { company: { select: { language: true } } },
   });
 
   if (!user) {
@@ -445,7 +457,13 @@ router.post("/resend-verification", verifyEmailLimiter, authMiddleware, async (r
   try {
     await emailService.sendVerificationEmail(
       user.email,
-      buildVerifyLink(verificationToken)
+      buildVerifyLink(verificationToken),
+      {
+        locale: resolveLocale({
+          userLanguage: user.language,
+          companyLanguage: user.company?.language,
+        }),
+      }
     );
   } catch (error) {
     console.error("[auth] resend verification email failed", error);
@@ -501,7 +519,9 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
 
   const user = await prisma.user.findUnique({
     where: { email: emailCheck.email },
-    include: { company: { select: { active: true } } },
+    // N1.3 — `language` joins `active` on the existing include, so the reset
+    // email can render in the recipient's language without a second query.
+    include: { company: { select: { active: true, language: true } } },
   });
 
   // Inactive user OR inactive company (K2.1.5): no reset token is even
@@ -524,7 +544,12 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   });
 
   emailService
-    .sendPasswordResetEmail(user.email, buildResetLink(resetToken))
+    .sendPasswordResetEmail(user.email, buildResetLink(resetToken), {
+      locale: resolveLocale({
+        userLanguage: user.language,
+        companyLanguage: user.company?.language,
+      }),
+    })
     .catch((error) => {
       console.error("[auth] password reset email failed", error);
     });

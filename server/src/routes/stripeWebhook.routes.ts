@@ -9,6 +9,7 @@ import {
   reconcileCheckoutCompletion,
 } from "../services/stripe/syncSubscription";
 import { emailService } from "../services/email";
+import { resolveLocale } from "../i18n";
 import { ROLES } from "../constants/roles";
 import { config } from "../config";
 
@@ -137,7 +138,14 @@ router.post("/", async (req, res) => {
             .sendSubscriptionConfirmedEmail(
               owner.email,
               company.name,
-              company.plan === "pro" ? "Axeriva Pro" : company.plan
+              company.plan === "pro" ? "Axeriva Pro" : company.plan,
+              // N1.3 — both rows are already loaded above for the send itself.
+              {
+                locale: resolveLocale({
+                  userLanguage: owner.language,
+                  companyLanguage: company.language,
+                }),
+              }
             )
             .catch((error) => {
               console.error("[stripe webhook] subscription confirmation email failed", error);
