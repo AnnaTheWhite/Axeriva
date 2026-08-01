@@ -1,0 +1,16 @@
+-- N1.7.3 — one NotificationEvent produces at most one bell item per user.
+--
+-- deliverInApp claims its attempt with a compare-and-set on `attempts`, but the
+-- row stays `pending` for the whole render-and-insert, so that claim is a ticket
+-- rather than a lease: a second caller reading inside the window sees the
+-- incremented value, its own compare-and-set succeeds, and both reach
+-- notification.create. Reachable when two sweep runs overlap (cron'd every
+-- minute, batches of 100). Email survives the same interleaving via Resend's
+-- per-delivery idempotency key; in-app had no backstop and the user saw the
+-- notification twice.
+--
+-- Enforced as a constraint rather than a longer lock so it holds under any
+-- interleaving. Safe on this table: it is new and empty in production, so the
+-- repo's "indexes are additive, never constraints" rule (which protects
+-- EXISTING data) is not engaged.
+CREATE UNIQUE INDEX "Notification_eventId_userId_key" ON "public"."Notification"("eventId", "userId");

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import prisma from "../../../database/prisma";
 import { t } from "../../../i18n";
 import type { NotificationLocale } from "../../../constants/notifications";
@@ -13,6 +14,7 @@ import { getNotificationType, isNotificationType } from "../registry";
 // the feed endpoint stays a plain read — no template engine, no locale
 // negotiation at request time, and the text a user saw stays what they saw
 // even if the copy is later reworded.
+
 // Small on purpose: an in-app write is a local INSERT with no network and no
 // external dependency, so the realistic failure is a transient DB blip, not a
 // provider outage. Three tries covers that; anything beyond it is a bug in the
@@ -42,8 +44,16 @@ export async function deliverInApp(deliveryId: number): Promise<void> {
   // including a sibling email that had already gone out.
   //
   // Unlike the email channel there is no provider and no queue behind this, so
-  // the retry budget is enforced here rather than by pg-boss. The compare-and-
-  // set also makes two concurrent callers (dispatcher + sweep) safe.
+  // the retry budget is enforced here rather than by pg-boss.
+  //
+  // What this compare-and-set does and does NOT buy, stated precisely because
+  // N1.7.3 originally overclaimed it: it serialises two callers that read the
+  // SAME `attempts` value, so the loser does nothing. It is a ticket, not a
+  // lease — the row stays `pending` through the render and insert below, so a
+  // caller that reads AFTER the increment gets its own valid ticket and can
+  // reach notification.create too. The duplicate that would cause is prevented
+  // by the @@unique([eventId, userId]) constraint on Notification, handled at
+  // the bottom of this function.
   const attempts = delivery.attempts + 1;
   const claimed = await prisma.notificationDelivery.updateMany({
     where: { id: deliveryId, status: "pending", attempts: delivery.attempts },
@@ -82,27 +92,48 @@ export async function deliverInApp(deliveryId: number): Promise<void> {
     ? (JSON.parse(delivery.event.context) as Record<string, string | number>)
     : {};
 
-  await prisma.$transaction([
-    prisma.notification.create({
-      data: {
-        eventId: delivery.eventId,
-        companyId: delivery.companyId,
-        userId: delivery.recipientUserId,
-        type,
-        severity: definition.severity,
-        title: t(locale, definition.inApp.titleKey, context),
-        body: t(locale, definition.inApp.bodyKey, context),
-        ctaLabel: definition.inApp.ctaLabelKey
-          ? t(locale, definition.inApp.ctaLabelKey)
-          : null,
-        ctaPath: definition.inApp.ctaPath ?? null,
-      },
-    }),
-    // "delivered" rather than "sent": there is no provider in between whose
-    // acknowledgement we would still be waiting for.
-    prisma.notificationDelivery.update({
-      where: { id: deliveryId },
-      data: { status: "delivered", sentAt: new Date(), deliveredAt: new Date() },
-    }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.notification.create({
+        data: {
+          eventId: delivery.eventId,
+          companyId: delivery.companyId,
+          userId: delivery.recipientUserId,
+          type,
+          severity: definition.severity,
+          title: t(locale, definition.inApp.titleKey, context),
+          body: t(locale, definition.inApp.bodyKey, context),
+          ctaLabel: definition.inApp.ctaLabelKey
+            ? t(locale, definition.inApp.ctaLabelKey)
+            : null,
+          ctaPath: definition.inApp.ctaPath ?? null,
+        },
+      }),
+      // "delivered" rather than "sent": there is no provider in between whose
+      // acknowledgement we would still be waiting for.
+      prisma.notificationDelivery.update({
+        where: { id: deliveryId },
+        data: { status: "delivered", sentAt: new Date(), deliveredAt: new Date() },
+      }),
+    ]);
+  } catch (error) {
+    // A concurrent caller got there first and the @@unique([eventId, userId])
+    // constraint stopped the duplicate. That is the mechanism working, not a
+    // failure: the user HAS their notification. Settle this delivery so it does
+    // not sit `pending` and get swept again forever.
+    //
+    // Not swallowed generically — only P2002 on this constraint. Any other
+    // error still throws, so a genuine failure keeps its retry budget.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      await prisma.notificationDelivery.update({
+        where: { id: deliveryId },
+        data: { status: "delivered", sentAt: new Date(), deliveredAt: new Date() },
+      });
+      return;
+    }
+    throw error;
+  }
 }

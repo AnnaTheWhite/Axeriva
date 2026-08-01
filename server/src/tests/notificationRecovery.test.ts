@@ -45,7 +45,7 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
     // sweep re-selected the row forever. Cheaper to make it impossible here.
     const broken = Object.entries(NOTIFICATION_TYPES)
       .filter(([, d]) => (d.channels as readonly string[]).includes("IN_APP"))
-      .filter(([, d]) => !("inApp" in d))
+      .filter(([, d]) => !(d as { inApp?: unknown }).inApp)
       .map(([key]) => key);
 
     expect(broken).toEqual([]);
@@ -109,6 +109,66 @@ describe("N1.7.3 — a deterministically failing in-app delivery terminates", ()
 
     // And it is no longer selected, so the loop is genuinely over.
     expect(await sweepPendingDeliveries()).toBe(0);
+  });
+
+  it("never shows one event to one user twice, whatever the interleaving", async () => {
+    // N1.7.3 final round. The attempts compare-and-set is a TICKET, not a
+    // lease: the row stays `pending` through the render and insert, so a caller
+    // that reads AFTER the increment gets its own valid ticket and also reaches
+    // notification.create. Two overlapping sweep runs can do exactly that (the
+    // sweep is cron'd every minute and works through batches of 100), and the
+    // user saw the same bell item twice. Email survives the identical
+    // interleaving only because Resend deduplicates on the per-delivery
+    // idempotency key; in-app had no backstop.
+    //
+    // Fixed with @@unique([eventId, userId]) rather than a longer lock, so it
+    // holds under interleavings nobody has enumerated. Two delivery rows for
+    // one (event, user) is the shape that reproduces it deterministically.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X", planName: "Starter" }),
+        status: "fanned_out",
+      },
+    });
+
+    const rows = await Promise.all(
+      [0, 1].map(() =>
+        prisma.notificationDelivery.create({
+          data: {
+            eventId: event.id,
+            companyId: tenant.company.id,
+            channel: "IN_APP",
+            recipientUserId: tenant.owner.id,
+            recipientAddress: tenant.owner.email,
+            locale: "en",
+            status: "pending",
+          },
+        })
+      )
+    );
+
+    const { deliverInApp } = await import(
+      "../services/notifications/channels/inApp.channel"
+    );
+    await deliverInApp(rows[0].id);
+    // The loser must NOT throw — throwing would burn its retry budget and
+    // eventually mark a delivery failed for a notification the user has.
+    await expect(deliverInApp(rows[1].id)).resolves.toBeUndefined();
+
+    expect(
+      await prisma.notification.count({
+        where: { eventId: event.id, userId: tenant.owner.id },
+      })
+    ).toBe(1);
+
+    // Both deliveries settle, so neither is swept forever.
+    for (const row of rows) {
+      const after = await prisma.notificationDelivery.findUnique({ where: { id: row.id } });
+      expect(after!.status).toBe("delivered");
+    }
   });
 
   it("still retries an in-app delivery that failed transiently", async () => {
@@ -731,6 +791,50 @@ describe("N1.7.1 — H5 / M4: nothing is left stranded", () => {
 
     const after = await prisma.notificationDelivery.findUnique({ where: { id: delivery.id } });
     expect(after!.attempts).toBe(1);
+  });
+
+  it("never touches a delivery that has already settled, on either channel", async () => {
+    // N1.7.3 replaced the sweep's flat filter with an OR over the two channels.
+    // If Prisma composed that OR as a REPLACEMENT for the sibling conditions
+    // rather than ANDing them, the sweep would select rows of any status and
+    // re-send mail that had already gone out — the worst possible failure for a
+    // recovery mechanism. Verified empirically before writing this; pinned here
+    // because the consequence of it silently changing is severe.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: JSON.stringify({ companyName: "X", planName: "Starter" }),
+        status: "fanned_out",
+      },
+    });
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+
+    for (const [channel, status] of [
+      ["EMAIL", "sent"],
+      ["EMAIL", "delivered"],
+      ["EMAIL", "suppressed"],
+      ["EMAIL", "failed"],
+      ["IN_APP", "delivered"],
+      ["IN_APP", "suppressed"],
+      ["IN_APP", "failed"],
+    ] as const) {
+      await prisma.notificationDelivery.create({
+        data: {
+          eventId: event.id,
+          companyId: tenant.company.id,
+          channel,
+          recipientUserId: tenant.owner.id,
+          recipientAddress: tenant.owner.email,
+          locale: "en",
+          status,
+          createdAt: old,
+        },
+      });
+    }
+
+    expect(await sweepPendingDeliveries()).toBe(0);
   });
 
   it("never re-queues a delivery a worker is already retrying", async () => {

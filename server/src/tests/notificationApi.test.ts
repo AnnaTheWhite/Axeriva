@@ -22,28 +22,37 @@ import {
 
 // Notifications hang off a NotificationEvent, so one event carries a whole
 // batch here — the feed does not care how many events produced its rows.
+//
+// N1.7.3: ONE EVENT PER NOTIFICATION, not one event for the whole batch. The
+// @@unique([eventId, userId]) constraint added to stop duplicate bell items
+// makes the old shape impossible — and rightly so: it was a state production
+// cannot produce, since fan-out writes at most one in-app row per user per
+// event. The constraint caught the fixture the moment it landed, which is the
+// constraint doing its job.
 async function seedNotifications(
   companyId: number | null,
   userId: number,
   count: number,
   options: { read?: boolean; titlePrefix?: string } = {}
 ) {
-  const event = await prisma.notificationEvent.create({
-    data: { type: "billing.subscription_created", companyId, context: "{}" },
-  });
+  for (let index = 0; index < count; index += 1) {
+    const event = await prisma.notificationEvent.create({
+      data: { type: "billing.subscription_created", companyId, context: "{}" },
+    });
 
-  await prisma.notification.createMany({
-    data: Array.from({ length: count }, (_, index) => ({
-      eventId: event.id,
-      companyId,
-      userId,
-      type: "billing.subscription_created",
-      severity: "info",
-      title: `${options.titlePrefix ?? "n"}${index}`,
-      body: "body",
-      readAt: options.read ? new Date() : null,
-    })),
-  });
+    await prisma.notification.create({
+      data: {
+        eventId: event.id,
+        companyId,
+        userId,
+        type: "billing.subscription_created",
+        severity: "info",
+        title: `${options.titlePrefix ?? "n"}${index}`,
+        body: "body",
+        readAt: options.read ? new Date() : null,
+      },
+    });
+  }
 }
 
 function categoryOf(body: { categories: { category: string }[] }, category: string) {

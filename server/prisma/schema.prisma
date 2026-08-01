@@ -744,6 +744,26 @@ model Notification {
 
   createdAt DateTime @default(now())
 
+  // N1.7.3 — one event produces at most ONE bell item per user, enforced by
+  // the database rather than by timing.
+  //
+  // deliverInApp claims its attempt with a compare-and-set on `attempts`, but
+  // that is a ticket, not a lease: the row stays `pending` for the whole of the
+  // render and insert, so a second caller reading inside that window sees the
+  // incremented value, its own compare-and-set succeeds, and both reach
+  // notification.create. Reachable when two sweep runs overlap (the sweep is
+  // cron'd every minute and works through batches of 100). The email channel
+  // survives the same interleaving because Resend deduplicates on the
+  // per-delivery idempotency key; in-app had no equivalent backstop, so the
+  // user simply saw the notification twice.
+  //
+  // A constraint rather than a longer lock: it makes the duplicate impossible
+  // under ANY interleaving, including ones nobody has thought of, and it is the
+  // same idiom the module already uses for idempotency (NotificationEvent
+  // .dedupeKey, EmailEvent's provider-id primary key). Safe as a constraint
+  // because this table is new and empty in production — the repo's "indexes are
+  // additive, never constraints" rule protects EXISTING data.
+  @@unique([eventId, userId])
   // The unread badge count, and the feed itself.
   @@index([userId, readAt])
   @@index([companyId, createdAt])
