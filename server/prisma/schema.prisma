@@ -100,6 +100,13 @@ model Company {
   auditLogs   AuditLog[]
   ownerNotes  OwnerNote[]
 
+  // N1.1 — Notification & Email module (docs/notification-system-plan.md).
+  notificationEvents      NotificationEvent[]
+  notifications           Notification[]
+  notificationDeliveries  NotificationDelivery[]
+  notificationPreferences NotificationPreference[]
+  emailSuppressions       EmailSuppression[]
+
   // Phase 3 — Owner Command Center conversion targets.
   tasks               Task[]
   reminders           Reminder[]
@@ -146,6 +153,15 @@ model User {
   // analytics dashboard's Active Users / Last Login / status columns; null
   // means the account has never signed in.
   lastLoginAt DateTime?
+
+  // N1.1 (Q6) — the user's own notification language ("hu" | "en"), null =
+  // inherit. Resolution order for any backend-generated message:
+  // User.language → Company.language → "en". A per-user column (rather than
+  // relying on Company.language alone) is deliberate: a mixed-language team
+  // is normal, and the company-wide default would be wrong for half of them.
+  // Unlike Company.language (a C1.4 DISPLAY preference the server never
+  // reads), this one is read by the notification module.
+  language String?
 
   // Session invalidation (K2.1.2) — every issued JWT carries the value
   // current at sign-in; the auth middleware rejects tokens whose claim no
@@ -626,6 +642,231 @@ model Invitation {
 
   expiresAt  DateTime
   acceptedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+}
+
+// ---------------------------------------------------------------------------
+// Notification & Email module (N1.1) — see docs/notification-system-plan.md
+//
+// Six models, all additive. Nothing reads or writes them yet; N1.5 wires the
+// pipeline. Layering (deliberately three tables, not one):
+//   NotificationEvent    WHAT happened, and did we intend to tell anyone?
+//   NotificationDelivery WHO on WHICH channel, with WHAT outcome — and if it
+//                        never went out, WHY not (the support question).
+//   EmailEvent           what the PROVIDER said afterwards.
+// The type catalog and the templates live in code (constants/ + emails/), not
+// in tables: the repo's stated rule is that adding a capability is a registry
+// append, never a migration (see constants/features.ts).
+// ---------------------------------------------------------------------------
+
+// The outbox and the event log in one. Written INSIDE the same Prisma
+// transaction as the domain change it describes, so a crash can never leave a
+// committed state change without its notification (the official pg-boss
+// Prisma adapter needs Prisma 7; this pattern keeps us on 6 — plan §9.2).
+model NotificationEvent {
+  id Int @id @default(autoincrement())
+
+  // Registry key, e.g. "billing.trial_ending" — validated against
+  // constants/notifications.ts, free-form here on purpose (same reasoning as
+  // every other status/type column in this schema).
+  type String
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // THE idempotency backbone (plan §3.4). Format: <type>/<scope>/<discriminator>.
+  // A daily trial-reminder sweep can therefore run any number of times and
+  // still produce exactly one notification per company per threshold — this
+  // unique index IS the "last reminder sent" marker the UX spec asked for, with
+  // no extra column. Nullable: some events (password reset) are deliberately
+  // repeatable.
+  dedupeKey String? @unique
+
+  // Template variables, JSON string (same convention as AuditLog.metadata and
+  // ProjectActivity.metadata — never the Json column type).
+  context String?
+
+  // Who triggered it. A plain scalar, NOT a relation: it must survive the
+  // user's deletion, exactly like AuditLog.userId.
+  actorUserId Int?
+
+  // "pending" → "fanned_out" | "failed" (NOTIFICATION_EVENT_STATUSES).
+  status      String    @default("pending")
+  processedAt DateTime?
+
+  deliveries    NotificationDelivery[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+
+  // The outbox drainer's query: oldest pending first.
+  @@index([status, createdAt])
+  // Admin/support: a company's event history.
+  @@index([companyId, createdAt])
+}
+
+// One in-app notification for one user — the bell feed. Stored rather than
+// derived from subscription state: read/unread has nowhere else to live, and
+// one-shot events (e.g. "downgrade scheduled") cannot be reconstructed from
+// current state at all. Title/body are stored ALREADY RENDERED in the
+// recipient's language, so the feed needs no template engine at read time.
+model Notification {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   NotificationEvent @relation(fields: [eventId], references: [id])
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // Scalar, not a relation — same rationale as AuditLog.userId.
+  userId Int
+
+  type     String
+  severity String @default("info")
+
+  title String
+  body  String
+
+  // Exactly one primary CTA per item (the UX spec's rule); both null when the
+  // notification is purely informational.
+  ctaLabel String?
+  ctaPath  String?
+
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  // The unread badge count, and the feed itself.
+  @@index([userId, readAt])
+  @@index([companyId, createdAt])
+}
+
+// One row per (event × recipient × channel). This is the delivery ledger: it
+// records the attempt even when nothing was sent, because "why did my customer
+// not get the email?" is the expensive support question and suppressionReason
+// answers it directly.
+model NotificationDelivery {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   NotificationEvent @relation(fields: [eventId], references: [id])
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // NOTIFICATION_CHANNELS: "EMAIL" | "IN_APP" | "PUSH" | "SMS".
+  channel String
+
+  recipientUserId Int?
+  // Email address / phone / device token. Full value here (support needs it);
+  // logs mask it via utils/maskEmail.ts.
+  recipientAddress String
+  // The locale this was actually rendered in — not re-derived later.
+  locale String
+
+  // DELIVERY_STATUSES: pending → sent → delivered | bounced | complained
+  //                    | failed (retries exhausted) | suppressed (never sent).
+  status String @default("pending")
+  // Only when status = "suppressed": which gate stopped it
+  // (DELIVERY_SUPPRESSION_REASONS).
+  suppressionReason String?
+
+  // Resend's message id — the join key for provider webhooks (N1.6).
+  providerMessageId String?
+
+  attempts  Int     @default(0)
+  lastError String?
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+
+  events EmailEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Provider webhook lookup by message id.
+  @@index([providerMessageId])
+  // Support/admin filtering, and the monitoring queries.
+  @@index([companyId, status, createdAt])
+  @@index([status])
+}
+
+// Raw provider (Resend) delivery events. The PK is the provider's own event id
+// — the same trick ProcessedStripeEvent uses: re-delivery of an event we have
+// already stored is a primary-key collision, i.e. replay protection for free.
+model EmailEvent {
+  id String @id
+
+  // Resolved from providerMessageId; null when the event arrives for a message
+  // we have no delivery row for (should not happen, but must not throw).
+  deliveryId Int?
+  delivery   NotificationDelivery? @relation(fields: [deliveryId], references: [id])
+
+  // "email.delivered" | "email.bounced" | "email.complained" | … Resend ships
+  // 19 event types; note that "email.sent" means the API call succeeded, NOT
+  // that the message was delivered — never surface it as "delivered".
+  type String
+
+  // Full webhook payload, JSON string.
+  payload String?
+
+  occurredAt DateTime
+  receivedAt DateTime @default(now())
+
+  @@index([deliveryId])
+  @@index([type, occurredAt])
+}
+
+// Per-category, per-channel switch. Three levels resolve in order:
+//   user row (userId set) → company default (userId null) → registry default.
+// Mandatory categories (security, critical billing) ignore all three — that is
+// a registry property, not something a row here can override.
+model NotificationPreference {
+  id Int @id @default(autoincrement())
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // null = the company-wide default for this category+channel.
+  userId Int?
+
+  category String
+  channel  String
+  enabled  Boolean
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per scope. Safe as a constraint because the table is new — the
+  // "indexes are additive, never constraints" rule protects EXISTING data.
+  @@unique([companyId, userId, category, channel])
+  @@index([companyId])
+}
+
+// Addresses we must not email again: hard bounces and spam complaints, fed by
+// the provider webhooks (N1.6). Checked before every send — a global gate that
+// sits in front of every preference check, because sending to a complained
+// address damages the whole domain's reputation, not just one tenant's.
+model EmailSuppression {
+  id Int @id @default(autoincrement())
+
+  email String @unique
+
+  // SUPPRESSION_REASONS: "bounced" | "complained" | "manual".
+  reason String
+
+  // Which tenant's send triggered it (diagnostics only — the block itself is
+  // global).
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  // Free-form JSON string: the provider payload that caused the entry.
+  detail String?
 
   createdAt DateTime @default(now())
 

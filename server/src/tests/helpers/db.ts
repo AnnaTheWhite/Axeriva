@@ -6,6 +6,14 @@ import prisma from "../../database/prisma";
 // place that must be updated, and a forgotten entry surfaces immediately as
 // an FK error in the very next test run.
 const DELETE_ORDER = [
+  // N1.1 notification module — children before parents: EmailEvent →
+  // NotificationDelivery/Notification → NotificationEvent → Company.
+  () => prisma.emailEvent.deleteMany(),
+  () => prisma.notificationDelivery.deleteMany(),
+  () => prisma.notification.deleteMany(),
+  () => prisma.notificationEvent.deleteMany(),
+  () => prisma.notificationPreference.deleteMany(),
+  () => prisma.emailSuppression.deleteMany(),
   () => prisma.ownerNoteConversion.deleteMany(),
   () => prisma.projectInternalNote.deleteMany(),
   () => prisma.communicationLog.deleteMany(),
