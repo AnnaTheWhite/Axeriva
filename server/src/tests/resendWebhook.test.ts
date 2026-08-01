@@ -253,10 +253,11 @@ describe("suppression", () => {
         // N1.7.1: `billing`, not `security`. Both are mandatory categories, so
         // this still proves the original point — a mandatory type does not
         // bypass the suppression list — but it stays clear of the one narrow
-        // exemption added in N1.7.1, where security mail survives a
-        // `complained` suppression so a spam click cannot lock a user out of
-        // password resets. That exemption has its own tests, both directions,
-        // in notificationPipeline.test.ts.
+        // exemption added in N1.7.1 and narrowed in N1.7.2, where a type
+        // carrying `bypassesComplaintSuppression` (today only
+        // auth.password_reset) survives a `complained` suppression so a spam
+        // click cannot lock a user out of their account. That exemption has its
+        // own tests, both directions, in notificationRecovery.test.ts.
         category: "billing",
         severity: "info",
         mandatory: true,

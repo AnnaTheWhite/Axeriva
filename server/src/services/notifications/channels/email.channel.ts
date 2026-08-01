@@ -39,6 +39,28 @@ export async function deliverEmail(deliveryId: number): Promise<void> {
   // at-least-once, so this check is load-bearing, not defensive decoration.
   if (delivery.status !== "pending") return;
 
+  // N1.7.2 — CLAIM the attempt before sending, with an optimistic lock on
+  // `attempts`. Two things were wrong before, both fixed by moving the
+  // increment to the front:
+  //
+  // 1. The status check above is not a claim. Two workers holding the same job
+  //    (pg-boss is at-least-once, and the sweep can enqueue a second copy) both
+  //    read status="pending" and both sent. The compare-and-set on `attempts`
+  //    lets exactly one of them through.
+  //
+  // 2. `attempts` used to be incremented only AFTER the provider call resolved,
+  //    so a row read `attempts: 0` for the whole duration of the HTTP request.
+  //    sweepPendingDeliveries treats attempts=0 as "no worker has ever touched
+  //    this" — which was therefore false precisely while a send was in flight,
+  //    and the sweep could enqueue a duplicate underneath it. The increment now
+  //    happens before any network call, so attempts=0 means what the sweep
+  //    believes it means.
+  const claimed = await prisma.notificationDelivery.updateMany({
+    where: { id: deliveryId, status: "pending", attempts: delivery.attempts },
+    data: { attempts: delivery.attempts + 1 },
+  });
+  if (claimed.count === 0) return;
+
   const context: DeliveryContext = delivery.event.context
     ? (JSON.parse(delivery.event.context) as DeliveryContext)
     : {};
@@ -60,7 +82,8 @@ export async function deliverEmail(deliveryId: number): Promise<void> {
       data: {
         status: "sent",
         sentAt: new Date(),
-        attempts: { increment: 1 },
+        // No increment here — the claim above already counted this attempt,
+        // before the network call.
         lastError: null,
         // THE join key for every provider webhook (N1.6). Until N1.7.1 this
         // was never written, so every delivery event arrived unmatched and no
@@ -78,7 +101,7 @@ export async function deliverEmail(deliveryId: number): Promise<void> {
     await prisma.notificationDelivery.update({
       where: { id: deliveryId },
       data: {
-        attempts: { increment: 1 },
+        // Same as the success path: the attempt is already counted.
         lastError: error instanceof Error ? error.message : String(error),
       },
     });

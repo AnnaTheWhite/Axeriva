@@ -1,6 +1,7 @@
 import prisma from "../../database/prisma";
 import {
   defaultEnabledForCategory,
+  suppressionKey,
   type DeliverySuppressionReason,
   type NotificationChannel,
 } from "../../constants/notifications";
@@ -56,7 +57,15 @@ export async function evaluateGates({
   }
 
   if (channel === "EMAIL") {
-    const suppressed = await prisma.emailSuppression.findUnique({ where: { email } });
+    // N1.7.2 — normalised. The column is a plain @unique String with no citext
+    // and no case-insensitive collation, so "User@x.com" and "user@x.com" were
+    // two different rows: a suppression written from one casing did not block
+    // the other, and the operator removal path (which lowercases) could not
+    // lift it. Every read and write of this table now goes through the same
+    // normalisation — see suppressionKey().
+    const suppressed = await prisma.emailSuppression.findUnique({
+      where: { email: suppressionKey(email) },
+    });
     if (suppressed && !survivesSuppression(definition, suppressed.reason)) {
       return { allowed: false, reason: "suppression_list" };
     }
@@ -85,11 +94,13 @@ export async function evaluateGates({
 //                is user-initiated, expected, and arrives seconds after they
 //                asked for it. Refusing that one is a lockout, not hygiene.
 //
-// So: security-category mandatory mail survives a `complained` suppression and
-// nothing else does. Marketing, digests and billing receipts stay blocked
-// under both reasons, which is where the reputation risk actually lives.
+// N1.7.2 narrowed the test itself. It was `category === "security" &&
+// mandatory`, which is true of `auth.welcome` too — a courtesy mail that has no
+// business overriding someone who explicitly marked us as spam. The exemption
+// is now an explicit per-type registry flag (`bypassesComplaintSuppression`),
+// carried today by exactly one message: the password reset.
 function survivesSuppression(definition: NotificationTypeDefinition, reason: string): boolean {
-  return definition.mandatory && definition.category === "security" && reason === "complained";
+  return reason === "complained" && definition.bypassesComplaintSuppression === true;
 }
 
 async function evaluateCompanyToggles(

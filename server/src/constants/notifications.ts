@@ -133,6 +133,24 @@ export type DeliverySuppressionReason = (typeof DELIVERY_SUPPRESSION_REASONS)[nu
 export const SUPPRESSION_REASONS = ["bounced", "complained", "manual"] as const;
 export type SuppressionReason = (typeof SUPPRESSION_REASONS)[number];
 
+// N1.7.2 — the single normalisation for every read and write of
+// EmailSuppression.email. The column is a plain @unique String: PostgreSQL
+// compares it byte-for-byte, so without this "User@x.com" and "user@x.com" are
+// two independent rows. That split the list three ways — the webhook wrote
+// whatever casing the provider reported, the gate looked up whatever casing
+// the recipient row held, and the operator removal endpoint lowercased — so a
+// suppression could block sends it could not be removed by.
+//
+// Lower-casing the whole address (not just the domain) is technically
+// over-broad: RFC 5321 says the local part is case-sensitive. In practice no
+// mail provider this product will meet treats it that way, and the failure
+// mode of being over-broad here (one extra address suppressed) is far cheaper
+// than the alternative (an un-liftable block, or a bounce list that silently
+// misses).
+export function suppressionKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 // --- Locales ---------------------------------------------------------------
 // The languages backend-generated messages exist in. Mirrors the frontend's
 // LANGUAGES (src/i18n/index.tsx) — the two must not drift.

@@ -35,6 +35,19 @@ export type NotificationTypeDefinition = {
   // messages whose suppression would harm the recipient (security) or leave
   // them unaware of something they are paying for (critical billing) — Q2.
   mandatory: boolean;
+  // N1.7.2 — survives a `complained` suppression. Reserved for the messages
+  // whose loss is an ACCOUNT LOCKOUT, not an inconvenience: the user asked for
+  // this one seconds ago and cannot get back in without it.
+  //
+  // Deliberately a per-type flag rather than "category === security". N1.7.1
+  // used the category, which silently swept in `auth.welcome` — a marketing-
+  // adjacent courtesy mail that has no business overriding someone who
+  // explicitly marked us as spam. The exemption has to be argued per message,
+  // so it is declared per message.
+  //
+  // Never applies to a `bounced` suppression: there the mailbox does not
+  // exist, so sending reaches nobody and only damages the shared domain.
+  bypassesComplaintSuppression?: boolean;
   recipients: RecipientStrategy;
   channels: NotificationChannel[];
   // i18n keys for the in-app feed entry. Required when IN_APP is a channel.
@@ -72,6 +85,11 @@ export const NOTIFICATION_TYPES = {
     // Never suppressible under any setting: a reset the user requested and
     // did not receive is an account lockout.
     mandatory: true,
+    // The one message that outranks a spam complaint. The user clicked "forgot
+    // password" moments ago; refusing to send because they once marked a
+    // different Axeriva email as spam locks them out of their own account with
+    // no route back.
+    bypassesComplaintSuppression: true,
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },

@@ -5,6 +5,7 @@ import { blockWritesWhenReadOnly } from "../middleware/readOnly.middleware";
 import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { ROLES } from "../constants/roles";
+import { suppressionKey } from "../constants/notifications";
 import { companyScope } from "../utils/scope";
 import { maskEmail } from "../utils/maskEmail";
 import {
@@ -289,7 +290,7 @@ router.delete(
   "/suppressions/:email",
   requireRole(ROLES.DEVELOPER),
   async (req, res) => {
-    const email = String(req.params.email).trim().toLowerCase();
+    const email = suppressionKey(String(req.params.email));
 
     const removed = await prisma.emailSuppression.deleteMany({ where: { email } });
 

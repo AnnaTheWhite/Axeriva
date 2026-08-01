@@ -41,4 +41,33 @@ export async function resetDatabase() {
   for (const remove of DELETE_ORDER) {
     await remove();
   }
+
+  await resetQueue();
+}
+
+// N1.7.2 — the queue is part of "every test starts from an empty database",
+// and it was not being reset.
+//
+// pg-boss owns the `pgboss` schema, which contains no Prisma models, so the
+// list above never touched it: enqueued jobs SURVIVED between tests and, worse,
+// between test FILES. A file that enqueued work therefore handed the next file
+// a queue full of jobs referencing rows that had since been truncated — the
+// workers picked them up, threw "delivery N not found", and burned their
+// concurrency retrying ghosts while the test that was actually running timed
+// out waiting for its own job.
+//
+// That was not hypothetical: notificationPipeline.test.ts passed alone and
+// failed when notificationRecovery.test.ts ran before it, which is the worst
+// kind of flake — order-dependent and invisible in a single-file run.
+//
+// DELETE rather than TRUNCATE: pg-boss v12 partitions `job` per queue, and a
+// plain DELETE on the parent cascades to the partitions without taking the
+// heavier lock. Guarded, because most test files never start the queue at all
+// and the schema legitimately may not exist yet.
+async function resetQueue() {
+  try {
+    await prisma.$executeRawUnsafe("DELETE FROM pgboss.job");
+  } catch {
+    // No pgboss schema in this run — nothing to clean.
+  }
 }

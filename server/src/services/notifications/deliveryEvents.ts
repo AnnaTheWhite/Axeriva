@@ -1,5 +1,6 @@
 import prisma from "../../database/prisma";
 import type { DeliveryStatus, SuppressionReason } from "../../constants/notifications";
+import { suppressionKey } from "../../constants/notifications";
 import { maskEmail } from "../../utils/maskEmail";
 
 // N1.6 — what a provider delivery event does to our state.
@@ -112,9 +113,9 @@ export async function recordDeliveryEvent(
       // upsert, not create: the same address can bounce for several tenants,
       // and the list is global.
       await prisma.emailSuppression.upsert({
-        where: { email: address },
+        where: { email: suppressionKey(address) },
         create: {
-          email: address,
+          email: suppressionKey(address),
           reason: suppressionReason,
           companyId: delivery?.companyId ?? null,
           detail: JSON.stringify(input.payload),

@@ -26,9 +26,17 @@ export type EmailContext = {
 // and `complained` were unreachable in production while the tests passed by
 // seeding the column into fixtures by hand.
 export type EmailSendResult = {
-  // The provider's id for the message. Null only for the mock transport, which
-  // has no provider behind it and says so rather than inventing plausible
-  // production data.
+  // The provider's id for the message, and the only join key the delivery
+  // webhooks have.
+  //
+  // Nullable because of RESEND, not because of the mock — N1.7.2 corrected this
+  // comment, which previously claimed the opposite and would have told an
+  // on-call engineer that a NULL in production was impossible. MockEmailService
+  // ALWAYS returns a synthetic `mock_` id. ResendEmailService is the one that
+  // can return null: if Resend answers 200 with no id in the body, the mail is
+  // out and throwing would only buy a duplicate on retry, so the send succeeds
+  // with the correlation permanently lost for that message. That row stays
+  // `sent` forever and no webhook will ever match it.
   messageId: string | null;
 };
 

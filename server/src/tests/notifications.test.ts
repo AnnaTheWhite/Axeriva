@@ -15,8 +15,18 @@ import { ROLES } from "../constants/roles";
 // and delivery DIRECTLY rather than waiting for workers. That is deliberate:
 // what needs pinning is the decision logic (who, which channel, suppressed or
 // not, in which language), and polling for a worker would make every
-// assertion slower and flakier without testing anything extra. The
-// worker/queue plumbing itself is already covered by queue.test.ts.
+// assertion slower and flakier without testing anything extra.
+//
+// N1.7.2 corrected the second half of this note. It used to claim "the
+// worker/queue plumbing itself is already covered by queue.test.ts", which was
+// FALSE and was the stated justification for a gap that let a broken feature
+// ship: queue.test.ts exercises the generic seam on synthetic `test/...`
+// queues and has never touched a production handler, and
+// registerNotificationWorkers() was invoked by no test at all. That is how
+// providerMessageId stayed unwritten through 387 green tests. The real
+// end-to-end cover now lives in notificationPipeline.test.ts, which runs the
+// actual workers; this file remains the fast, deterministic decision-logic
+// suite.
 
 beforeAll(async () => {
   await startQueue();

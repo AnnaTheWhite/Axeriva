@@ -145,6 +145,17 @@ a mögötte lévő adat már valós.
 | **Kockázat** | Alacsony-közepes. A fan-out és a küldési út is változott, de mindkettő regressziós teszt alatt. Séma-változás **nincs**. |
 | **Függ** | N1.7 |
 
+### N1.7.2 — A remediáció remediációja  🟢 *a verifikációs review találatai*
+
+| | |
+|---|---|
+| **Miért** | Az N1.7.1 után indított **verifikációs** review (5 auditor + 4 független kontroll-kör, kizárólag a javított területekre) az 5 defektus-csoportból **négyet `PARTIALLY_RESOLVED`-nak** minősített. A javítások nagyrészt működtek, de mindegyiknél maradt egy elérhető út, amin az eredeti hiba túlélt. |
+| **Tartalom** | **H1** a redakció *egyetlen* helyről futott (sikeres küldés után), így a **suppressed**, a **véglegesen hibás**, a **nulla-címzettes** és a **soha nem diszpécselt** eseményeknél a nyers token örökre megmaradt — vagyis pontosan az eredeti K2.1.4-megkerülés. Most minden lezáró úton fut. · **H3** az IN_APP kézbesítés a tranzakció UTÁN, `try/catch` nélkül futott: egy dobás után a DISPATCH-újrapróbálkozás a `status !== "pending"` előellenőrzésen kiszállt, a sor örökre `pending` maradt, a sweep pedig csak EMAIL-t nézett. Most elkapott + a sweep IN_APP-ot is fed. · **H5** az `attempts: 0` diszkriminátor **nem volt megbízható**: az `attempts` csak a hálózati hívás UTÁN nőtt, tehát a küldés teljes ideje alatt 0-t mutatott → a sweep dupla küldést okozhatott. Most **optimista claim** (compare-and-set az `attempts`-en) a hívás ELŐTT. · **H2** a kivétel `category === "security" && mandatory` volt, ami az `auth.welcome`-ot is bevonta; most explicit registry-flag (`bypassesComplaintSuppression`), egyetlen típuson. · A `recordDeadLetter` esemény-ága felülírta a `fanned_out`-ot (a SIKER-állapotot) — és a saját tesztem rögzítette ezt a hibát. · Suppression-cím normalizálás (`suppressionKey`), mert a `@unique String` bájtre hasonlít: `User@x.com` ≠ `user@x.com`. |
+| **Teszt-integritás** | ⚠️ **A H4-teszt semmit nem tesztelt.** Empirikusan bizonyítva: eltávolítottam a teljes idempotency-javítást, és mind a 20 teszt zöld maradt — a teszt két `deliverEmail()` hívást hasonlított össze, de a második a `status !== "pending"` miatt eleve nem küld. Az új teszt a **transzportnak átadott argumentumot** vizsgálja; szabotázzsal ellenőrizve, hogy bukik. |
+| **Talált teszt-infrastruktúra hiba** | ⚠️ A `resetDatabase()` a `pgboss` sémát **nem** ürítette, így a sorbaállított jobok **fájlok között túléltek**: egy enqueue-oló fájl a következőnek olyan jobokat hagyott, amik már törölt sorokra hivatkoztak. A workerek ezeket próbálgatták, miközben az épp futó teszt timeoutolt. Rendelésfüggő, egy fájlt futtatva láthatatlan flake — `notificationPipeline.test.ts` egyedül zöld volt, a recovery-fájl után bukott. Javítva; a két fájl együtt 29 s → 7 s. |
+| **Állapot (2026-08-01)** | **416/416 teszt zöld** (28 fájl). Mindkét build, saját fájlokon lint tiszta (a `services/stripe/` 2 lint-hibája HEAD-en is megvan), `dist` mount-ellenőrzés 6/6. Séma-változás nincs. |
+| **Nyitott** | A verifikációs review **N1.7.2-re még nem futott le** — amíg nem tiszta, a rendszer nincs jóváhagyva, és az N1.8 nem indul. |
+
 ### N1.8 — Stripe billing-értesítések  🟡
 
 | | |

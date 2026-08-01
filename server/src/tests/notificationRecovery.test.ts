@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import app from "../app";
 import prisma from "../database/prisma";
+import { emailService } from "../services/email";
 import { startQueue, stopQueue } from "../services/queue";
 import { notify, redactEventContextIfSettled } from "../services/notifications/notify";
 import {
@@ -11,6 +12,7 @@ import {
 } from "../services/notifications/dispatcher";
 import { deliverEmail } from "../services/notifications/channels/email.channel";
 import { evaluateGates } from "../services/notifications/gates";
+import { NOTIFICATION_TYPES } from "../services/notifications/registry";
 import { ensureNotificationQueues } from "../services/notifications/workers";
 import { authHeader, createDeveloper, createTenant } from "./helpers/factories";
 
@@ -31,6 +33,61 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stopQueue();
+});
+
+describe("N1.7.2 — H4: the idempotency key actually reaches the transport", () => {
+  // The N1.7.1 test for this asserted that two deliverEmail() calls produced
+  // the same providerMessageId — which passes whether or not a key is sent,
+  // because the second call short-circuits on status !== "pending" and never
+  // sends at all. Deleting the entire H4 fix left all 20 tests green; verified
+  // by doing exactly that. These tests inspect the argument handed to the
+  // transport, which is the only thing that can discriminate.
+  async function keyPassedTo(deliveryId: number): Promise<string | undefined> {
+    const spy = vi.spyOn(emailService, "sendSubscriptionConfirmedEmail");
+    try {
+      await deliverEmail(deliveryId);
+      expect(spy).toHaveBeenCalledTimes(1);
+      return spy.mock.calls[0][3]?.idempotencyKey;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  async function deliveryFor(companyName: string): Promise<number> {
+    const tenant = await createTenant();
+    await notify({
+      type: "billing.subscription_created",
+      companyId: tenant.company.id,
+      context: { companyName, planName: "Starter" },
+    });
+    const event = (await prisma.notificationEvent.findFirst({ orderBy: { id: "desc" } }))!;
+    await dispatchEvent(event.id);
+    const delivery = (await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id, channel: "EMAIL" },
+    }))!;
+    return delivery.id;
+  }
+
+  it("hands the transport a key derived from the delivery id", async () => {
+    const deliveryId = await deliveryFor("X");
+
+    // Remove the plumbing and this assertion fails — which the previous
+    // version of this test did not.
+    expect(await keyPassedTo(deliveryId)).toBe(`notif-delivery-${deliveryId}`);
+  });
+
+  it("gives co-recipients of one event DIFFERENT keys", async () => {
+    // Derived from the event id instead, two recipients would collide on
+    // Resend's idempotency window and the second person would silently never
+    // receive their copy. Nothing enforced this before.
+    const first = await deliveryFor("A");
+    const second = await deliveryFor("B");
+
+    const keyA = await keyPassedTo(first);
+    const keyB = await keyPassedTo(second);
+
+    expect(keyA).not.toBe(keyB);
+  });
 });
 
 describe("N1.7.1 — C1: provider message id", () => {
@@ -96,6 +153,85 @@ describe("N1.7.1 — H1: sensitive context is not kept after the send", () => {
     expect(after!.context).toContain(tenant.owner.email);
   });
 
+  it("drops the link when every delivery was SUPPRESSED and no worker ever ran", async () => {
+    // N1.7.2. Redaction was called from exactly one place — the email channel,
+    // after a successful send — so a delivery the gate refused was never
+    // redacted by anything. Concrete path: the address hard-bounced once, so
+    // it is on the suppression list; the user then requests a password reset;
+    // H2 correctly keeps blocking a `bounced` address, the delivery is written
+    // `suppressed`, no worker touches it, and the plaintext reset link sits in
+    // the table permanently. That is the original K2.1.4 bypass, intact.
+    const tenant = await createTenant();
+    await prisma.emailSuppression.create({
+      data: { email: tenant.owner.email, reason: "bounced" },
+    });
+
+    await notify({
+      type: "auth.password_reset",
+      companyId: tenant.company.id,
+      context: { email: tenant.owner.email, resetLink: "https://axeriva.com/reset/LEAKED" },
+    });
+    const event = (await prisma.notificationEvent.findFirst({ orderBy: { id: "desc" } }))!;
+
+    await dispatchEvent(event.id);
+
+    const delivery = await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id, channel: "EMAIL" },
+    });
+    expect(delivery!.status).toBe("suppressed");
+
+    const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
+    expect(after!.context).not.toContain("LEAKED");
+  });
+
+  it("drops the link when the event resolves no recipients at all", async () => {
+    const tenant = await createTenant();
+    await prisma.user.update({ where: { id: tenant.owner.id }, data: { active: false } });
+
+    await notify({
+      type: "billing.subscription_created",
+      companyId: tenant.company.id,
+      context: { companyName: "X", planName: "S", inviteLink: "https://axeriva.com/i/LEAKED" },
+    });
+    const event = (await prisma.notificationEvent.findFirst({ orderBy: { id: "desc" } }))!;
+
+    await dispatchEvent(event.id);
+
+    const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
+    expect(after!.context).not.toContain("LEAKED");
+  });
+
+  it("drops the link when the delivery fails permanently and dead-letters", async () => {
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "employees.invitation",
+        companyId: tenant.company.id,
+        context: JSON.stringify({
+          email: "x@example.com",
+          inviteLink: "https://axeriva.com/invite/LEAKED",
+          companyName: "X",
+        }),
+        status: "fanned_out",
+      },
+    });
+    const delivery = await prisma.notificationDelivery.create({
+      data: {
+        eventId: event.id,
+        companyId: tenant.company.id,
+        channel: "EMAIL",
+        recipientAddress: "x@example.com",
+        locale: "en",
+        status: "pending",
+      },
+    });
+
+    await recordDeadLetter({ deliveryId: delivery.id });
+
+    const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
+    expect(after!.context).not.toContain("LEAKED");
+  });
+
   it("keeps the link while another delivery for the same event is still pending", async () => {
     // Redacting on the first settled delivery would break a multi-recipient
     // event: the second worker would find the token gone and fail permanently.
@@ -135,7 +271,11 @@ describe("N1.7.1 — H1: sensitive context is not kept after the send", () => {
 describe("N1.7.1 — H2: a spam complaint must not become an account lockout", () => {
   async function gateFor(
     email: string,
-    definition: { category: "security" | "billing" | "marketing"; mandatory: boolean }
+    definition: {
+      category: "security" | "billing" | "marketing";
+      mandatory: boolean;
+      bypassesComplaintSuppression?: boolean;
+    }
   ) {
     const tenant = await createTenant();
     return evaluateGates({
@@ -143,6 +283,9 @@ describe("N1.7.1 — H2: a spam complaint must not become an account lockout", (
         category: definition.category,
         severity: "info",
         mandatory: definition.mandatory,
+        ...(definition.bypassesComplaintSuppression
+          ? { bypassesComplaintSuppression: true }
+          : {}),
         recipients: "EMAIL",
         channels: ["EMAIL"],
       },
@@ -161,12 +304,37 @@ describe("N1.7.1 — H2: a spam complaint must not become an account lockout", (
     const decision = await gateFor("locked@example.com", {
       category: "security",
       mandatory: true,
+      bypassesComplaintSuppression: true,
     });
 
     expect(decision).toEqual({ allowed: true });
   });
 
-  it("still refuses a HARD BOUNCE, even for security mail", async () => {
+  it("does NOT extend the exemption to other security mail (N1.7.2)", async () => {
+    // The N1.7.1 predicate was `category === "security" && mandatory`, which is
+    // also true of auth.welcome — a courtesy mail overriding someone who
+    // explicitly marked us as spam. The flag is now declared per type, so a
+    // security-category type without it stays blocked.
+    await prisma.emailSuppression.create({
+      data: { email: "spamclicker@example.com", reason: "complained" },
+    });
+
+    expect(
+      await gateFor("spamclicker@example.com", { category: "security", mandatory: true })
+    ).toEqual({ allowed: false, reason: "suppression_list" });
+  });
+
+  it("carries the flag on auth.password_reset and on nothing else", async () => {
+    // Pins the registry itself, so adding the flag to a new type is a
+    // deliberate act that fails this test rather than a quiet inheritance.
+    const flagged = Object.entries(NOTIFICATION_TYPES)
+      .filter(([, d]) => (d as { bypassesComplaintSuppression?: boolean }).bypassesComplaintSuppression)
+      .map(([key]) => key);
+
+    expect(flagged).toEqual(["auth.password_reset"]);
+  });
+
+  it("still refuses a HARD BOUNCE, even for the exempt type", async () => {
     // The mailbox does not exist — sending cannot reach anyone, and repeatedly
     // mailing a dead address is what actually damages the shared domain.
     await prisma.emailSuppression.create({
@@ -176,9 +344,23 @@ describe("N1.7.1 — H2: a spam complaint must not become an account lockout", (
     const decision = await gateFor("gone@example.com", {
       category: "security",
       mandatory: true,
+      bypassesComplaintSuppression: true,
     });
 
     expect(decision).toEqual({ allowed: false, reason: "suppression_list" });
+  });
+
+  it("matches a suppression regardless of address casing", async () => {
+    // N1.7.2 — the column is a plain @unique String, so "User@x.com" and
+    // "user@x.com" were two rows: a suppression written from one casing did
+    // not block the other, and the operator removal path could not lift it.
+    await prisma.emailSuppression.create({
+      data: { email: "mixed@example.com", reason: "bounced" },
+    });
+
+    expect(
+      await gateFor("MiXeD@Example.COM", { category: "billing", mandatory: true })
+    ).toEqual({ allowed: false, reason: "suppression_list" });
   });
 
   it("does not extend the exemption to billing, which is also mandatory", async () => {
@@ -299,7 +481,7 @@ describe("N1.7.1 — H5 / M4: nothing is left stranded", () => {
         recipientAddress: tenant.owner.email,
         locale: "en",
         status: "pending",
-        createdAt: new Date(Date.now() - 10 * 60 * 1000),
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
       },
     });
 
@@ -332,7 +514,7 @@ describe("N1.7.1 — H5 / M4: nothing is left stranded", () => {
         locale: "en",
         status: "pending",
         attempts: 2,
-        createdAt: new Date(Date.now() - 10 * 60 * 1000),
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
       },
     });
 
@@ -376,7 +558,9 @@ describe("N1.7.1 — H5 / M4: nothing is left stranded", () => {
         type: "billing.subscription_created",
         companyId: tenant.company.id,
         context: "{}",
-        status: "fanned_out",
+        // `pending` — a dispatch job that dead-lettered never completed its
+        // fan-out, so this is the state it is actually in.
+        status: "pending",
       },
     });
 
@@ -384,6 +568,29 @@ describe("N1.7.1 — H5 / M4: nothing is left stranded", () => {
 
     const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
     expect(after!.status).toBe("failed");
+  });
+
+  it("never downgrades a successfully fanned-out event to failed", async () => {
+    // N1.7.2. The N1.7.1 guard was `status: { not: "failed" }`, which overwrote
+    // `fanned_out` — the SUCCESS terminal state — and the original version of
+    // the test above PINNED that by seeding a fanned_out event and asserting it
+    // became failed. A dispatch job can dead-letter after the emails have gone
+    // out (a persistently throwing in-app delivery, say); reporting that event
+    // as failed misrepresents a successful send in the support record forever.
+    const tenant = await createTenant();
+    const event = await prisma.notificationEvent.create({
+      data: {
+        type: "billing.subscription_created",
+        companyId: tenant.company.id,
+        context: "{}",
+        status: "fanned_out",
+      },
+    });
+
+    await recordDeadLetter({ eventId: event.id });
+
+    const after = await prisma.notificationEvent.findUnique({ where: { id: event.id } });
+    expect(after!.status).toBe("fanned_out");
   });
 
   it("survives a dead-lettered payload it does not recognise", async () => {

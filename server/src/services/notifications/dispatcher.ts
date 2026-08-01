@@ -3,6 +3,7 @@ import prisma from "../../database/prisma";
 import { enqueue } from "../queue";
 import { deliverInApp } from "./channels/inApp.channel";
 import { evaluateGates } from "./gates";
+import { redactEventContextIfSettled } from "./notify";
 import { NOTIFY_QUEUES } from "./queues";
 import { getNotificationType, isNotificationType } from "./registry";
 import { resolveRecipients } from "./recipients";
@@ -42,6 +43,9 @@ export async function dispatchEvent(eventId: number): Promise<void> {
       where: { id: eventId, status: "pending" },
       data: { status: "fanned_out", processedAt: new Date() },
     });
+    // H1 — nothing will ever be sent for this event, so a raw token in its
+    // context is dead weight that must not be kept.
+    await redactEventContextIfSettled(eventId);
     console.warn(`[notify] event ${eventId} (${event.type}) resolved no recipients`);
     return;
   }
@@ -117,9 +121,29 @@ export async function dispatchEvent(eventId: number): Promise<void> {
       }
     } else if (delivery.channel === "IN_APP") {
       // Local INSERT — no queue hop worth its latency.
-      await deliverInApp(delivery.id);
+      //
+      // N1.7.2: caught, not propagated. This runs AFTER the transaction has
+      // committed, so a throw here used to abort the loop and escape
+      // dispatchEvent — pg-boss then retried the DISPATCH job, which hit the
+      // `status !== "pending"` pre-check and returned immediately. The in-app
+      // row stayed `pending` forever, unreachable by any retry, and (because
+      // the sweep only looked at EMAIL) unrecoverable: the same silent
+      // permanent loss H3 was raised over, surviving for one channel. The
+      // sweep now covers IN_APP too, so leaving the row pending is a recovery
+      // path rather than a grave.
+      try {
+        await deliverInApp(delivery.id);
+      } catch (error) {
+        console.error(`[notify] in-app delivery ${delivery.id} failed — left for the sweep`, error);
+      }
     }
   }
+
+  // H1 — an event whose deliveries were ALL suppressed (or in-app only) never
+  // reaches the email channel, which was the only caller of this. Its raw
+  // token would then have sat in the context forever, which is the original
+  // defect. Cheap: it no-ops unless something is actually redactable.
+  await redactEventContextIfSettled(eventId);
 }
 
 async function markFailed(eventId: number, reason: string): Promise<void> {
@@ -128,6 +152,10 @@ async function markFailed(eventId: number, reason: string): Promise<void> {
     where: { id: eventId },
     data: { status: "failed" },
   });
+  // H1 — a permanently failed event will never be rendered, so its raw token
+  // has no further purpose. Without this, an unknown type or a corrupt context
+  // kept the plaintext forever.
+  await redactEventContextIfSettled(eventId);
 }
 
 // The safety net for the outbox. notify() writes the row and then enqueues;
@@ -163,26 +191,49 @@ export async function sweepPendingEvents(olderThanSeconds = 60): Promise<number>
 // coming back for. Before this, that row sat there forever and the recipient
 // simply never heard anything.
 //
-// `attempts: 0` is the discriminator that makes this safe. A delivery the
-// worker has actually picked up has attempts >= 1 whether it succeeded or
-// threw, so a job still working through its retry backoff (up to an hour) is
-// never re-queued underneath itself. Only rows no worker has ever touched
-// qualify.
-export async function sweepPendingDeliveries(olderThanSeconds = 300): Promise<number> {
+// `attempts: 0` is the discriminator that makes this safe, and it only became
+// trustworthy in N1.7.2: deliverEmail now increments `attempts` as an
+// optimistic CLAIM before the network call, not after it resolved. Previously
+// a row read attempts=0 for the whole duration of the provider request, so the
+// sweep's own definition of "untouched" was false exactly while a send was in
+// flight — and re-enqueuing there meant mailing the customer twice.
+//
+// The 30-minute default is not arbitrary either. pg-boss expires an in-flight
+// job after 900s (its default, which ensureQueue does not override), so a job
+// genuinely still working is resolved one way or another well inside this
+// window. Anything older with attempts=0 was never picked up at all. The
+// claim in deliverEmail is the real correctness guarantee; this threshold only
+// keeps the sweep from doing pointless work.
+export async function sweepPendingDeliveries(olderThanSeconds = 1800): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanSeconds * 1000);
 
   const stranded = await prisma.notificationDelivery.findMany({
     where: {
       status: "pending",
-      channel: "EMAIL",
+      // N1.7.2 — IN_APP included. It was EMAIL-only, which left an in-app row
+      // whose inline delivery threw stuck in `pending` with no recovery path
+      // at all: the DISPATCH retry short-circuits on the event's status, so
+      // nothing was ever coming back for it.
+      channel: { in: ["EMAIL", "IN_APP"] },
       attempts: 0,
       createdAt: { lt: cutoff },
     },
-    select: { id: true },
+    select: { id: true, channel: true },
     take: 100,
   });
 
   for (const delivery of stranded) {
+    if (delivery.channel === "IN_APP") {
+      // Local write, same as the dispatcher does — no queue hop worth its
+      // latency, and deliverInApp is itself a no-op on a non-pending row.
+      try {
+        await deliverInApp(delivery.id);
+      } catch (error) {
+        console.error(`[notify] sweep could not deliver in-app ${delivery.id}`, error);
+      }
+      continue;
+    }
+
     await enqueue(NOTIFY_QUEUES.EMAIL, { deliveryId: delivery.id });
   }
 
@@ -221,16 +272,33 @@ export async function recordDeadLetter(payload: unknown): Promise<void> {
     });
     if (updated.count > 0) {
       console.error(`[notify] delivery ${data.deliveryId} failed permanently (dead-lettered)`);
+      // H1 — this delivery will never be retried, so if it was the last one
+      // holding the event open, the raw token must go now. Without this a
+      // permanently failed send kept the plaintext forever.
+      const delivery = await prisma.notificationDelivery.findUnique({
+        where: { id: data.deliveryId },
+        select: { eventId: true },
+      });
+      if (delivery) await redactEventContextIfSettled(delivery.eventId);
     }
     return;
   }
 
   if (typeof data.eventId === "number") {
-    await prisma.notificationEvent.updateMany({
-      where: { id: data.eventId, status: { not: "failed" } },
+    // N1.7.2 — `pending` only. The previous guard was `status: { not: "failed" }`,
+    // which happily overwrote `fanned_out` — the SUCCESS terminal state for an
+    // event. A dispatch job that dead-lettered for an unrelated reason (a
+    // persistently throwing in-app delivery, say) would then mark an event
+    // `failed` whose emails had already gone out, permanently misreporting a
+    // successful send as a failure in the support record.
+    const updated = await prisma.notificationEvent.updateMany({
+      where: { id: data.eventId, status: "pending" },
       data: { status: "failed" },
     });
-    console.error(`[notify] event ${data.eventId} failed permanently (dead-lettered)`);
+    if (updated.count > 0) {
+      console.error(`[notify] event ${data.eventId} failed permanently (dead-lettered)`);
+      await redactEventContextIfSettled(data.eventId);
+    }
     return;
   }
 
