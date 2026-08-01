@@ -1,0 +1,44 @@
+{
+  "common": {
+    "footerTagline": "Axeriva — Munkaerő-menedzsment terepszolgáltató vállalkozásoknak",
+    "linkFallback": "Ha a gomb nem működik, másold be ezt a linket a böngésződbe:",
+    "greeting": "Szia!"
+  },
+  "auth": {
+    "welcome": {
+      "subject": "Üdvözlünk az Axerivában",
+      "intro": "Üdvözlünk az Axerivában!",
+      "body": "A(z) {{companyName}} fiókja elkészült. Mostantól hozzáadhatsz munkatársakat, létrehozhatsz projekteket, és beoszthatod a műszakokat.",
+      "help": "Segítség kell az induláshoz? Válaszolj erre az e-mailre."
+    },
+    "verifyEmail": {
+      "subject": "Erősítsd meg az e-mail-címed az Axerivához",
+      "intro": "Köszönjük, hogy regisztráltál az Axerivába!",
+      "body": "Kérjük, erősítsd meg az e-mail-címed a fiók beállításának befejezéséhez.",
+      "cta": "E-mail megerősítése",
+      "expiry": "A link {{hours}} óra múlva lejár. Ha nem te hoztál létre Axeriva-fiókot, nyugodtan hagyd figyelmen kívül ezt az e-mailt."
+    },
+    "passwordReset": {
+      "subject": "Axeriva jelszó visszaállítása",
+      "body": "Kérést kaptunk az Axeriva-jelszavad visszaállítására.",
+      "cta": "Jelszó visszaállítása",
+      "ignore": "Ha nem te kérted, nyugodtan hagyd figyelmen kívül ezt az e-mailt — a jelszavad nem változik meg."
+    }
+  },
+  "employees": {
+    "invitation": {
+      "subject": "Meghívtak a(z) {{companyName}} csapatába az Axerivában",
+      "body": "Meghívtak a(z) {{companyName}} csapatába az Axerivában. Kattints az alábbi gombra a jelszavad beállításához és a fiókod aktiválásához.",
+      "cta": "Meghívó elfogadása",
+      "expiry": "A link {{days}} nap múlva lejár. Ha nem számítottál erre a meghívóra, nyugodtan hagyd figyelmen kívül ezt az e-mailt."
+    }
+  },
+  "billing": {
+    "subscriptionConfirmed": {
+      "subject": "A(z) {{planName}} előfizetésed aktív",
+      "intro": "Köszönjük az előfizetést!",
+      "body": "A(z) {{companyName}} mostantól a(z) {{planName}} csomagot használja. Teljes hozzáférésed van a munkatársakhoz, projektekhez, beosztáshoz és munkaidő-nyilvántartáshoz.",
+      "manage": "Az előfizetésedet bármikor kezelheted vagy lemondhatod az Axeriva Előfizetés oldalán."
+    }
+  }
+}

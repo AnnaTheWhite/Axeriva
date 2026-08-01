@@ -6,7 +6,11 @@
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // N1.2 — the i18n catalogs are JSON, mirroring the frontend's
+    // en.json/hu.json convention so a string can move between the two engines
+    // unchanged. tsc copies imported JSON into dist/ alongside the emitted JS.
+    "resolveJsonModule": true
   },
   "include": ["src"],
   // The integration suite is run by Vitest (which type-checks and transpiles
