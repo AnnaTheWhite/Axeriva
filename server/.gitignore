@@ -11,6 +11,9 @@ dist
 
 .env.local
 tsconfig.tsbuildinfo
+
+# Rendered email previews (npm run emails:preview) — build output, not source.
+/.email-preview
 prisma/axeriva.db
 
 # Legacy: the integration suite used a throwaway SQLite file before the

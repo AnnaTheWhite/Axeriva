@@ -1,0 +1,147 @@
+import fs from "fs";
+import path from "path";
+import { NOTIFICATION_LOCALES, type NotificationLocale } from "../constants/notifications";
+import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../constants/tokenTtl";
+import type { RenderedEmail } from "../emails/render";
+import { welcomeEmailTemplate } from "../emails/templates/auth/WelcomeEmail";
+import { verificationEmailTemplate } from "../emails/templates/auth/VerificationEmail";
+import { passwordResetEmailTemplate } from "../emails/templates/auth/PasswordResetEmail";
+import { invitationEmailTemplate } from "../emails/templates/employees/InvitationEmail";
+import { subscriptionConfirmedEmailTemplate } from "../emails/templates/billing/SubscriptionConfirmedEmail";
+
+// N1.3 — renders every email to disk so it can be opened in a browser and
+// checked visually (layout, dark mode, Hungarian typography) without sending
+// anything. Output goes to server/.email-preview/, which is gitignored.
+//
+//   npm run emails:preview
+//
+// This does NOT replace testing in a real client: a browser is not Gmail, and
+// Gmail's colour inversion in particular cannot be reproduced here. Use
+// emails:test-send for that.
+
+const OUTPUT_DIR = path.resolve(__dirname, "../../.email-preview");
+
+// Deliberately awkward sample data: a Hungarian company name with accents and
+// a long plan name, because that is what breaks layouts.
+const SAMPLES = {
+  companyName: "Villanyszerelő és Karbantartó Kft.",
+  planName: "Professional",
+  inviteLink: "https://axeriva.com/invite/6f1c8b2e4a9d7c3f5e0b1a8d6c4f2e9b",
+  verifyLink: "https://axeriva.com/verify/6f1c8b2e4a9d7c3f5e0b1a8d6c4f2e9b",
+  resetLink: "https://axeriva.com/reset/6f1c8b2e4a9d7c3f5e0b1a8d6c4f2e9b",
+};
+
+type PreviewCase = {
+  id: string;
+  title: string;
+  render: (locale: NotificationLocale) => Promise<RenderedEmail>;
+};
+
+// The same five, in the same order as the milestone's exit checklist.
+export const PREVIEW_CASES: PreviewCase[] = [
+  {
+    id: "welcome",
+    title: "Welcome (registration)",
+    render: (locale) => welcomeEmailTemplate({ companyName: SAMPLES.companyName, locale }),
+  },
+  {
+    id: "verification",
+    title: "Email verification",
+    render: (locale) =>
+      verificationEmailTemplate({
+        verifyLink: SAMPLES.verifyLink,
+        expiryHours: VERIFICATION_TTL_HOURS,
+        locale,
+      }),
+  },
+  {
+    id: "password-reset",
+    title: "Password reset",
+    render: (locale) => passwordResetEmailTemplate({ resetLink: SAMPLES.resetLink, locale }),
+  },
+  {
+    id: "invitation",
+    title: "Employee invitation",
+    render: (locale) =>
+      invitationEmailTemplate({
+        companyName: SAMPLES.companyName,
+        inviteLink: SAMPLES.inviteLink,
+        expiryDays: INVITE_TTL_DAYS,
+        locale,
+      }),
+  },
+  {
+    id: "subscription-confirmed",
+    title: "Subscription confirmed",
+    render: (locale) =>
+      subscriptionConfirmedEmailTemplate({
+        companyName: SAMPLES.companyName,
+        planName: SAMPLES.planName,
+        locale,
+      }),
+  },
+];
+
+async function main() {
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  const rows: string[] = [];
+
+  for (const testCase of PREVIEW_CASES) {
+    for (const locale of NOTIFICATION_LOCALES) {
+      const { subject, html, text } = await testCase.render(locale);
+      const base = `${testCase.id}.${locale}`;
+
+      fs.writeFileSync(path.join(OUTPUT_DIR, `${base}.html`), html, "utf8");
+      // The plain-text part is written too: it is what a text-only client
+      // shows, and it is easy to forget it exists until it is empty.
+      fs.writeFileSync(path.join(OUTPUT_DIR, `${base}.txt`), text, "utf8");
+
+      rows.push(
+        `<tr><td>${escape(testCase.title)}</td><td><code>${locale}</code></td>` +
+          `<td>${escape(subject)}</td>` +
+          `<td><a href="${base}.html">HTML</a> · <a href="${base}.txt">text</a></td></tr>`
+      );
+      console.log(`  ${base.padEnd(32)} ${subject}`);
+    }
+  }
+
+  fs.writeFileSync(path.join(OUTPUT_DIR, "index.html"), indexPage(rows.join("\n")), "utf8");
+
+  console.log(`\nWrote ${PREVIEW_CASES.length * NOTIFICATION_LOCALES.length} previews to`);
+  console.log(`  ${OUTPUT_DIR}`);
+  console.log(`Open index.html and toggle your OS/browser dark mode to check both schemes.`);
+}
+
+function escape(value: string): string {
+  return value.replace(/[<>&]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+function indexPage(rows: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Axeriva email previews</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 32px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #8884; }
+  code { background: #8882; padding: 1px 5px; border-radius: 4px; }
+</style></head>
+<body>
+  <h1>Axeriva email previews</h1>
+  <p>Generated by <code>npm run emails:preview</code>. A browser is not an email
+  client — use these for layout and typography, and a real send for Gmail/Apple Mail.</p>
+  <table>
+    <thead><tr><th>Email</th><th>Locale</th><th>Subject</th><th>Files</th></tr></thead>
+    <tbody>
+${rows}
+    </tbody>
+  </table>
+</body></html>`;
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

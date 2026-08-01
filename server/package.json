@@ -7,6 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "seed:developer": "ts-node --transpile-only src/scripts/seedDeveloper.ts",
     "stripe:setup": "ts-node --transpile-only src/scripts/stripeSetup.ts",
+    "emails:preview": "ts-node --transpile-only src/scripts/emailPreview.ts",
+    "emails:test-send": "ts-node --transpile-only src/scripts/emailTestSend.ts",
     "build": "prisma generate && tsc",
     "start": "prisma migrate deploy && node dist/index.js",
     "test": "vitest run",

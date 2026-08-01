@@ -74,6 +74,8 @@ a mögötte lévő adat már valós.
 |---|---|
 | **Tartalom** | `tsconfig` `jsx: react-jsx`; `react`+`react-dom` szerver-dependency; `emails/components/` (BaseLayout, Header, Footer, CtaButton, InfoRow, theme); `render()`; a meglévő **5 email** átírása React Emailre **hu+en** nyelven, cég-brandinggel; a régi `templates/*.ts` törlése. |
 | **Kész, ha** | Mind az 5 email mindkét nyelven renderel; a plain-text változat minden esetben generálódik; a snapshot-tesztek rögzítik a HTML-t; a meglévő email-tesztek átírva zöldek; **kézi kliens-ellenőrzés** (Gmail + Apple Mail, világos/sötét). |
+| **Állapot (2026-08-01)** | **LEZÁRVA** — kód: `e22d6fa`, eszköztár: lásd lent. Az automatizált kritériumok teljesültek (297/297 teszt, mindkét build, `dist`-ből futtatott renderelés-ellenőrzés mind az 5 sablonra × 2 nyelv). **Egyetlen nyitott tétel: a valós kliensen végzett kézi ellenőrzés — ezt Anna végzi el**, `npm run emails:preview` (fájlba renderel, gitignore-olt) és `npm run emails:test-send -- <cím>` (valódi küldés a konfigurált Resend-fiókból) segítségével. Az eredmény ide jegyzendő fel. |
+| **Ismert korlát** | ⚠️ A mai CTA-gomb (fehér szöveg `#f97316`-on) **2,83:1 kontrasztarány = WCAG AA bukás** (sötét szöveggel 5,18:1 lenne). A migráció ezt **szándékosan nem javította** — a márka gombjának átszínezése design-döntés. Külön tételként eldöntendő. |
 | **Tesztek** | Snapshot mind az 5 × 2 nyelv; escape-teszt (a mai `escapeHtml`-teszt örököse); plain-text jelenléte. |
 | **Deploy** | Önmagában értékes: szebb, brandelt, kétnyelvű levelek. **Ez az első mérföldkő, amit a felhasználó észrevesz.** |
 | **Kockázat** | ⚠️ Közepes — build-lánc változás (JSX a CommonJS szerverben). Rollback: a commit revertje. |
