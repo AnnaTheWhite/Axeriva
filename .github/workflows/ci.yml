@@ -24,10 +24,13 @@ permissions:
   contents: read
 
 env:
-  # server/package.json and the root both declare engines.node ">=20"; 22 is
-  # the current LTS satisfying that. Pinned rather than "latest" so a new
-  # Node release can never turn a green pipeline red without a commit.
-  NODE_VERSION: '22'
+  # server/package.json and the root both declare engines.node ">=22.12".
+  # That floor is not cosmetic: pg-boss 12 (N1.4) is an ESM-only package and
+  # the server is CommonJS, so it can only be required through Node's
+  # require(esm) support, which landed in 22.12. Pinned to a minor rather than
+  # "22" so a runner resolving 22.11 can never produce an ERR_REQUIRE_ESM
+  # failure that looks like a code bug.
+  NODE_VERSION: '22.12'
 
 jobs:
   backend:

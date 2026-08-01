@@ -176,6 +176,40 @@ export const config = {
     fromEmail: readEnv("RESEND_FROM_EMAIL") ?? "Axeriva <onboarding@resend.dev>",
   },
 
+  // N1.4 — the durable job queue (pg-boss). No new service and no new
+  // credential: it runs inside the same Postgres, in its own schema. Values
+  // are set explicitly rather than inherited from pg-boss's defaults, because
+  // every one of them has a reason.
+  queue: {
+    // pg-boss owns this schema; Prisma owns `public`. Kept apart so the two
+    // migration systems can never see each other's tables.
+    schema: "pgboss",
+    // pg-boss opens its own small pool (Prisma 6 exposes none to share). Two
+    // connections is enough for one polling worker plus maintenance, and the
+    // production database is a Basic-256mb instance where the budget is real.
+    maxConnections: 2,
+    // The default is 2s — ~43k idle fetch queries per day per queue. Email
+    // tolerates latency, so 10s cuts that fivefold. Tests poll fast because
+    // they cannot afford to wait (0.5s is pg-boss's documented minimum).
+    pollingIntervalSeconds: isTest ? 0.5 : 10,
+    // Parallel handlers per process. Resend allows 10 requests/second and the
+    // expected volume is a small fraction of that, so extra concurrency buys
+    // nothing and only widens the blast radius of a bad job.
+    concurrency: 2,
+    // Retry span must stay well inside 24 hours: that is when the Resend
+    // idempotency key which makes a retried send safe expires. Exponential
+    // from 1s, capped at 1h, 5 attempts — worst case a few hours.
+    retryLimit: 5,
+    retryDelaySeconds: 1,
+    retryDelayMaxSeconds: 60 * 60,
+    // Slash-namespaced: pg-boss v12 rejects colons in queue names.
+    deadLetterQueue: "notify/dlq",
+    // How long a graceful shutdown waits for in-flight handlers. Render sends
+    // SIGTERM and then SIGKILL, so an unbounded wait would simply be killed —
+    // with the job's state less clear than if we had stopped ourselves.
+    shutdownTimeoutMs: 15_000,
+  },
+
   // Used only by scripts/seedDeveloper.ts (CLI args take precedence).
   developerEmail: readEnv("DEVELOPER_EMAIL") ?? null,
   developerPassword: readEnv("DEVELOPER_PASSWORD") ?? null,

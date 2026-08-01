@@ -28,6 +28,9 @@ import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import accessRoutes from "./routes/access.routes";
 import employeeAccessRoutes from "./routes/employeeAccess.routes";
 import { stripeErrorHandler } from "./services/stripe/stripeErrors";
+// Importing this must NOT construct pg-boss — services/queue is
+// side-effect-free by design, precisely so app.ts stays mountable in tests.
+import { queueStatus } from "./services/queue";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { blockWritesWhenReadOnly } from "./middleware/readOnly.middleware";
 import { UPLOAD_ROOT } from "./middleware/upload.middleware";
@@ -147,6 +150,21 @@ app.get("/health", (_req, res) => {
     environment: config.nodeEnv,
     version: config.version,
     uptime: `${Math.round(process.uptime())}s`,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// N1.4 — queue liveness, kept OUT of /health on purpose: that probe is the
+// platform's, must stay DB-free, and must not start failing deploys over a
+// background subsystem. This one is deliberately thin — whether the queue is
+// up, and since when. Depths and failure counts are admin surface (N1.10),
+// not something a public endpoint should publish, since they leak business
+// volume. Reading the status touches no database.
+app.get("/health/workers", (_req, res) => {
+  const status = queueStatus();
+  res.status(status.started ? 200 : 503).json({
+    status: status.started ? "ok" : "stopped",
+    startedAt: status.startedAt,
     timestamp: new Date().toISOString(),
   });
 });

@@ -87,8 +87,13 @@ a mentési terv ellenőrizhetetlen; lásd [backup-restore.md](backup-restore.md)
 
 1. Render Dashboard → **New → Web Service**, kösd be a GitHub repót.
 2. **Root Directory**: `server`
-3. **Runtime**: Node (a `server/package.json` `engines` mezője Node ≥20-at
+3. **Runtime**: Node (a `server/package.json` `engines` mezője Node **≥22.12**-t
    ír elő — Render ezt tiszteletben tartja).
+   ⚠️ **N1.4 óta ez kemény követelmény, nem ajánlás.** A pg-boss 12 ESM-only
+   csomag, a szerver viszont CommonJS — csak a Node `require(esm)` támogatásán
+   át tölthető be, ami **22.12-ben** jelent meg. Régebbi futtatókörnyezetben az
+   indulás `ERR_REQUIRE_ESM`-mel bukik. Ha a Render nem az `engines` szerint
+   választ, állítsd be explicit `NODE_VERSION=22.12` (vagy újabb) env-változót.
 4. **Build Command**: `npm install && npm run build`
    (a `build` script: `prisma generate && tsc` — lásd
    [server/package.json](../server/package.json))
@@ -97,7 +102,11 @@ a mentési terv ellenőrizhetetlen; lásd [backup-restore.md](backup-restore.md)
    automatikusan alkalmazza az új migrációkat, majd indít)
 6. **Health Check Path**: `/health`
    (autentikáció és DB-hozzáférés nélküli végpont, pontosan erre való —
-   lásd [runtime.md](runtime.md))
+   lásd [runtime.md](runtime.md)).
+   ⚠️ **Ne** a `/health/workers`-t add meg health-checknek: az a job-queue
+   állapotát jelenti (N1.4), és 503-at ad, ha a queue leállt — egy háttér-
+   alrendszer hibája nem dönthet el egy deployt. A `/health/workers` a
+   monitoringé, nem a platform-próbáé.
 7. **Add a Disk** (a service Settings → Disks):
    - **Mount path: `/var/data`** (ez az ajánlott érték, a lenti env varok
      erre épülnek)

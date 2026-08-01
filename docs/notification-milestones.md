@@ -91,6 +91,9 @@ a mögötte lévő adat már valós.
 | **Deploy** | ⚠️ **Node-bump miatt koordinált**: Render `NODE_VERSION` **a push előtt**. Új séma a DB-ben, de üres. |
 | **Kockázat** | ⚠️ Közepes-magas — ez érinti a process életciklusát. Rollback: revert + a `pgboss` séma marad (ártalmatlan). |
 | **Függ** | N1.1 |
+| **Állapot (2026-08-01)** | **KÉSZ.** 306/306 teszt (9 új queue-teszt), mindkét build, Prisma drift-ellenőrzés a `pgboss` séma jelenlétében is tiszta. Az `index.ts` életciklusát (queue-indítás a listen ELŐTT, SIGTERM-drain sorrendje, tiszta kilépés) valós, lefordított processzen ellenőriztem — ezt egyetlen teszt sem fedi, mert a suite az `app.ts`-t mountolja. |
+| **Eltérések a tervtől** | (1) **Nem** a meglévő poolt adjuk át a `db` opcióval: a Prisma 6 nem tesz elérhetővé `pg.Pool`-t, a `$queryRawUnsafe`-en át shimmelés pedig a Prisma típus-marshallingját (BigInt, Date) tenné a queue saját SQL-je alá. pg-boss saját, szándékosan pici poolt nyit (`max: 2`). (2) **Séma-migráció önkiszolgáló** (`migrate: true`, alapértelmezés), nem CLI-lépés: a start command bővítése minden bootnál extra CLI-hívás és egy új env-változó lenne, cserébe olyan kontrollért, ami több instance-nál vagy korlátozott DB-usernél számít — itt egyik sem áll fenn. |
+| **Talált probléma** | ⚠️ A pg-boss v12 **elutasítja a kettőspontot** a sornevekben (csak alfanumerikus, `_`, `-`, `.`, `/`). Az eredetileg tervezett `notify:email` séma nem működött volna — a névtér `/`-re váltott (`notify/dlq`). Ezt az első teszt fogta meg; production-ban az első `createQueue` hívásnál bukott volna. |
 
 ### N1.5 — Notification core (a mag)  🟡 *az 5 email átáll a pipeline-ra*
 
