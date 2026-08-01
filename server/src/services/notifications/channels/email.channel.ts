@@ -1,7 +1,9 @@
 import prisma from "../../../database/prisma";
 import { emailService } from "../../email";
+import type { EmailContext, EmailSendResult } from "../../email/EmailService";
 import type { NotificationLocale } from "../../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../../constants/tokenTtl";
+import { redactEventContextIfSettled } from "../notify";
 import { isNotificationType } from "../registry";
 
 // N1.5 — turns one NotificationDelivery row into a sent email.
@@ -43,7 +45,15 @@ export async function deliverEmail(deliveryId: number): Promise<void> {
   const locale = delivery.locale as NotificationLocale;
 
   try {
-    await send(delivery.event.type, delivery.recipientAddress, locale, context);
+    // N1.7.1 — the key is derived from the DELIVERY id, which is exactly the
+    // unit pg-boss retries: the same row retried an hour later presents the
+    // same key, so Resend returns the original message instead of sending a
+    // second copy. Deriving it from the event id instead would be wrong — one
+    // event fans out to many recipients, and they must not deduplicate against
+    // each other.
+    const result = await send(delivery.event.type, delivery.recipientAddress, locale, context, {
+      idempotencyKey: `notif-delivery-${deliveryId}`,
+    });
 
     await prisma.notificationDelivery.update({
       where: { id: deliveryId },
@@ -52,8 +62,16 @@ export async function deliverEmail(deliveryId: number): Promise<void> {
         sentAt: new Date(),
         attempts: { increment: 1 },
         lastError: null,
+        // THE join key for every provider webhook (N1.6). Until N1.7.1 this
+        // was never written, so every delivery event arrived unmatched and no
+        // row could ever reach delivered/bounced/complained.
+        providerMessageId: result.messageId,
       },
     });
+
+    // H1 — the send is done, so a raw reset/verify/invite link in the event
+    // context has served its purpose and must not outlive it. See notify.ts.
+    await redactEventContextIfSettled(delivery.eventId);
   } catch (error) {
     // Record the attempt before rethrowing, so a job that eventually
     // dead-letters leaves a readable trail rather than just disappearing.
@@ -74,32 +92,43 @@ async function send(
   type: string,
   to: string,
   locale: NotificationLocale,
-  context: DeliveryContext
-): Promise<void> {
+  context: DeliveryContext,
+  options: { idempotencyKey: string }
+): Promise<EmailSendResult> {
   if (!isNotificationType(type)) {
     throw new Error(`unknown notification type: ${type}`);
   }
 
+  const emailContext: EmailContext = { locale, idempotencyKey: options.idempotencyKey };
+
   switch (type) {
     case "auth.welcome":
-      return emailService.sendWelcomeEmail(to, requireString(context, "companyName"), { locale });
+      return emailService.sendWelcomeEmail(
+        to,
+        requireString(context, "companyName"),
+        emailContext
+      );
 
     case "auth.verify_email":
-      return emailService.sendVerificationEmail(to, requireString(context, "verifyLink"), {
-        locale,
-      });
+      return emailService.sendVerificationEmail(
+        to,
+        requireString(context, "verifyLink"),
+        emailContext
+      );
 
     case "auth.password_reset":
-      return emailService.sendPasswordResetEmail(to, requireString(context, "resetLink"), {
-        locale,
-      });
+      return emailService.sendPasswordResetEmail(
+        to,
+        requireString(context, "resetLink"),
+        emailContext
+      );
 
     case "employees.invitation":
       return emailService.sendInvitationEmail(
         to,
         requireString(context, "inviteLink"),
         requireString(context, "companyName"),
-        { locale }
+        emailContext
       );
 
     case "billing.subscription_created":
@@ -107,9 +136,20 @@ async function send(
         to,
         requireString(context, "companyName"),
         requireString(context, "planName"),
-        { locale }
+        emailContext
       );
   }
+
+  // N1.7.1 — exhaustiveness guard. The switch above returns for every member of
+  // NotificationTypeKey, so this line is unreachable TODAY and TypeScript
+  // proves it: `type` narrows to never. The moment a registry entry adds EMAIL
+  // to its channels without a case here, that proof fails at compile time
+  // instead of the delivery being silently marked "sent" with nothing sent.
+  return assertNoEmailTemplate(type);
+}
+
+function assertNoEmailTemplate(type: never): never {
+  throw new Error(`notification type has an EMAIL channel but no template: ${String(type)}`);
 }
 
 // Exported for the tests that assert the TTL constants reach the templates

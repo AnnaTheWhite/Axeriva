@@ -1,5 +1,6 @@
 import prisma from "../../database/prisma";
 import type { DeliveryStatus, SuppressionReason } from "../../constants/notifications";
+import { maskEmail } from "../../utils/maskEmail";
 
 // N1.6 — what a provider delivery event does to our state.
 //
@@ -120,7 +121,9 @@ export async function recordDeliveryEvent(
         },
         update: {},
       });
-      console.warn(`[notify] suppressed ${address} (${suppressionReason})`);
+      // maskEmail: the module's stated rule is that addresses never reach the
+      // logs in the clear (plan §15). This line was the one place breaking it.
+      console.warn(`[notify] suppressed ${maskEmail(address)} (${suppressionReason})`);
     }
   }
 

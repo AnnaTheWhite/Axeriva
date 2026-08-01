@@ -6,6 +6,7 @@ import { createRateLimiter } from "../middleware/rateLimit.middleware";
 import { RATE_LIMITS } from "../constants/rateLimits";
 import { ROLES } from "../constants/roles";
 import { companyScope } from "../utils/scope";
+import { maskEmail } from "../utils/maskEmail";
 import {
   PreferenceValidationError,
   parsePreferenceUpdates,
@@ -266,5 +267,58 @@ router.put(
     return res.json(await resolvePreferences(companyId, req.user!.userId));
   }
 );
+
+// ---------------------------------------------------------------------------
+// Suppression list (operator surface)
+// ---------------------------------------------------------------------------
+
+// N1.7.1 (H2) — the recovery path the suppression list never had.
+//
+// Until now EmailSuppression was write-only: the webhook inserted rows and the
+// gate read them, and nothing anywhere could remove one. A hard bounce caused
+// by a temporary DNS failure, or a customer who once clicked "spam" on a
+// digest, blocked that address permanently with no route back short of manual
+// SQL against production.
+//
+// DEVELOPER-only, and deliberately audited: removing a suppression is a
+// decision to resume mailing an address that a provider told us not to mail,
+// and that has consequences for every tenant's deliverability, not just the
+// one asking. This is a small forward slice of the admin surface the plan puts
+// at N1.10; it moves under /admin/notifications when that lands.
+router.delete(
+  "/suppressions/:email",
+  requireRole(ROLES.DEVELOPER),
+  async (req, res) => {
+    const email = String(req.params.email).trim().toLowerCase();
+
+    const removed = await prisma.emailSuppression.deleteMany({ where: { email } });
+
+    if (removed.count === 0) {
+      return res.status(404).json({ error: "Suppression not found" });
+    }
+
+    // maskEmail, not the raw address: this log line is the audit trail, and the
+    // module's own rule is that addresses never reach the logs in the clear.
+    console.warn(
+      `[notify] suppression removed for ${maskEmail(email)} by user ${req.user!.userId}`
+    );
+
+    return res.json({ removed: removed.count });
+  }
+);
+
+// Operator visibility for the same list — you cannot sensibly un-suppress an
+// address you have no way to discover.
+router.get("/suppressions", requireRole(ROLES.DEVELOPER), async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+  const suppressions = await prisma.emailSuppression.findMany({
+    select: { id: true, email: true, reason: true, companyId: true, createdAt: true },
+    orderBy: { id: "desc" },
+    take: limit,
+  });
+
+  return res.json({ suppressions });
+});
 
 export default router;

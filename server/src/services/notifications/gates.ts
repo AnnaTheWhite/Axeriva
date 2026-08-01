@@ -57,10 +57,39 @@ export async function evaluateGates({
 
   if (channel === "EMAIL") {
     const suppressed = await prisma.emailSuppression.findUnique({ where: { email } });
-    if (suppressed) return { allowed: false, reason: "suppression_list" };
+    if (suppressed && !survivesSuppression(definition, suppressed.reason)) {
+      return { allowed: false, reason: "suppression_list" };
+    }
   }
 
   return ALLOWED;
+}
+
+// N1.7.1 (H2) — the one exception to the suppression list, and it exists to
+// stop a spam click from becoming a permanent account lockout.
+//
+// The list is global, permanent and had no removal path at all: two references
+// in the whole codebase, an upsert and this lookup. Combined with the rule that
+// suppression outranks `mandatory`, a single "mark as spam" on any Axeriva mail
+// meant that address could never receive a password reset again — the user was
+// locked out of their account with no route back that did not involve
+// hand-written SQL.
+//
+// The distinction that resolves it is the REASON, not the category alone:
+//
+//   bounced    — the mailbox does not exist. Keep blocking: sending cannot
+//                reach them, and repeatedly mailing a dead address is exactly
+//                what wrecks a domain's reputation for every other tenant.
+//   complained — the mailbox exists and the person is reading it. Blocking
+//                buys reputation protection on bulk mail, but a password reset
+//                is user-initiated, expected, and arrives seconds after they
+//                asked for it. Refusing that one is a lockout, not hygiene.
+//
+// So: security-category mandatory mail survives a `complained` suppression and
+// nothing else does. Marketing, digests and billing receipts stay blocked
+// under both reasons, which is where the reputation risk actually lives.
+function survivesSuppression(definition: NotificationTypeDefinition, reason: string): boolean {
+  return definition.mandatory && definition.category === "security" && reason === "complained";
 }
 
 async function evaluateCompanyToggles(

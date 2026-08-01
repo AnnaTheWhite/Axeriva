@@ -57,3 +57,65 @@ export async function notify(input: NotifyInput): Promise<void> {
     console.error(`[notify] failed to record ${input.type}`, error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sensitive context (N1.7.1 — H1)
+// ---------------------------------------------------------------------------
+
+// Context keys that carry a single-use credential in the clear.
+//
+// The repo hashes these tokens at rest — `User.passwordResetToken`,
+// `User.emailVerificationToken` and `Invitation.token` all store
+// hashToken(...) so a database read cannot yield a usable token (K2.1.4). But
+// the outbox needs the RENDERED LINK to survive until the worker runs, so the
+// raw token was being written straight into NotificationEvent.context, a plain
+// text column sitting one table away from the hash that was protecting it.
+// That silently undid K2.1.4 for every token type, and the rows outlived the
+// send indefinitely — with N1.10 planning a support-facing event viewer over
+// exactly this table.
+//
+// The token cannot be removed from the context outright: an outbox by
+// definition renders later than it decides, and the hash cannot be reversed to
+// rebuild the link. What it CAN be is short-lived. Redaction runs the moment
+// the last delivery for the event settles, which reduces the exposure from
+// "forever" to "the seconds the job spends in the queue".
+//
+// Residual risk, stated plainly: a dump taken inside that window still catches
+// the plaintext, and an event whose deliveries never settle keeps it. Closing
+// that completely needs the context encrypted at rest with the
+// NOTIFICATION_TOKEN_SECRET the plan already anticipates (§15) — a larger
+// change than this milestone, and tracked as such.
+export const SENSITIVE_CONTEXT_KEYS = ["resetLink", "verifyLink", "inviteLink"] as const;
+
+// Drops the sensitive keys once no delivery for this event is still pending.
+// Never throws: this is hygiene running at the tail of a successful send, and
+// failing it must not fail the send or trigger a retry that re-sends the mail.
+export async function redactEventContextIfSettled(eventId: number): Promise<void> {
+  try {
+    const stillWorking = await prisma.notificationDelivery.count({
+      where: { eventId, status: "pending" },
+    });
+    if (stillWorking > 0) return;
+
+    const event = await prisma.notificationEvent.findUnique({
+      where: { id: eventId },
+      select: { context: true },
+    });
+    if (!event?.context) return;
+
+    const context = JSON.parse(event.context) as Record<string, unknown>;
+    const present = SENSITIVE_CONTEXT_KEYS.filter((key) => key in context);
+    if (present.length === 0) return;
+
+    for (const key of present) delete context[key];
+
+    await prisma.notificationEvent.update({
+      where: { id: eventId },
+      data: { context: JSON.stringify(context) },
+    });
+  } catch (error) {
+    // Loud, because a silent failure here means a live token is still sitting
+    // in the table and nobody knows.
+    console.error(`[notify] failed to redact context for event ${eventId}`, error);
+  }
+}

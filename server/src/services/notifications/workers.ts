@@ -1,7 +1,13 @@
+import { config } from "../../config";
 import { ensureQueue, registerWorker } from "../queue";
 import { requireBoss } from "../queue/boss";
 import { deliverEmail } from "./channels/email.channel";
-import { dispatchEvent, sweepPendingEvents } from "./dispatcher";
+import {
+  dispatchEvent,
+  recordDeadLetter,
+  sweepPendingDeliveries,
+  sweepPendingEvents,
+} from "./dispatcher";
 import { NOTIFY_QUEUES } from "./queues";
 
 // N1.5 — wires the notification queues to their handlers. Called once per
@@ -35,6 +41,19 @@ export async function registerNotificationWorkers(): Promise<void> {
 
   await registerWorker(NOTIFY_QUEUES.SWEEP, async () => {
     await sweepPendingEvents();
+    // N1.7.1 — same run, one level down: deliveries that committed but whose
+    // enqueue never landed. Sequential on purpose; the first sweep can create
+    // work the second would otherwise only see a minute later.
+    await sweepPendingDeliveries();
+  });
+
+  // N1.7.1 (H5) — the dead-letter queue has existed since N1.4 and had no
+  // consumer, so an exhausted retry budget left the delivery sitting in
+  // `pending` indefinitely with nothing to distinguish it from a job still
+  // waiting its turn. This gives every permanently failed job a terminal state
+  // and a log line loud enough to alert on.
+  await registerWorker<Record<string, unknown>>(config.queue.deadLetterQueue, async (payload) => {
+    await recordDeadLetter(payload);
   });
 
   // Every minute is the finest granularity pg-boss's 5-field cron allows, and
@@ -42,5 +61,5 @@ export async function registerNotificationWorkers(): Promise<void> {
   // outbox INSERT and its enqueue, which the age filter already delays past.
   await requireBoss().schedule(NOTIFY_QUEUES.SWEEP, "* * * * *");
 
-  console.log("[notify] workers registered (dispatch, email, sweep)");
+  console.log("[notify] workers registered (dispatch, email, sweep, dead-letter)");
 }

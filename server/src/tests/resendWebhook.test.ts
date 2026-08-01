@@ -250,7 +250,14 @@ describe("suppression", () => {
     const { evaluateGates } = await import("../services/notifications/gates");
     const decision = await evaluateGates({
       definition: {
-        category: "security",
+        // N1.7.1: `billing`, not `security`. Both are mandatory categories, so
+        // this still proves the original point — a mandatory type does not
+        // bypass the suppression list — but it stays clear of the one narrow
+        // exemption added in N1.7.1, where security mail survives a
+        // `complained` suppression so a spam click cannot lock a user out of
+        // password resets. That exemption has its own tests, both directions,
+        // in notificationPipeline.test.ts.
+        category: "billing",
         severity: "info",
         mandatory: true,
         recipients: "EMAIL",
