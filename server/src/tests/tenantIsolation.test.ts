@@ -371,6 +371,122 @@ describe("owner notes are private to their tenant", () => {
   });
 });
 
+describe("notifications are private to their recipient", () => {
+  // N1.7. The feed is scoped one level TIGHTER than every other router here:
+  // by user, not by company. A colleague inside the same tenant must not see
+  // these rows either — covered in notificationApi.test.ts. What this file
+  // pins is the tenant boundary itself.
+  async function seedNotification(companyId: number, userId: number, title: string) {
+    const event = await prisma.notificationEvent.create({
+      data: { type: "billing.subscription_created", companyId, context: "{}" },
+    });
+
+    return prisma.notification.create({
+      data: {
+        eventId: event.id,
+        companyId,
+        userId,
+        type: "billing.subscription_created",
+        severity: "info",
+        title,
+        body: "confidential",
+      },
+    });
+  }
+
+  it("GET /notifications never returns another tenant's notifications", async () => {
+    const a = await createTenant();
+    const b = await createTenant();
+    await seedNotification(b.company.id, b.owner.id, "B secret");
+
+    const res = await request(app).get("/notifications").set(authHeader(a.token));
+
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("B secret");
+  });
+
+  it("GET /notifications/unread-count never counts another tenant's rows", async () => {
+    const a = await createTenant();
+    const b = await createTenant();
+    await seedNotification(b.company.id, b.owner.id, "B secret");
+
+    const res = await request(app)
+      .get("/notifications/unread-count")
+      .set(authHeader(a.token));
+
+    expect(res.body).toEqual({ unread: 0 });
+  });
+
+  it("POST /notifications/:id/read cannot mark another tenant's notification", async () => {
+    const a = await createTenant();
+    const b = await createTenant();
+    const theirs = await seedNotification(b.company.id, b.owner.id, "B secret");
+
+    const res = await request(app)
+      .post(`/notifications/${theirs.id}/read`)
+      .set(authHeader(a.token));
+
+    expect(res.status).toBe(404);
+    const after = await prisma.notification.findUnique({ where: { id: theirs.id } });
+    expect(after!.readAt).toBeNull();
+  });
+
+  it("POST /notifications/read-all cannot clear another tenant's badge", async () => {
+    const a = await createTenant();
+    const b = await createTenant();
+    const theirs = await seedNotification(b.company.id, b.owner.id, "B secret");
+
+    await request(app).post("/notifications/read-all").set(authHeader(a.token));
+
+    const after = await prisma.notification.findUnique({ where: { id: theirs.id } });
+    expect(after!.readAt).toBeNull();
+  });
+
+  it("GET /notifications/preferences ignores a companyId aimed at another tenant", async () => {
+    const a = await createTenant();
+    const b = await createTenant();
+    await prisma.notificationPreference.create({
+      data: {
+        companyId: b.company.id,
+        userId: null,
+        category: "projects",
+        channel: "EMAIL",
+        enabled: false,
+      },
+    });
+
+    const res = await request(app)
+      .get(`/notifications/preferences?companyId=${b.company.id}`)
+      .set(authHeader(a.token));
+
+    expect(res.status).toBe(200);
+    // A's own company has no rows, so B's "off" must not show through.
+    const projects = res.body.categories.find(
+      (c: { category: string }) => c.category === "projects"
+    );
+    expect(projects.channels.EMAIL.company).toBeNull();
+    expect(projects.channels.EMAIL.effective).toBe(true);
+  });
+
+  it("PUT /notifications/preferences/defaults cannot write into another tenant", async () => {
+    const a = await createTenant();
+    const b = await createTenant();
+
+    const res = await request(app)
+      .put(`/notifications/preferences/defaults?companyId=${b.company.id}`)
+      .set(authHeader(a.token))
+      .send({ preferences: [{ category: "projects", channel: "EMAIL", enabled: false }] });
+
+    expect(res.status).toBe(200);
+    expect(
+      await prisma.notificationPreference.count({ where: { companyId: b.company.id } })
+    ).toBe(0);
+    expect(
+      await prisma.notificationPreference.count({ where: { companyId: a.company.id } })
+    ).toBe(1);
+  });
+});
+
 describe("role boundaries", () => {
   it("an EMPLOYEE cannot create a project", async () => {
     const a = await createTenant();

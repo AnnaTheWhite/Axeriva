@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTranslation } from "../i18n";
 import LanguageSwitcher from "./LanguageSwitcher";
+import NotificationBell from "./notifications/NotificationBell";
 
 type TopbarProps = {
   onMenuClick: () => void;
@@ -62,6 +63,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             {user.email}
           </span>
         )}
+
+        {/* N1.7 — same h-9 square footprint as the LanguageSwitcher trigger,
+            so the control row keeps one baseline. Rendered for every signed-in
+            role: a DEVELOPER has no company and simply sees an empty feed. */}
+        <NotificationBell />
 
         <LanguageSwitcher />
 

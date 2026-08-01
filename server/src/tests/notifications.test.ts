@@ -342,6 +342,68 @@ describe("gates — the Company toggles finally do something", () => {
     expect(decision).toEqual({ allowed: false, reason: "user_preference" });
   });
 
+  it("keeps an opt-in category silent until someone opts in", async () => {
+    // N1.7 regression. gates.ts documented a registry default from N1.5 —
+    // "categories that are opt-in default to off" — but the code returned
+    // ALLOWED whenever no preference row existed, for every category. Nothing
+    // shipped in `digest` or `marketing` yet, so the bug was unreachable; the
+    // first digest type (N1.9) would have mailed everyone who had never been
+    // asked, and for `marketing` that is a consent failure, not a preference.
+    const tenant = await createTenant();
+    const { evaluateGates } = await import("../services/notifications/gates");
+
+    const base = {
+      definition: {
+        category: "marketing" as const,
+        severity: "info" as const,
+        mandatory: false,
+        recipients: "OWNER" as const,
+        channels: ["EMAIL" as const],
+      },
+      channel: "EMAIL" as const,
+      companyId: tenant.company.id,
+      userId: tenant.owner.id,
+      email: tenant.owner.email,
+    };
+
+    expect(await evaluateGates(base)).toEqual({ allowed: false, reason: "not_opted_in" });
+
+    // And the opposite: an explicit yes is honoured.
+    await prisma.notificationPreference.create({
+      data: {
+        companyId: tenant.company.id,
+        userId: tenant.owner.id,
+        category: "marketing",
+        channel: "EMAIL",
+        enabled: true,
+      },
+    });
+
+    expect(await evaluateGates(base)).toEqual({ allowed: true });
+  });
+
+  it("still defaults a normal category ON with no rows at all", async () => {
+    // The other half of the same fix: only OPT_IN_CATEGORIES flip to off.
+    const tenant = await createTenant();
+    const { evaluateGates } = await import("../services/notifications/gates");
+
+    const decision = await evaluateGates({
+      definition: {
+        category: "projects",
+        severity: "info",
+        mandatory: false,
+        recipients: "OWNER",
+        channels: ["EMAIL"],
+      },
+      channel: "EMAIL",
+      companyId: tenant.company.id,
+      userId: tenant.owner.id,
+      email: tenant.owner.email,
+    });
+
+    expect(decision).toEqual({ allowed: true });
+  });
+
   it("lets a user override the company default back ON", async () => {
     const tenant = await createTenant();
     const { evaluateGates } = await import("../services/notifications/gates");

@@ -1,7 +1,8 @@
 import prisma from "../../database/prisma";
-import type {
-  DeliverySuppressionReason,
-  NotificationChannel,
+import {
+  defaultEnabledForCategory,
+  type DeliverySuppressionReason,
+  type NotificationChannel,
 } from "../../constants/notifications";
 import type { NotificationTypeDefinition } from "./registry";
 
@@ -119,12 +120,31 @@ async function evaluatePreference(
   });
 
   // findFirst on a NULL-able unique cannot be trusted to return the user row
-  // first, so pick explicitly.
+  // first, so pick explicitly. The company-default rows are additionally
+  // ordered by id: the composite unique does NOT cover them (PostgreSQL treats
+  // NULLs as distinct — the N1.1 known limitation), so more than one can exist,
+  // and "which one wins" must not depend on the planner's mood. Oldest wins,
+  // and preferences.ts collapses duplicates on every write.
   const userRow = userId === null ? undefined : rows.find((row) => row.userId === userId);
-  const companyRow = rows.find((row) => row.userId === null);
+  const companyRow = rows
+    .filter((row) => row.userId === null)
+    .sort((a, b) => a.id - b.id)[0];
   const effective = userRow ?? companyRow;
 
-  if (effective && !effective.enabled) {
+  // No row at any level: the registry decides. This branch was documented from
+  // N1.5 but not implemented — the code returned ALLOWED unconditionally, so an
+  // opt-in category would have sent on first use with nobody having opted in.
+  // Unreachable until now (no shipped type is in `digest` or `marketing`), and
+  // fixed here because N1.7 publishes this default through the preference API:
+  // a screen that says "Marketing: off" while the gate says "send" is worse
+  // than either behaviour on its own.
+  if (!effective) {
+    return defaultEnabledForCategory(definition.category)
+      ? ALLOWED
+      : { allowed: false, reason: "not_opted_in" };
+  }
+
+  if (!effective.enabled) {
     return {
       allowed: false,
       reason: userRow ? "user_preference" : "company_channel_off",

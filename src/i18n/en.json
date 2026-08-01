@@ -488,6 +488,77 @@
     "bannerCta": "Go to Billing",
     "tooltip": "Upgrade your subscription to continue."
   },
+  "notifications": {
+    "title": "Notifications",
+    "bellLabel": "Notifications",
+    "bellLabelWithCount": "Notifications, {{count}} unread",
+    "markAllRead": "Mark all as read",
+    "emptyTitle": "You're all caught up",
+    "emptyDescription": "New notifications will show up here.",
+    "loadMore": "Load more",
+    "unreadLabel": "Unread",
+    "channels": {
+      "EMAIL": "Email",
+      "IN_APP": "In-app"
+    },
+    "categories": {
+      "security": {
+        "title": "Security",
+        "description": "Sign-in, password and account access notices."
+      },
+      "billing": {
+        "title": "Billing",
+        "description": "Trial, payment and subscription changes."
+      },
+      "billing_receipts": {
+        "title": "Payment receipts",
+        "description": "Confirmations for successful payments and invoices."
+      },
+      "projects": {
+        "title": "Projects",
+        "description": "Assignments and deadlines that concern you."
+      },
+      "employees": {
+        "title": "Team",
+        "description": "Invitations accepted and new team members."
+      },
+      "digest": {
+        "title": "Weekly digest",
+        "description": "One summary email per week instead of individual messages."
+      },
+      "marketing": {
+        "title": "Product news",
+        "description": "New features and product announcements. Off unless you opt in."
+      }
+    },
+    "preferences": {
+      "title": "Notification preferences",
+      "description": "Choose what you get notified about, and where. Your own setting wins over the company default; the company default wins over ours.",
+      "scope": {
+        "user": "My preferences",
+        "company": "Company default"
+      },
+      "scopeHint": {
+        "user": "Applies to you only. Leave a switch on \"Default\" to follow the company setting.",
+        "company": "Applies to everyone in the company who hasn't set their own preference."
+      },
+      "companyOffWarning": "Notifications are switched off for the whole company in Preferences above, so nothing is sent except security and critical billing notices.",
+      "alwaysOn": "Always on",
+      "mandatoryHint": "Security and critical billing notices can't be switched off — missing one would lock you out of your account or your subscription.",
+      "on": "On",
+      "off": "Off",
+      "inheritOn": "Default (on)",
+      "inheritOff": "Default (off)",
+      "blocked": {
+        "company_notifications_off": "blocked company-wide",
+        "company_channel_off": "email disabled company-wide"
+      },
+      "saved": "Saved.",
+      "saveFailed": "Failed to save your notification preferences.",
+      "loadFailed": "Failed to load your notification preferences.",
+      "noChanges": "Nothing to save."
+    }
+  },
   "subscription": {
     "title": "Billing Settings",
     "subtitle": "Manage your Axeriva plan, usage and billing information.",

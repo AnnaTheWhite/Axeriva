@@ -46,4 +46,12 @@ export const RATE_LIMITS = {
   // /account/delete does, so it is the same password oracle for a stolen
   // JWT (B2). Same reasoning, same shape: per-user key, tight ceiling.
   COMPANY_ARCHIVE: { windowMs: HOUR_MS, max: 5 },
+
+  // N1.7 — the notification preference writes (plan §15). Keyed per USER, not
+  // per IP: this is authenticated self-service, and the thing being bounded is
+  // one account rewriting its preference matrix in a loop, not a shared office
+  // NAT. Generous enough that a human toggling switches never notices — each
+  // save carries the whole changed set, so a busy session is a handful of
+  // requests, not one per checkbox.
+  NOTIFICATION_PREFS: { windowMs: HOUR_MS, max: 60 },
 } as const;

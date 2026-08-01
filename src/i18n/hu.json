@@ -488,6 +488,77 @@
     "bannerCta": "Ugrás a számlázáshoz",
     "tooltip": "Válts magasabb csomagra a folytatáshoz."
   },
+  "notifications": {
+    "title": "Értesítések",
+    "bellLabel": "Értesítések",
+    "bellLabelWithCount": "Értesítések, {{count}} olvasatlan",
+    "markAllRead": "Összes megjelölése olvasottként",
+    "emptyTitle": "Nincs új értesítés",
+    "emptyDescription": "Az új értesítések itt jelennek meg.",
+    "loadMore": "Továbbiak betöltése",
+    "unreadLabel": "Olvasatlan",
+    "channels": {
+      "EMAIL": "E-mail",
+      "IN_APP": "Alkalmazáson belül"
+    },
+    "categories": {
+      "security": {
+        "title": "Biztonság",
+        "description": "Belépéssel, jelszóval és fiókhozzáféréssel kapcsolatos értesítések."
+      },
+      "billing": {
+        "title": "Számlázás",
+        "description": "Próbaidőszak, fizetés és előfizetés-változások."
+      },
+      "billing_receipts": {
+        "title": "Fizetési visszaigazolások",
+        "description": "Visszaigazolás sikeres fizetésekről és számlákról."
+      },
+      "projects": {
+        "title": "Projektek",
+        "description": "Az Önt érintő hozzárendelések és határidők."
+      },
+      "employees": {
+        "title": "Csapat",
+        "description": "Elfogadott meghívók és új munkatársak."
+      },
+      "digest": {
+        "title": "Heti összefoglaló",
+        "description": "Egyetlen összefoglaló levél hetente az egyedi üzenetek helyett."
+      },
+      "marketing": {
+        "title": "Termékhírek",
+        "description": "Új funkciók és termékbejelentések. Alapértelmezetten kikapcsolva."
+      }
+    },
+    "preferences": {
+      "title": "Értesítési beállítások",
+      "description": "Válassza ki, miről és hol kapjon értesítést. A saját beállítása felülírja a cég alapértelmezését, a cég alapértelmezése pedig a miénket.",
+      "scope": {
+        "user": "Saját beállításaim",
+        "company": "Cég alapértelmezése"
+      },
+      "scopeHint": {
+        "user": "Csak Önre vonatkozik. Hagyja „Alapértelmezett” állásban, ha a cég beállítását szeretné követni.",
+        "company": "Mindenkire vonatkozik a cégnél, aki nem állított be sajátot."
+      },
+      "companyOffWarning": "Az értesítések a fenti Beállítások és alapértelmezések résznél az egész cégre ki vannak kapcsolva, így a biztonsági és a kritikus számlázási értesítéseken kívül semmi nem megy ki.",
+      "alwaysOn": "Mindig aktív",
+      "mandatoryHint": "A biztonsági és a kritikus számlázási értesítések nem kapcsolhatók ki — egy elmaradt üzenet a fiókjából vagy az előfizetéséből zárná ki.",
+      "on": "Be",
+      "off": "Ki",
+      "inheritOn": "Alapértelmezett (be)",
+      "inheritOff": "Alapértelmezett (ki)",
+      "blocked": {
+        "company_notifications_off": "cégszinten letiltva",
+        "company_channel_off": "az e-mail cégszinten kikapcsolva"
+      },
+      "saved": "Mentve.",
+      "saveFailed": "Az értesítési beállítások mentése sikertelen.",
+      "loadFailed": "Az értesítési beállítások betöltése sikertelen.",
+      "noChanges": "Nincs mentendő változás."
+    }
+  },
   "subscription": {
     "title": "Számlázási beállítások",
     "subtitle": "Kezelje az Axeriva csomagját, használatát és számlázási adatait.",

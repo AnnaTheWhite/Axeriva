@@ -20,6 +20,12 @@ export function isNotificationChannel(value: unknown): value is NotificationChan
   return typeof value === "string" && (NOTIFICATION_CHANNELS as readonly string[]).includes(value);
 }
 
+// N1.7 — the channels the preference API accepts. PUSH and SMS are part of the
+// column vocabulary above but have no transport behind them, so a preference
+// row for either would be a switch wired to nothing: the user flips it, saves,
+// and it changes no outcome. Widen this the day a channel ships, not before.
+export const CONFIGURABLE_CHANNELS: readonly NotificationChannel[] = ["EMAIL", "IN_APP"];
+
 // --- Categories ------------------------------------------------------------
 // What a user can switch on/off. `mandatory` categories are refused by the
 // preference API: security notices and critical billing warnings must reach
@@ -56,6 +62,22 @@ export const CONFIGURABLE_CATEGORIES: readonly NotificationCategory[] =
   NOTIFICATION_CATEGORIES.filter(
     (category) => category !== "ops" && !MANDATORY_CATEGORIES.includes(category)
   );
+
+// Categories a tenant user SEES on the preference screen: the configurable
+// ones plus the mandatory ones, which are shown locked-on rather than hidden.
+// Hiding them would make the screen a lie — the user would conclude they had
+// switched off everything and still receive security and billing mail.
+export const VISIBLE_CATEGORIES: readonly NotificationCategory[] =
+  NOTIFICATION_CATEGORIES.filter((category) => category !== "ops");
+
+// What applies when NO preference row exists at either level — the third and
+// last step of the resolution chain (plan §7.1). Opt-in categories are off
+// until someone says yes; for `marketing` that is a legal requirement, not a
+// product choice. Exported so the gate that suppresses a send and the API that
+// tells the user what will happen cannot answer this question differently.
+export function defaultEnabledForCategory(category: NotificationCategory): boolean {
+  return !OPT_IN_CATEGORIES.includes(category);
+}
 
 // --- Severity --------------------------------------------------------------
 // Mirrors the four levels the billing UX spec already defined (§13), so the
@@ -94,6 +116,11 @@ export const DELIVERY_SUPPRESSION_REASONS = [
   "company_channel_off",
   // NotificationPreference said no.
   "user_preference",
+  // No preference row anywhere and the category is opt-in (digest, marketing):
+  // silence is a "no", not a "yes". Distinct from "user_preference" on purpose
+  // — support must be able to tell "they turned it off" from "they were never
+  // asked", and for `marketing` that distinction is the consent record.
+  "not_opted_in",
   // Address is on the EmailSuppression list (hard bounce / spam complaint).
   "suppression_list",
   // Recipient could not be resolved, is inactive, or is a deleted-account

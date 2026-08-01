@@ -4,6 +4,7 @@ import CompanyProfileSection from "../components/company/CompanyProfileSection";
 import BrandingSection from "../components/company/BrandingSection";
 import LocalizationSection from "../components/company/LocalizationSection";
 import PreferencesSection from "../components/company/PreferencesSection";
+import NotificationPreferencesSection from "../components/notifications/NotificationPreferencesSection";
 import { useIsOwner } from "../hooks/useIsOwner";
 import { useTranslation } from "../i18n";
 
@@ -28,6 +29,11 @@ export default function SettingsPage() {
       <BrandingSection />
       <LocalizationSection />
       <PreferencesSection />
+      {/* N1.7 — per-category preferences, one level below the three company
+          switches in PreferencesSection above. Deliberately visible to
+          EMPLOYEE too, and editable by them: level 3 of the model exists
+          precisely because a mixed team is not one preference. */}
+      <NotificationPreferencesSection />
 
       {isOwner && <DangerZoneSection />}
     </div>

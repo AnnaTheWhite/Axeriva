@@ -28,6 +28,7 @@ import ownerNotesRoutes from "./routes/ownerNotes.routes";
 import accessRoutes from "./routes/access.routes";
 import employeeAccessRoutes from "./routes/employeeAccess.routes";
 import resendWebhookRoutes from "./routes/resendWebhook.routes";
+import notificationsRoutes from "./routes/notifications.routes";
 import { stripeErrorHandler } from "./services/stripe/stripeErrors";
 // Importing this must NOT construct pg-boss — services/queue is
 // side-effect-free by design, precisely so app.ts stays mountable in tests.
@@ -221,6 +222,16 @@ app.use("/access", authMiddleware, accessRoutes);
 // stays writable so an owner can upgrade/resume out of read-only.
 app.use("/company/archive", authMiddleware, companyArchiveRoutes);
 app.use("/company", tenantWrite, companyRoutes);
+// N1.7 — the bell feed and notification preferences. Deliberately WITHOUT
+// tenantWrite, on the same grounds as /subscription and /account: marking a
+// notification read is per-user UI state, not tenant data, and a read-only
+// company is exactly the one whose owner has "your trial ended" notices to
+// clear. The single tenant-scoped write in that router (the company-wide
+// preference default) carries blockWritesWhenReadOnly inline instead.
+//
+// Mounted AFTER the raw-body Resend webhook above, which owns the more
+// specific /notifications/webhook/resend path and answers it first.
+app.use("/notifications", authMiddleware, notificationsRoutes);
 app.use("/projects", tenantWrite, projectActivityRoutes);
 app.use("/attachments", tenantWrite, attachmentsRoutes);
 app.use("/owner-notes", tenantWrite, ownerNotesRoutes);
