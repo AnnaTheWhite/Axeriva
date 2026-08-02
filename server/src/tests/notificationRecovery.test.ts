@@ -61,13 +61,16 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
       .filter(([, d]) => (d.channels as readonly string[]).includes("EMAIL"))
       .map(([key]) => key);
 
-    // Five today; the assertion exists so ADDING one is a deliberate act that
-    // updates this list and the switch together.
+    // The assertion exists so ADDING one is a deliberate act that updates this
+    // list and the switch together — and it did its job on N1.8 Slice 1, which
+    // is why billing.subscription_renewed is here. Six today; N1.8 takes it to
+    // sixteen, one slice at a time.
     expect(emailTypes.sort()).toEqual([
       "auth.password_reset",
       "auth.verify_email",
       "auth.welcome",
       "billing.subscription_created",
+      "billing.subscription_renewed",
       "employees.invitation",
     ]);
   });

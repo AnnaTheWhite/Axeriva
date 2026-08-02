@@ -1,5 +1,10 @@
 import { Resend } from "resend";
-import type { EmailContext, EmailSendResult, EmailService } from "./EmailService";
+import type {
+  EmailContext,
+  EmailSendResult,
+  EmailService,
+  SubscriptionRenewedEmailPayload,
+} from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../constants/tokenTtl";
 import { invitationEmailTemplate } from "../../emails/templates/employees/InvitationEmail";
@@ -7,6 +12,7 @@ import { welcomeEmailTemplate } from "../../emails/templates/auth/WelcomeEmail";
 import { passwordResetEmailTemplate } from "../../emails/templates/auth/PasswordResetEmail";
 import { verificationEmailTemplate } from "../../emails/templates/auth/VerificationEmail";
 import { subscriptionConfirmedEmailTemplate } from "../../emails/templates/billing/SubscriptionConfirmedEmail";
+import { subscriptionRenewedEmailTemplate } from "../../emails/templates/billing/SubscriptionRenewedEmail";
 
 // N1.3 — the templates moved to React Email (src/emails/), so the imports
 // changed and the template calls became async. The transport itself is
@@ -81,6 +87,21 @@ export class ResendEmailService implements EmailService {
     const { subject, html, text } = await subscriptionConfirmedEmailTemplate({
       companyName,
       planName,
+      ...resolveContext(context),
+    });
+    return this.send(to, subject, html, text, context);
+  }
+
+  // N1.8 Slice 1 — one payload object rather than a widening positional list.
+  // The five methods above grew a parameter per migration; twelve billing
+  // templates down that road would be unreadable at the call site.
+  async sendSubscriptionRenewedEmail(
+    to: string,
+    data: SubscriptionRenewedEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    const { subject, html, text } = await subscriptionRenewedEmailTemplate({
+      ...data,
       ...resolveContext(context),
     });
     return this.send(to, subject, html, text, context);

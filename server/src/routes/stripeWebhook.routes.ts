@@ -9,6 +9,9 @@ import {
   reconcileCheckoutCompletion,
 } from "../services/stripe/syncSubscription";
 import { notify } from "../services/notifications/notify";
+import { resolveLocale } from "../i18n";
+import { formatDate, formatMoney } from "../utils/billingFormat";
+import { planDisplayName } from "../constants/plans";
 import { config } from "../config";
 
 const router = Router();
@@ -34,10 +37,16 @@ async function resolveCompanyId(
 
 // Design C idempotency ledger (AC16). Only the handled event types are
 // recorded — unhandled ones are pure acks, nothing to protect.
+// Membership here is what turns on replay protection: the wasEventProcessed
+// gate below only runs for types in this Set. Adding a `case` without adding
+// the type here produces a handler with NO idempotency at all — silently. So
+// the Set is extended in the same commit as the handler, never after it.
 const HANDLED_EVENTS = new Set([
   "checkout.session.completed",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  // N1.8 Slice 1.
+  "invoice.paid",
 ]);
 
 async function wasEventProcessed(eventId: string): Promise<boolean> {
@@ -221,6 +230,76 @@ router.post("/", async (req, res) => {
       }
 
       await markEventProcessed(event.id, event.type);
+      break;
+    }
+
+    // N1.8 Slice 1 — the renewal receipt.
+    //
+    // NO STALE GUARD, deliberately. The guard on customer.subscription.updated
+    // above is subscription-shaped: it re-fetches current state from Stripe
+    // because a late update could otherwise overwrite newer state. An invoice
+    // event overwrites nothing — the payload IS the fact, complete in itself,
+    // and a late one describes a payment that really did happen. Recording that
+    // absence here so it reads as a decision rather than an omission.
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+
+      // K1 — billing_reason is what stops one payment producing two emails.
+      // `subscription_create` is the FIRST payment, which checkout.session
+      // .completed already acknowledged above; sending here as well would mean
+      // a customer gets both "welcome" and "renewed" for the same charge.
+      // Other reasons (manual, subscription_update, …) are Slice 2's.
+      if (invoice.billing_reason !== "subscription_cycle") {
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const companyId = await resolveCompanyId(
+        undefined,
+        typeof invoice.customer === "string" ? invoice.customer : null
+      );
+
+      // An invoice for a customer we cannot place is not an error — it is not
+      // ours. Acknowledged and dropped, as agreed, rather than retried forever.
+      if (!companyId) {
+        console.warn(`[stripe webhook] invoice.paid for unknown customer, dropping ${invoice.id}`);
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const company = await prisma.company.findUnique({ where: { id: companyId } });
+
+      await markEventProcessed(event.id, event.type);
+
+      if (company) {
+        const locale = resolveLocale({ companyLanguage: company.language });
+        const timeZone = company.timezone;
+
+        // Formatting happens HERE, not in the template — see
+        // utils/billingFormat.ts. The template receives finished strings.
+        await notify({
+          type: "billing.subscription_renewed",
+          companyId,
+          // K1/decision 1: keyed on the INVOICE id. A Stripe redelivery of this
+          // event collides and is suppressed; next month's invoice is a
+          // different id and sends. Deliberately not the event id, which would
+          // let two different events about the SAME invoice both send.
+          dedupeKey: `billing.subscription_renewed/${invoice.id}`,
+          context: {
+            companyName: company.name,
+            planName: planDisplayName(company.plan),
+            amountFormatted: formatMoney({
+              amountMinor: invoice.amount_paid,
+              currency: invoice.currency,
+              locale,
+            }),
+            periodStartFormatted: formatDate({ value: invoice.period_start, locale, timeZone }),
+            periodEndFormatted: formatDate({ value: invoice.period_end, locale, timeZone }),
+            ...(invoice.hosted_invoice_url ? { invoiceUrl: invoice.hosted_invoice_url } : {}),
+          },
+        });
+      }
+
       break;
     }
 

@@ -161,6 +161,24 @@ async function send(
         requireString(context, "planName"),
         emailContext
       );
+
+    // N1.8 Slice 1. Every field is required except the invoice URL, which
+    // Stripe genuinely types as nullable — requireString would turn a missing
+    // hosted-invoice link into a permanently dead-lettered receipt, which is a
+    // worse outcome than a receipt with no button.
+    case "billing.subscription_renewed":
+      return emailService.sendSubscriptionRenewedEmail(
+        to,
+        {
+          companyName: requireString(context, "companyName"),
+          planName: requireString(context, "planName"),
+          amountFormatted: requireString(context, "amountFormatted"),
+          periodStartFormatted: requireString(context, "periodStartFormatted"),
+          periodEndFormatted: requireString(context, "periodEndFormatted"),
+          invoiceUrl: typeof context.invoiceUrl === "string" ? context.invoiceUrl : null,
+        },
+        emailContext
+      );
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of

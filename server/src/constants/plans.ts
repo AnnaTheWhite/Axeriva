@@ -50,3 +50,28 @@ export const LEGACY_PLAN_MAP: Readonly<Record<string, PlanId>> = Object.freeze({
 // away when the migration rewrites these rows. See
 // docs/subscription-system-design.md §16.4.
 export const LEGACY_UNLIMITED_PLANS: readonly string[] = Object.freeze(["pro"]);
+
+// N1.8 — the customer-facing name of a plan.
+//
+// Twelve billing emails all name the plan the customer is on, and the internal
+// ids ("professional") are not what a receipt should say. Until now the one
+// billing email did this inline with a ternary that only special-cased "pro";
+// every other plan reached the customer lowercase.
+//
+// Falls back to the raw value rather than throwing: an unrecognised plan in a
+// receipt is untidy, but refusing to render the receipt over it is worse.
+const PLAN_DISPLAY_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  starter: "Starter",
+  professional: "Professional",
+  business: "Business",
+  enterprise: "Enterprise",
+  founder: "Founder",
+  // The legacy id (see LEGACY_PLAN_MAP) — its customers still see the name
+  // they bought.
+  pro: "Axeriva Pro",
+});
+
+export function planDisplayName(plan: string | null | undefined): string {
+  if (!plan) return "—";
+  return PLAN_DISPLAY_NAMES[plan] ?? plan;
+}

@@ -104,6 +104,22 @@ export const NOTIFICATION_TYPES = {
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },
+  // N1.8 Slice 1 — the renewal receipt. `invoice.paid` with
+  // billing_reason = subscription_cycle; the other billing_reasons route
+  // elsewhere or nowhere (K1), so one payment never produces two emails.
+  "billing.subscription_renewed": {
+    // `billing_receipts`, NOT `billing`: a monthly "we charged you again"
+    // receipt is exactly the kind of message Q2 says a customer may switch off.
+    // The critical billing messages (payment failed, subscription ended) are
+    // the ones that stay mandatory.
+    category: "billing_receipts",
+    severity: "success",
+    mandatory: false,
+    recipients: "OWNER",
+    // EMAIL only, deliberately. An in-app entry every billing cycle is noise in
+    // the bell — the receipt belongs in an inbox, where invoices are kept.
+    channels: ["EMAIL"],
+  },
   "billing.subscription_created": {
     category: "billing",
     severity: "success",

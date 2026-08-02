@@ -1,5 +1,10 @@
 import crypto from "crypto";
-import type { EmailContext, EmailSendResult, EmailService } from "./EmailService";
+import type {
+  EmailContext,
+  EmailSendResult,
+  EmailService,
+  SubscriptionRenewedEmailPayload,
+} from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 
 // Logs instead of sending a real email. Used automatically whenever
@@ -77,6 +82,19 @@ export class MockEmailService implements EmailService {
   ): Promise<EmailSendResult> {
     console.log(
       `[MockEmailService] Subscription confirmed for ${to} ("${companyName}", ${planName}) [${locale(context)}]`
+    );
+    return result(context);
+  }
+
+  async sendSubscriptionRenewedEmail(
+    to: string,
+    data: SubscriptionRenewedEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    // The amount is logged because it is the value most worth eyeballing in a
+    // dev run — a missing divide-by-100 is obvious here and nowhere else.
+    console.log(
+      `[MockEmailService] Subscription renewed for ${to} ("${data.companyName}", ${data.planName}, ${data.amountFormatted}) [${locale(context)}]`
     );
     return result(context);
   }

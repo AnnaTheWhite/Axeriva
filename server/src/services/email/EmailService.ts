@@ -76,4 +76,27 @@ export interface EmailService {
     planName: string,
     context?: EmailContext
   ): Promise<EmailSendResult>;
+
+  // N1.8 Slice 1. Takes a single already-formatted payload rather than a
+  // widening positional list: the five pre-N1.8 methods grew positional
+  // parameters one migration at a time, and twelve billing templates down that
+  // road would be unreadable at the call site. The shape is the contract from
+  // emails/billingTypes.ts, so the trigger and the template cannot drift.
+  sendSubscriptionRenewedEmail(
+    to: string,
+    data: SubscriptionRenewedEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult>;
 }
+
+// Every money and date field is a STRING that has already been through
+// utils/billingFormat. See emails/billingTypes.ts for why formatting lives in
+// the trigger and never in the template.
+export type SubscriptionRenewedEmailPayload = {
+  companyName: string;
+  planName: string;
+  amountFormatted: string;
+  periodStartFormatted: string;
+  periodEndFormatted: string;
+  invoiceUrl?: string | null;
+};
