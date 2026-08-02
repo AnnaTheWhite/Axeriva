@@ -50,8 +50,31 @@ export async function notify(input: NotifyInput): Promise<void> {
     // workers) picks it up — that ordering is the whole point of an outbox.
     await enqueue(NOTIFY_QUEUES.DISPATCH, { eventId: event.id });
   } catch (error) {
-    // A duplicate dedupeKey is the mechanism working, not a failure.
+    // A duplicate dedupeKey is the mechanism working, not a failure — so this
+    // stays a silent success as far as the CALLER is concerned.
+    //
+    // N1.8 Fázis 0: but it no longer passes without a trace. Until now a
+    // collision returned with no log at all, which made the two possible
+    // meanings indistinguishable from outside:
+    //
+    //   (a) Stripe redelivered an event → suppressing the second send is
+    //       exactly right, and
+    //   (b) the dedupeKey is too BROAD → a notification that should have gone
+    //       out was silently dropped.
+    //
+    // (b) is invisible by construction: no error, no row, no email, and the
+    // customer simply never hears about their second failed payment. N1.8
+    // multiplies the exposure — twelve new types, each with a hand-built key,
+    // several keyed on Stripe object ids rather than event ids. One log line
+    // is what makes a suspected miss diagnosable instead of theoretical.
+    //
+    // WARN, not ERROR: in steady state these are legitimate redeliveries and
+    // must not page anyone. The dedupeKey is included because it IS the
+    // diagnosis — it says which discriminator collided.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      console.warn(
+        `[notify] ${input.type} suppressed as a duplicate (dedupeKey: ${input.dedupeKey ?? "none"})`
+      );
       return;
     }
     console.error(`[notify] failed to record ${input.type}`, error);
