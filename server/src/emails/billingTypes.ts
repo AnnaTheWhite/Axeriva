@@ -18,10 +18,30 @@ import type { EmailBranding } from "./components/theme";
 //    names, portal URLs we build ourselves), so an SDK-shaped contract would be
 //    a lie about where the data comes from.
 //
-// EVERY MONEY AND DATE FIELD IS ALREADY A FORMATTED STRING. Formatting happens
-// in the trigger via utils/billingFormat.ts, never in the template — a template
-// snapshot containing an Intl call would depend on the runner's ICU version.
-// The naming makes that non-negotiable: `amountFormatted`, not `amount`.
+// EVERY MONEY AND DATE FIELD IS ALREADY A FORMATTED STRING by the time a
+// TEMPLATE sees it. A template snapshot containing an Intl call would depend on
+// the runner's ICU version, so templates stay pure. The naming makes that
+// non-negotiable: `amountFormatted`, not `amount`.
+//
+// ⚠️ WHERE that formatting happens changed in N1.8 Slice 1 review. It was the
+// trigger; it is now the email CHANNEL, and the difference is not stylistic.
+//
+// A notification has no single locale. The trigger knows only the COMPANY
+// language; the recipient's own `User.language` overrides it, and that override
+// is resolved later, per recipient, by the dispatcher (recipients.ts). Anything
+// the trigger formats is therefore formatted in the wrong language for any user
+// whose preference differs from their company's — producing an email whose body
+// is Hungarian and whose amounts are English. Reported as "locale split-brain".
+//
+// So the split is:
+//   trigger  → writes RAW, locale-independent values into the event context
+//              (see the *NotificationContext types below)
+//   channel  → formats them with delivery.locale, the recipient's ACTUAL locale
+//   template → receives finished strings, exactly as before
+//
+// One event fanned out to two owners with different languages now produces two
+// correctly-localised emails from one context row, which the old design could
+// not express at all.
 
 // What every billing email carries.
 export type BillingEmailBase = {
@@ -88,6 +108,77 @@ export type SubscriptionLifecycleEmailData = {
   activeUntilFormatted?: string | null;
   portalUrl?: string | null;
 };
+
+// ---------------------------------------------------------------------------
+// Raw context — what a TRIGGER writes into NotificationEvent.context
+// ---------------------------------------------------------------------------
+
+// Locale-independent by construction: minor units and UNIX seconds, never
+// rendered text. This is the wire format between the webhook and the email
+// channel, and it is what makes one event serve recipients in two languages.
+//
+// `timeZone` travels with the data rather than being re-read at send time
+// because it is a property of the COMPANY being billed, not of the recipient —
+// an invoice period belongs to the tenant's calendar, and re-reading it in the
+// channel would mean a second query per delivery for a value that cannot change
+// between fan-out and send in any way that should alter a past invoice.
+export type InvoiceNotificationContext = {
+  companyName: string;
+  planName: string;
+  // Stripe minor units, exactly as reported (invoice.amount_paid).
+  amountMinor: number;
+  // ISO 4217, any case.
+  currency: string;
+  // UNIX SECONDS, from the LINE ITEM's service period — not the invoice's
+  // period_start/period_end, which Stripe documents as the invoice-item
+  // association window rather than the service period. See the trigger.
+  periodStartAt: number;
+  periodEndAt: number;
+  timeZone?: string | null;
+  invoiceUrl?: string | null;
+};
+
+// Parses and validates the JSON-decoded context. The compiler cannot help here:
+// NotificationEvent.context is a string column, so everything arrives as
+// `unknown`. A trigger that forgets a field would otherwise surface as
+// `undefined` inside a customer's receipt.
+export function parseInvoiceNotificationContext(
+  context: Record<string, unknown>
+): InvoiceNotificationContext {
+  const str = (key: string): string => {
+    const value = context[key];
+    if (typeof value !== "string" || value.length === 0) {
+      throw new BillingContractError(`invoice context is missing "${key}"`);
+    }
+    return value;
+  };
+
+  const num = (key: string): number => {
+    const value = context[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new BillingContractError(
+        `invoice context "${key}" must be a finite number, got ${String(value)}`
+      );
+    }
+    return value;
+  };
+
+  return {
+    companyName: str("companyName"),
+    planName: str("planName"),
+    amountMinor: num("amountMinor"),
+    currency: str("currency"),
+    periodStartAt: num("periodStartAt"),
+    periodEndAt: num("periodEndAt"),
+    timeZone: typeof context.timeZone === "string" ? context.timeZone : null,
+    // Empty string is treated as absent: Stripe types the URL nullable, and a
+    // CTA pointing at "" renders a dead button rather than no button.
+    invoiceUrl:
+      typeof context.invoiceUrl === "string" && context.invoiceUrl.length > 0
+        ? context.invoiceUrl
+        : null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Runtime validation

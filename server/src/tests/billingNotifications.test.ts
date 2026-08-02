@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import Stripe from "stripe";
 import app from "../app";
@@ -6,6 +6,9 @@ import prisma from "../database/prisma";
 import { startQueue, stopQueue } from "../services/queue";
 import { dispatchEvent } from "../services/notifications/dispatcher";
 import { deliverEmail } from "../services/notifications/channels/email.channel";
+import { emailService } from "../services/email";
+import type { SubscriptionRenewedEmailPayload } from "../services/email/EmailService";
+import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { registerNotificationWorkers } from "../services/notifications/workers";
 import { createCompany, createUser } from "./helpers/factories";
 import { ROLES } from "../constants/roles";
@@ -35,8 +38,20 @@ import { ROLES } from "../constants/roles";
 const WEBHOOK_SECRET = "whsec_axeriva_integration_suite";
 const signer = new Stripe("sk_test_axeriva_integration_suite");
 
-const PERIOD_START = Math.floor(new Date("2026-09-01T00:00:00Z").getTime() / 1000);
-const PERIOD_END = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 1000);
+// THE INVOICE-LEVEL WINDOW — the cycle that just CLOSED. Stripe documents
+// period_start/period_end as "the earliest/latest timestamp at which invoice
+// items can be associated with this invoice", NOT the service period.
+const ASSOCIATION_START = Math.floor(new Date("2026-09-01T00:00:00Z").getTime() / 1000);
+const ASSOCIATION_END = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 1000);
+
+// THE SERVICE PERIOD — what the customer actually paid for, and what the
+// receipt must show. Deliberately a DIFFERENT month from the association
+// window: the first version of this fixture set the two to the same range, so
+// a receipt built from the wrong field was indistinguishable from a correct
+// one and the test asserted the developer's assumption rather than Stripe's
+// semantics. One month apart is what makes the two fields tell them apart.
+const SERVICE_START = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 1000);
+const SERVICE_END = Math.floor(new Date("2026-11-01T00:00:00Z").getTime() / 1000);
 
 function invoiceFixture(overrides: Record<string, unknown> = {}) {
   // Shaped from the installed SDK's Invoice type, not from memory. Amounts are
@@ -48,8 +63,21 @@ function invoiceFixture(overrides: Record<string, unknown> = {}) {
     billing_reason: "subscription_cycle",
     amount_paid: 2500,
     currency: "eur",
-    period_start: PERIOD_START,
-    period_end: PERIOD_END,
+    period_start: ASSOCIATION_START,
+    period_end: ASSOCIATION_END,
+    // Stripe puts the service period on the LINE ITEM. Omitting `lines` (as the
+    // original fixture did) makes a handler reading the wrong field look
+    // correct, because there is nothing to disagree with.
+    lines: {
+      object: "list",
+      data: [
+        {
+          id: "il_test_1",
+          object: "line_item",
+          period: { start: SERVICE_START, end: SERVICE_END },
+        },
+      ],
+    },
     hosted_invoice_url: "https://invoice.stripe.com/i/test",
     invoice_pdf: "https://invoice.stripe.com/i/test.pdf",
     ...overrides,
@@ -234,29 +262,90 @@ describe("Slice 1 — billing_reason routing (K1)", () => {
   });
 });
 
-describe("Slice 1 — formatting reaches the customer correctly", () => {
-  it("formats the amount from Stripe minor units, in the company's language", async () => {
+// Captures the payload the email channel hands the transport — i.e. what the
+// customer would actually read, after per-recipient locale resolution.
+async function deliveredPayload(): Promise<SubscriptionRenewedEmailPayload> {
+  const event = (await prisma.notificationEvent.findFirst({
+    where: { type: "billing.subscription_renewed" },
+  }))!;
+  await dispatchEvent(event.id);
+  const delivery = (await prisma.notificationDelivery.findFirst({
+    where: { eventId: event.id, channel: "EMAIL" },
+  }))!;
+
+  const spy = vi.spyOn(emailService, "sendSubscriptionRenewedEmail");
+  try {
+    await deliverEmail(delivery.id);
+    expect(spy).toHaveBeenCalledTimes(1);
+    return spy.mock.calls[0][1];
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+describe("Slice 1 — the receipt states the SERVICE period, not the association window", () => {
+  it("takes the billing period from the line item", async () => {
+    // P1. Stripe's invoice-level period_start/period_end is the invoice-item
+    // ASSOCIATION window — the cycle that just closed. Building the receipt
+    // from it told a customer billed in October that their billing period was
+    // September: one cycle stale on the document they keep for accounting, and
+    // a full year out on an annual plan.
+    await renewalTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+
+    const payload = await deliveredPayload();
+
+    // The SERVICE period (October), not the association window (September).
+    expect(payload.periodStartFormatted).toBe("1 October 2026");
+    expect(payload.periodEndFormatted).toBe("1 November 2026");
+  });
+
+  it("falls back to the invoice window when there is no line item", async () => {
+    // Defensive, and unreachable for subscription_cycle invoices — but a
+    // receipt that cannot render is worse than one with a coarser period.
+    await renewalTenant({ language: "en" });
+    await postWebhook(
+      stripeEvent("invoice.paid", invoiceFixture({ lines: { object: "list", data: [] } }))
+    );
+
+    const payload = await deliveredPayload();
+    expect(payload.periodStartFormatted).toBe("1 September 2026");
+  });
+});
+
+describe("Slice 1 — formatting follows the RECIPIENT, not the company", () => {
+  it("formats money and dates in the recipient's own language", async () => {
+    // P2, the locale split-brain. The owner reads Hungarian; the company is set
+    // to English. Formatting used to happen in the trigger, which only knows
+    // the COMPANY language — so the body rendered in Hungarian while the
+    // amounts and dates stayed English. The context now carries raw values and
+    // the channel formats with delivery.locale.
+    const { owner } = await renewalTenant({ language: "en" });
+    await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
+
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+    const payload = await deliveredPayload();
+
+    // Hungarian conventions throughout — comma decimal, trailing currency code,
+    // Hungarian month name. Under the old design these were "EUR 25.00" and
+    // "1 October 2026" inside a Hungarian email.
+    expect(payload.amountFormatted).toBe("25,00 EUR");
+    expect(payload.periodStartFormatted).toBe("2026. október 1.");
+  });
+
+  it("keeps the company language when the recipient has no preference", async () => {
     await renewalTenant({ language: "hu" });
 
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+    const payload = await deliveredPayload();
 
-    const event = await prisma.notificationEvent.findFirst({
-      where: { type: "billing.subscription_renewed" },
-    });
-    const context = JSON.parse(event!.context!);
-
-    // 2500 minor units = 25,00 EUR — not 2500. The NBSP is what ICU emits.
-    expect(context.amountFormatted).toBe("25,00 EUR");
-    expect(context.planName).toBe("Professional");
-    expect(context.periodStartFormatted).toBe("2026. szeptember 1.");
+    expect(payload.amountFormatted).toBe("25,00 EUR");
   });
 
-  it("renders dates in the company's timezone, which can change the DAY", async () => {
-    // period_end is 2026-10-01T00:00:00Z — which is already 02:00 on 1 October
-    // in Budapest, but 31 August/September boundaries are where this bites. Use
-    // a zone behind UTC so the date moves backwards.
-    await renewalTenant({ language: "en", timezone: "America/New_York" });
-
+  it("stores RAW values in the context, never rendered text", async () => {
+    // The property that makes one event serve two owners in two languages. If
+    // the trigger ever formats again, this fails.
+    await renewalTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
 
     const event = await prisma.notificationEvent.findFirst({
@@ -264,10 +353,99 @@ describe("Slice 1 — formatting reaches the customer correctly", () => {
     });
     const context = JSON.parse(event!.context!);
 
-    // Midnight UTC on 1 October is 20:00 on 30 September in New York.
-    expect(context.periodEndFormatted).toBe("30 September 2026");
+    expect(context.amountMinor).toBe(2500);
+    expect(context.currency).toBe("eur");
+    expect(context.periodStartAt).toBe(SERVICE_START);
+    expect(context).not.toHaveProperty("amountFormatted");
+    expect(context).not.toHaveProperty("periodStartFormatted");
+  });
+
+  it("converts Stripe minor units — 2500 is 25 euro, not 2500", async () => {
+    await renewalTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+
+    const payload = await deliveredPayload();
+    expect(payload.amountFormatted).toBe("€25.00");
+    expect(payload.planName).toBe("Professional");
+  });
+
+  it("renders dates in the company's timezone, which can change the DAY", async () => {
+    // The service period ends midnight UTC on 1 November — 20:00 on 31 October
+    // in New York.
+    await renewalTenant({ language: "en", timezone: "America/New_York" });
+
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+    const payload = await deliveredPayload();
+
+    expect(payload.periodEndFormatted).toBe("31 October 2026");
   });
 });
+
+describe("Slice 1 — no renewal notice for a dead subscription", () => {
+  it("stays silent when the subscription is no longer active", async () => {
+    // P3. A dunning-exhausted subscription is cancelled, but its invoice stays
+    // open and payable from the hosted link. Paying it later resurrects
+    // nothing — yet Stripe still emits invoice.paid with billing_reason
+    // subscription_cycle. Without this check the customer received "Acme is on
+    // the free plan for another billing period": the renewal claim false, and
+    // the plan name the literal string the cancellation path writes.
+    const { company } = await renewalTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "canceled", plan: "free" },
+    });
+
+    const res = await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+
+    expect(res.status).toBe(200);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.subscription_renewed" } })
+    ).toBe(0);
+    // Still ledgered, so Stripe does not retry it forever.
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("still sends for past_due — a failed renewal is a LIVE subscription", async () => {
+    // ACTIVE_SUBSCRIPTION_STATUSES includes past_due deliberately, and this
+    // branch only runs for a PAID invoice: the payment that clears the arrears
+    // must still be acknowledged.
+    const { company } = await renewalTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "past_due" },
+    });
+
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.subscription_renewed" } })
+    ).toBe(1);
+  });
+});
+
+describe("Slice 1 — the invoice link is optional", () => {
+  it("renders the receipt with no CTA when Stripe supplied no hosted URL", async () => {
+    await renewalTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture({ hosted_invoice_url: null })));
+
+    const payload = await deliveredPayload();
+    expect(payload.invoiceUrl).toBeNull();
+
+    // And the template survives it — no dead button, no broken markup.
+    const rendered = await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" });
+    expect(rendered.html).not.toContain('href=""');
+    expect(rendered.html).toContain("25.00");
+  });
+
+  it("treats an empty-string URL as absent", async () => {
+    await renewalTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture({ hosted_invoice_url: "" })));
+
+    const payload = await deliveredPayload();
+    expect(payload.invoiceUrl).toBeNull();
+  });
+});
+
 
 describe("Slice 1 — an invoice we cannot place", () => {
   it("acknowledges and drops an unknown Stripe customer", async () => {

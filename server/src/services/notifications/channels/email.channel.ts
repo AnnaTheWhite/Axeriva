@@ -3,6 +3,8 @@ import { emailService } from "../../email";
 import type { EmailContext, EmailSendResult } from "../../email/EmailService";
 import type { NotificationLocale } from "../../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../../constants/tokenTtl";
+import { parseInvoiceNotificationContext } from "../../../emails/billingTypes";
+import { formatDate, formatMoney } from "../../../utils/billingFormat";
 import { redactEventContextIfSettled } from "../notify";
 import { isNotificationType } from "../registry";
 
@@ -162,23 +164,42 @@ async function send(
         emailContext
       );
 
-    // N1.8 Slice 1. Every field is required except the invoice URL, which
-    // Stripe genuinely types as nullable — requireString would turn a missing
-    // hosted-invoice link into a permanently dead-lettered receipt, which is a
-    // worse outcome than a receipt with no button.
-    case "billing.subscription_renewed":
+    // N1.8 Slice 1. THE MONEY AND DATES ARE FORMATTED HERE, not in the trigger,
+    // and `locale` is why: it is the RECIPIENT's locale, resolved per delivery
+    // by the dispatcher (User.language overriding Company.language). The
+    // trigger only knows the company's, so anything it formatted was in the
+    // wrong language for any user whose preference differs — a Hungarian email
+    // quoting English-formatted euros. The context therefore carries raw minor
+    // units and UNIX seconds, and one event can serve two owners in two
+    // languages correctly.
+    case "billing.subscription_renewed": {
+      const invoice = parseInvoiceNotificationContext(context);
+
       return emailService.sendSubscriptionRenewedEmail(
         to,
         {
-          companyName: requireString(context, "companyName"),
-          planName: requireString(context, "planName"),
-          amountFormatted: requireString(context, "amountFormatted"),
-          periodStartFormatted: requireString(context, "periodStartFormatted"),
-          periodEndFormatted: requireString(context, "periodEndFormatted"),
-          invoiceUrl: typeof context.invoiceUrl === "string" ? context.invoiceUrl : null,
+          companyName: invoice.companyName,
+          planName: invoice.planName,
+          amountFormatted: formatMoney({
+            amountMinor: invoice.amountMinor,
+            currency: invoice.currency,
+            locale,
+          }),
+          periodStartFormatted: formatDate({
+            value: invoice.periodStartAt,
+            locale,
+            timeZone: invoice.timeZone,
+          }),
+          periodEndFormatted: formatDate({
+            value: invoice.periodEndAt,
+            locale,
+            timeZone: invoice.timeZone,
+          }),
+          invoiceUrl: invoice.invoiceUrl,
         },
         emailContext
       );
+    }
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of

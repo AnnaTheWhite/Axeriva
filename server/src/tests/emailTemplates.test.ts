@@ -4,6 +4,7 @@ import { verificationEmailTemplate } from "../emails/templates/auth/Verification
 import { passwordResetEmailTemplate } from "../emails/templates/auth/PasswordResetEmail";
 import { invitationEmailTemplate } from "../emails/templates/employees/InvitationEmail";
 import { subscriptionConfirmedEmailTemplate } from "../emails/templates/billing/SubscriptionConfirmedEmail";
+import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import {
   contrastTextColor,
   ctaColors,
@@ -63,6 +64,24 @@ function everyTemplate(locale: NotificationLocale) {
         subscriptionConfirmedEmailTemplate({
           companyName: "Villanyszerelő Kft",
           planName: "Professional",
+          locale,
+        }),
+    },
+    // N1.8 Slice 1. Joining this list is not optional bookkeeping: everything
+    // below — escaping, dark mode, CTA/link rules, branding, the plain-text
+    // alternative — is asserted for every member, and a template outside the
+    // list gets none of it. Slice 1 originally shipped without doing this, so
+    // the new template was never rendered by any test at all.
+    {
+      name: "subscriptionRenewed",
+      render: () =>
+        subscriptionRenewedEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          planName: "Professional",
+          amountFormatted: "€25.00",
+          periodStartFormatted: "1 October 2026",
+          periodEndFormatted: "1 November 2026",
+          invoiceUrl: "https://invoice.stripe.com/i/abc123",
           locale,
         }),
     },

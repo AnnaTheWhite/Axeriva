@@ -9,9 +9,8 @@ import {
   reconcileCheckoutCompletion,
 } from "../services/stripe/syncSubscription";
 import { notify } from "../services/notifications/notify";
-import { resolveLocale } from "../i18n";
-import { formatDate, formatMoney } from "../utils/billingFormat";
 import { planDisplayName } from "../constants/plans";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../constants/subscriptionStatuses";
 import { config } from "../config";
 
 const router = Router();
@@ -48,6 +47,38 @@ const HANDLED_EVENTS = new Set([
   // N1.8 Slice 1.
   "invoice.paid",
 ]);
+
+// P1 — the SERVICE period, which is not what invoice.period_start/period_end
+// mean.
+//
+// The installed SDK documents those two fields verbatim as "The earliest/latest
+// timestamp at which invoice items can be associated with this invoice. Use the
+// line item period to get the service period for each price."
+// (Invoices.d.ts:355-361). For a subscription_cycle invoice that window is the
+// cycle that just CLOSED — so a receipt built from them told a customer billed
+// on 1 October for October that their billing period was 1 September to 1
+// October: one whole cycle stale, on the document they keep for accounting. On
+// an annual plan, off by a year.
+//
+// This repo already knew the shape of this: syncSubscription.ts:40-46 notes
+// that the current API version moved `current_period_end` from the subscription
+// onto its line items, and reads items.data[0]. The same move happened on
+// invoices; Slice 1 simply did not apply it here.
+//
+// Falls back to the invoice-level window when there is no subscription line —
+// wrong-but-present beats a receipt that cannot render, and the fallback is
+// unreachable for the subscription_cycle invoices this branch handles.
+function invoiceServicePeriod(invoice: Stripe.Invoice): {
+  periodStartAt: number;
+  periodEndAt: number;
+} {
+  const line = invoice.lines?.data?.find((item) => item.period) ?? invoice.lines?.data?.[0];
+
+  return {
+    periodStartAt: line?.period?.start ?? invoice.period_start,
+    periodEndAt: line?.period?.end ?? invoice.period_end,
+  };
+}
 
 async function wasEventProcessed(eventId: string): Promise<boolean> {
   const seen = await prisma.processedStripeEvent.findUnique({ where: { id: eventId } });
@@ -235,12 +266,14 @@ router.post("/", async (req, res) => {
 
     // N1.8 Slice 1 — the renewal receipt.
     //
-    // NO STALE GUARD, deliberately. The guard on customer.subscription.updated
-    // above is subscription-shaped: it re-fetches current state from Stripe
-    // because a late update could otherwise overwrite newer state. An invoice
-    // event overwrites nothing — the payload IS the fact, complete in itself,
-    // and a late one describes a payment that really did happen. Recording that
-    // absence here so it reads as a decision rather than an omission.
+    // NO STALE GUARD in the subscription sense: the guard on
+    // customer.subscription.updated re-fetches state because a late snapshot
+    // could overwrite newer state, and an invoice event overwrites nothing.
+    // But "does not overwrite state" is NOT the same as "is always true to
+    // send", which is what the first version of this comment got wrong. The
+    // payload's fact is "this invoice was paid" — not "the subscription
+    // renewed", and the plan name is not in the payload at all. Hence the
+    // liveness check below.
     case "invoice.paid": {
       const invoice = event.data.object as Stripe.Invoice;
 
@@ -271,12 +304,30 @@ router.post("/", async (req, res) => {
 
       await markEventProcessed(event.id, event.type);
 
-      if (company) {
-        const locale = resolveLocale({ companyLanguage: company.language });
-        const timeZone = company.timezone;
+      // P3 — the subscription must still be ALIVE for "renewed" to be true.
+      //
+      // A dunning-exhausted subscription is cancelled, but its invoice stays
+      // open and payable from the hosted invoice link. Paying it later does NOT
+      // resurrect the subscription — yet Stripe still emits invoice.paid with
+      // billing_reason "subscription_cycle". Without this check the customer
+      // received "Acme is on the free plan for another billing period": the
+      // renewal claim false, and the plan name the literal string the
+      // cancellation path writes (syncSubscription markSubscriptionCanceled
+      // sets plan "free"). Someone reading that could reasonably conclude they
+      // were still covered and not re-subscribe.
+      //
+      // ACTIVE_SUBSCRIPTION_STATUSES deliberately includes past_due: a renewal
+      // that has just failed is still a live subscription, and this branch only
+      // runs for a PAID invoice anyway.
+      if (company && !ACTIVE_SUBSCRIPTION_STATUSES.includes(company.subscriptionStatus)) {
+        console.warn(
+          `[stripe webhook] invoice.paid for company ${companyId} whose subscription is ` +
+            `${company.subscriptionStatus} — not sending a renewal notice for ${invoice.id}`
+        );
+        break;
+      }
 
-        // Formatting happens HERE, not in the template — see
-        // utils/billingFormat.ts. The template receives finished strings.
+      if (company) {
         await notify({
           type: "billing.subscription_renewed",
           companyId,
@@ -285,16 +336,17 @@ router.post("/", async (req, res) => {
           // different id and sends. Deliberately not the event id, which would
           // let two different events about the SAME invoice both send.
           dedupeKey: `billing.subscription_renewed/${invoice.id}`,
+          // RAW values only — no formatted text. The recipient's locale is not
+          // known here (User.language overrides Company.language and is
+          // resolved per recipient during fan-out), so formatting happens in
+          // the email channel. See emails/billingTypes.ts.
           context: {
             companyName: company.name,
             planName: planDisplayName(company.plan),
-            amountFormatted: formatMoney({
-              amountMinor: invoice.amount_paid,
-              currency: invoice.currency,
-              locale,
-            }),
-            periodStartFormatted: formatDate({ value: invoice.period_start, locale, timeZone }),
-            periodEndFormatted: formatDate({ value: invoice.period_end, locale, timeZone }),
+            amountMinor: invoice.amount_paid,
+            currency: invoice.currency,
+            ...invoiceServicePeriod(invoice),
+            ...(company.timezone ? { timeZone: company.timezone } : {}),
             ...(invoice.hosted_invoice_url ? { invoiceUrl: invoice.hosted_invoice_url } : {}),
           },
         });

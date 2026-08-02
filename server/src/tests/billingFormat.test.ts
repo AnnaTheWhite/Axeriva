@@ -15,6 +15,7 @@ import {
   assertPlanChangeEmailData,
   assertSubscriptionLifecycleEmailData,
   assertUpcomingRenewalEmailData,
+  parseInvoiceNotificationContext,
 } from "../emails/billingTypes";
 
 // N1.8 Fázis 0 — the billing formatting layer and the template data contracts.
@@ -248,6 +249,44 @@ describe("billing data contracts", () => {
         portalUrl: "https://x",
       })
     ).not.toThrow();
+  });
+
+  it("parses a raw invoice context and normalises the optional URL", () => {
+    // The wire format between a trigger and the email channel. Tested directly
+    // because the webhook trigger happens to filter empty URLs itself, so a
+    // pipeline test can never reach this branch — a mutation run proved it
+    // survived. Slices 2-12 share this parser and may not filter upstream.
+    const base = {
+      companyName: "Acme",
+      planName: "Professional",
+      amountMinor: 2500,
+      currency: "eur",
+      periodStartAt: 1_760_000_000,
+      periodEndAt: 1_762_000_000,
+    };
+
+    expect(parseInvoiceNotificationContext({ ...base }).invoiceUrl).toBeNull();
+    // An empty string is ABSENT, not a URL: a CTA pointing at "" renders a dead
+    // button rather than no button.
+    expect(parseInvoiceNotificationContext({ ...base, invoiceUrl: "" }).invoiceUrl).toBeNull();
+    expect(
+      parseInvoiceNotificationContext({ ...base, invoiceUrl: "https://x/i" }).invoiceUrl
+    ).toBe("https://x/i");
+
+    // Timezone is optional and non-string values are ignored rather than
+    // reaching Intl, which would throw on a billing path.
+    expect(parseInvoiceNotificationContext({ ...base, timeZone: 42 }).timeZone).toBeNull();
+
+    // Required fields fail loudly, naming themselves.
+    expect(() => parseInvoiceNotificationContext({ ...base, companyName: "" })).toThrow(
+      /companyName/
+    );
+    // 0 is a legitimate amount (a fully discounted invoice) and must pass the
+    // numeric check, while a missing one must not.
+    expect(() => parseInvoiceNotificationContext({ ...base, amountMinor: 0 })).not.toThrow();
+    expect(() =>
+      parseInvoiceNotificationContext({ ...base, amountMinor: undefined })
+    ).toThrow(/amountMinor/);
   });
 
   it("validates the remaining contracts", () => {
