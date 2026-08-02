@@ -65,15 +65,43 @@ const HANDLED_EVENTS = new Set([
 // onto its line items, and reads items.data[0]. The same move happened on
 // invoices; Slice 1 simply did not apply it here.
 //
-// Falls back to the invoice-level window when there is no subscription line —
-// wrong-but-present beats a receipt that cannot render, and the fallback is
-// unreachable for the subscription_cycle invoices this branch handles.
+// SELECTING THE RIGHT LINE MATTERS AS MUCH AS USING LINES AT ALL. The first
+// attempt at this filtered on `item.period`, which is a REQUIRED, non-nullable
+// field on every line item (InvoiceLineItems.d.ts:55) — so the predicate was
+// always true and the code was exactly `data[0]`, while the comment claimed a
+// selection it never performed.
+//
+// `data[0]` is the WRONG line whenever the invoice carries anything besides the
+// subscription. Stripe documents the ordering (Invoices.d.ts:322): "(1) pending
+// invoice items (including prorations) in reverse chronological order, (2)
+// subscription items ...". A support operator issuing a one-off credit or
+// charge from the Dashboard creates a pending invoice item that sorts AHEAD of
+// the subscription line, and the receipt would then state that credit's period
+// — a mid-cycle window, or a degenerate start == end instant.
+//
+// So select on what the line IS, using the discriminator the SDK provides:
+// parent.type === "subscription_item_details" (InvoiceLineItems.d.ts:211).
+// Prefer the non-proration line, because a subscription_update invoice carries
+// proration lines that are also subscription lines but describe a partial
+// window rather than the cycle — that matters from Slice 2 on, when this branch
+// widens beyond billing_reason "subscription_cycle".
 function invoiceServicePeriod(invoice: Stripe.Invoice): {
   periodStartAt: number;
   periodEndAt: number;
 } {
-  const line = invoice.lines?.data?.find((item) => item.period) ?? invoice.lines?.data?.[0];
+  const lines = invoice.lines?.data ?? [];
+  const subscriptionLines = lines.filter(
+    (item) => item.parent?.type === "subscription_item_details"
+  );
 
+  const line =
+    subscriptionLines.find(
+      (item) => item.parent?.subscription_item_details?.proration === false
+    ) ?? subscriptionLines[0];
+
+  // The invoice-level window only when there is no subscription line at all.
+  // It is the association window rather than the service period, so it is a
+  // last resort — but a coarse period beats a receipt that cannot render.
   return {
     periodStartAt: line?.period?.start ?? invoice.period_start,
     periodEndAt: line?.period?.end ?? invoice.period_end,

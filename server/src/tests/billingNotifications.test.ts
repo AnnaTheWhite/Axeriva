@@ -53,6 +53,13 @@ const ASSOCIATION_END = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 
 const SERVICE_START = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 1000);
 const SERVICE_END = Math.floor(new Date("2026-11-01T00:00:00Z").getTime() / 1000);
 
+// A ONE-OFF CREDIT the support team added mid-cycle — a routine Dashboard
+// action. Stripe sorts pending invoice items BEFORE subscription items
+// (Invoices.d.ts:322), so this line is index 0 on the real payload, and its
+// period is a different, narrower window than the service period.
+const CREDIT_START = Math.floor(new Date("2026-09-14T00:00:00Z").getTime() / 1000);
+const CREDIT_END = Math.floor(new Date("2026-09-15T00:00:00Z").getTime() / 1000);
+
 function invoiceFixture(overrides: Record<string, unknown> = {}) {
   // Shaped from the installed SDK's Invoice type, not from memory. Amounts are
   // MINOR UNITS exactly as Stripe sends them: 2500 = €25.00.
@@ -65,16 +72,34 @@ function invoiceFixture(overrides: Record<string, unknown> = {}) {
     currency: "eur",
     period_start: ASSOCIATION_START,
     period_end: ASSOCIATION_END,
-    // Stripe puts the service period on the LINE ITEM. Omitting `lines` (as the
-    // original fixture did) makes a handler reading the wrong field look
-    // correct, because there is nothing to disagree with.
+    // Stripe puts the service period on the LINE ITEM, and the SUBSCRIPTION
+    // line is deliberately NOT index 0 here.
+    //
+    // Two earlier versions of this fixture could not detect a wrong
+    // implementation. The first omitted `lines` entirely, so reading
+    // invoice.period_start looked correct. The second had a single line, so
+    // "the first line" and "the subscription line" were the same thing and a
+    // handler taking data[0] passed. Stripe sorts pending invoice items ahead
+    // of subscription items (Invoices.d.ts:322), so a real invoice with a
+    // support credit on it looks like this — and only this shape makes the
+    // distinction observable.
     lines: {
       object: "list",
       data: [
         {
-          id: "il_test_1",
+          id: "il_test_credit",
+          object: "line_item",
+          period: { start: CREDIT_START, end: CREDIT_END },
+          parent: { type: "invoice_item_details", invoice_item_details: {} },
+        },
+        {
+          id: "il_test_subscription",
           object: "line_item",
           period: { start: SERVICE_START, end: SERVICE_END },
+          parent: {
+            type: "subscription_item_details",
+            subscription_item_details: { proration: false, subscription_item: "si_test" },
+          },
         },
       ],
     },
@@ -300,7 +325,111 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
     expect(payload.periodEndFormatted).toBe("1 November 2026");
   });
 
-  it("falls back to the invoice window when there is no line item", async () => {
+  it("ignores a one-off credit line that Stripe sorts ahead of the subscription", async () => {
+    // The surviving path a re-review found after the first P1 fix. That fix
+    // filtered on `item.period`, which is a REQUIRED field on every line item,
+    // so the predicate was always true and the code was really `data[0]`.
+    // Stripe puts pending invoice items (a support credit, a one-off charge)
+    // BEFORE subscription items, so data[0] is the credit and the receipt
+    // stated its narrow mid-September window instead of the October cycle.
+    await renewalTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+
+    const payload = await deliveredPayload();
+
+    // The subscription line's period, not the credit's (14–15 September).
+    expect(payload.periodStartFormatted).toBe("1 October 2026");
+    expect(payload.periodStartFormatted).not.toContain("September");
+  });
+
+  it("prefers the non-proration subscription line", async () => {
+    // Matters from Slice 2 on: a subscription_update invoice carries proration
+    // lines that ARE subscription lines but describe a partial window.
+    await renewalTenant({ language: "en" });
+    await postWebhook(
+      stripeEvent(
+        "invoice.paid",
+        invoiceFixture({
+          lines: {
+            object: "list",
+            data: [
+              {
+                id: "il_proration",
+                object: "line_item",
+                period: { start: CREDIT_START, end: CREDIT_END },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: true, subscription_item: "si_test" },
+                },
+              },
+              {
+                id: "il_subscription",
+                object: "line_item",
+                period: { start: SERVICE_START, end: SERVICE_END },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: false, subscription_item: "si_test" },
+                },
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const payload = await deliveredPayload();
+    expect(payload.periodStartFormatted).toBe("1 October 2026");
+  });
+
+  it("prefers a PRORATION subscription line over a non-subscription line", async () => {
+    // The case that pins the parent.type filter, found by a surviving mutation.
+    //
+    // When a non-proration subscription line exists, the proration check alone
+    // picks it and the type filter is redundant — which is why removing the
+    // filter passed every other test. The filter earns its place only on the
+    // FALLBACK path: if every subscription line is a proration, the code takes
+    // subscriptionLines[0], and without the filter that is the credit line
+    // sitting at index 0. A subscription_update invoice carrying a support
+    // credit is exactly that shape, and Slice 2 widens billing_reason to
+    // include it.
+    await renewalTenant({ language: "en" });
+    await postWebhook(
+      stripeEvent(
+        "invoice.paid",
+        invoiceFixture({
+          lines: {
+            object: "list",
+            data: [
+              {
+                id: "il_credit",
+                object: "line_item",
+                period: { start: CREDIT_START, end: CREDIT_END },
+                parent: { type: "invoice_item_details", invoice_item_details: {} },
+              },
+              {
+                id: "il_proration_only",
+                object: "line_item",
+                period: { start: SERVICE_START, end: SERVICE_END },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: true, subscription_item: "si_test" },
+                },
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const payload = await deliveredPayload();
+
+    // The subscription line's period, even though it is a proration — never the
+    // credit line's, which is what index 0 would give.
+    expect(payload.periodStartFormatted).toBe("1 October 2026");
+    expect(payload.periodStartFormatted).not.toContain("September");
+  });
+
+  it("falls back to the invoice window when there is no subscription line", async () => {
     // Defensive, and unreachable for subscription_cycle invoices — but a
     // receipt that cannot render is worse than one with a coarser period.
     await renewalTenant({ language: "en" });

@@ -67,11 +67,17 @@ function everyTemplate(locale: NotificationLocale) {
           locale,
         }),
     },
-    // N1.8 Slice 1. Joining this list is not optional bookkeeping: everything
-    // below — escaping, dark mode, CTA/link rules, branding, the plain-text
-    // alternative — is asserted for every member, and a template outside the
-    // list gets none of it. Slice 1 originally shipped without doing this, so
-    // the new template was never rendered by any test at all.
+    // N1.8 Slice 1. What membership of this list actually buys is the
+    // well-formedness block below (renders, has a subject, no raw i18n key, has
+    // a plain-text part, no unresolved placeholders) — and nothing more.
+    //
+    // An earlier version of this comment claimed it also bought escaping, dark
+    // mode, CTA rules and branding coverage. It does not: those describe blocks
+    // name their templates explicitly rather than iterating this list, so a
+    // template can join here and still have zero escaping coverage. That is a
+    // comment asserting a guarantee the code does not provide, which is exactly
+    // the class of mistake this milestone has been correcting. The escaping loop
+    // below now includes this template explicitly.
     {
       name: "subscriptionRenewed",
       render: () =>
@@ -177,6 +183,20 @@ describe("escaping — the guarantee that replaced escapeHtml()", () => {
         subscriptionConfirmedEmailTemplate({
           companyName: MALICIOUS,
           planName: MALICIOUS,
+          locale: "en",
+        }),
+      // N1.8 Slice 1. companyName is attacker-chosen at registration and
+      // planName is a display string, so both reach this template as tenant
+      // input. Adding it to everyTemplate() did NOT cover this — that list only
+      // drives the well-formedness block — so it is named here explicitly.
+      () =>
+        subscriptionRenewedEmailTemplate({
+          companyName: MALICIOUS,
+          planName: MALICIOUS,
+          amountFormatted: "€25.00",
+          periodStartFormatted: "1 October 2026",
+          periodEndFormatted: "1 November 2026",
+          invoiceUrl: null,
           locale: "en",
         }),
     ]) {
