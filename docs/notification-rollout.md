@@ -78,6 +78,36 @@ hetekkel később, romló domain-reputációként jelentkezik.
 
 ---
 
+## 1a-bis. ⚠️ N1.8 Slice 1 — Stripe Dashboard: `invoice.paid` feliratkozás
+
+**Ez blokkoló, és a kóddal EGY lépésben végzendő.**
+
+A Slice 1 kezelője az `invoice.paid` eseményre reagál (megújulási nyugta). A
+`HANDLED_EVENTS` bővítése a kódban **nem elég**: ha a Stripe endpoint nincs
+feliratkozva az eseményre, a Stripe **el sem küldi**, a `case` soha nem fut, és
+**egyetlen megújulási nyugta sem megy ki** — miközben a teljes tesztsuite zöld
+marad, mert a tesztek aláírt payloadot POST-olnak közvetlenül az útvonalra, és
+így az endpoint feliratkozását nem látják.
+
+Ez ugyanaz a hibaosztály, ami az N1.6 kézbesítés-követését két mérföldkövön át
+működésképtelenül hagyta: **a kód kész, a funkció nem fut.**
+
+**Teendő, push előtt:**
+
+1. Stripe Dashboard → **Developers → Webhooks** → a meglévő endpoint
+2. **"Select events"** → `invoice.paid` hozzáadása a meglévő három mellé
+3. Mentés
+
+**Ellenőrzés a deploy után:** a Dashboard *Send test event* → `invoice.paid`
+után `SELECT COUNT(*) FROM "ProcessedStripeEvent" WHERE type='invoice.paid';`
+nő eggyel. Ha nem: az endpoint nincs feliratkozva.
+
+A kanonikus eseménylista a `HANDLED_EVENTS` halmaz
+(`server/src/routes/stripeWebhook.routes.ts`) — minden további N1.8-szelet
+bővíti, és mindegyik ugyanezt a Dashboard-lépést igényli.
+
+---
+
 ## 1c. N1.7 — nincs ops-teendő
 
 Séma-változás nincs, migráció nincs, új env-változó nincs, Dashboard-lépés

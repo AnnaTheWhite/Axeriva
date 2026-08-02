@@ -33,12 +33,26 @@ A `STRIPE_WEBHOOK_SECRET` jelenlegi értéke (`whsec_test_local_dev_secret`) egy
 5. **Endpoint URL**: a backended publikusan elérhető címe + `/subscription/webhook`.
    - Helyi gépen ez **nem működik közvetlenül** (a Stripe nem tud `localhost`-ra küldeni) — erre a 4. pont (Stripe CLI) ad megoldást.
    - Élesben (lásd 6. pont) valami ilyesmi lesz: `https://api.axeriva.com/subscription/webhook`.
-6. **"Select events"** — válaszd ki pontosan azt a 3 eseményt, amit a kód kezel:
+6. **"Select events"** — válaszd ki pontosan azokat az eseményeket, amiket a
+   kód kezel. **A kanonikus lista a `HANDLED_EVENTS` halmaz**
+   (`server/src/routes/stripeWebhook.routes.ts`) — ha az alábbi felsorolás és a
+   kód eltér, **a kód a mérvadó**:
    - `checkout.session.completed`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
+   - `invoice.paid` — **N1.8 Slice 1** (megújulási nyugta)
 
-   *(Opcionális, jövőbeli bővítéshez érdemes lehet figyelni — de a jelenlegi kód ezekre nem reagál, csak átmennek a `default` ágon, tehát hozzáadásuk most semmilyen hatással nem lenne: `invoice.payment_failed`, `customer.subscription.trial_will_end`. Ha most nem vagy biztos benne, nyugodtan hagyd ki — bármikor visszamehetsz az endpoint szerkesztésébe és hozzáadhatod.)*
+   ⚠️ **Egy új esemény kezelője önmagában nem elég.** Ha a kód kezel egy
+   eseményt, de az endpoint nincs rá feliratkozva, a Stripe **el sem küldi**:
+   a kezelő soha nem fut, egyetlen levél sem megy ki, és **a tesztek zöldek
+   maradnak**, mert azok aláírt payloadot POST-olnak közvetlenül az útvonalra,
+   és így az endpoint feliratkozását nem is látják. Ez pontosan az a
+   hibaosztály, ami az N1.6-ot két mérföldkövön át működésképtelenül hagyta.
+   Minden új `case` mellé **ugyanabban a lépésben** jár a Dashboard-feliratkozás.
+
+   *(Jövőbeli bővítéshez: `invoice.payment_failed`, `invoice.upcoming`,
+   `payment_method.attached` — az N1.8 további szeletei veszik fel őket, akkor
+   ez a lista is bővül.)*
 
 7. Kattints **"Add endpoint"**.
 8. Az endpoint részletes nézetében jelenik meg a **"Signing secret"** — ez a `whsec_...` érték (lásd 3. pont).

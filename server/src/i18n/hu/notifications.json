@@ -41,10 +41,10 @@
       "viewInvoice": "Számla megtekintése"
     },
     "subscriptionRenewed": {
-      "subject": "Az Axeriva előfizetése megújult — {{amount}}",
-      "intro": "Köszönjük — az előfizetése megújult.",
+      "subject": "Az Axeriva előfizetésed megújult — {{amount}}",
+      "intro": "Köszönjük — az előfizetésed megújult.",
       "body": "A(z) {{companyName}} további egy számlázási időszakra a(z) {{planName}} csomagon marad. A részletek:",
-      "manage": "A korábbi számlákat megtekintheti, a csomagot bármikor módosíthatja az Axeriva Előfizetés oldalán."
+      "manage": "A korábbi számlákat megtekintheted, a csomagot bármikor módosíthatod az Axeriva Előfizetés oldalán."
     },
     "subscriptionConfirmed": {
       "subject": "A(z) {{planName}} előfizetésed aktív",
