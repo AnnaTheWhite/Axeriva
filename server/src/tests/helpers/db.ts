@@ -6,6 +6,23 @@ import prisma from "../../database/prisma";
 // place that must be updated, and a forgotten entry surfaces immediately as
 // an FK error in the very next test run.
 const DELETE_ORDER = [
+  // CAL1.1 calendar module — children first, then the event, then the grants,
+  // then the container. Placed at the HEAD of the list because calendar rows
+  // reference Shift, Project, Customer, Employee and Company, so they must
+  // empty before any of those; nothing references them back.
+  //
+  // CalendarAudit leads: it points at Calendar, and it is the one calendar
+  // table that deliberately does NOT cascade from the event it describes
+  // (targetId carries no foreign key), so it can outlive every sibling here.
+  () => prisma.calendarAudit.deleteMany(),
+  () => prisma.calendarEventOccurrence.deleteMany(),
+  () => prisma.calendarParticipant.deleteMany(),
+  () => prisma.calendarEventAttachment.deleteMany(),
+  () => prisma.calendarEventComment.deleteMany(),
+  () => prisma.calendarEventReminder.deleteMany(),
+  () => prisma.calendarEvent.deleteMany(),
+  () => prisma.calendarMember.deleteMany(),
+  () => prisma.calendar.deleteMany(),
   // N1.1 notification module — children before parents: EmailEvent →
   // NotificationDelivery/Notification → NotificationEvent → Company.
   () => prisma.emailEvent.deleteMany(),

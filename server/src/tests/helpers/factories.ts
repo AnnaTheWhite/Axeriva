@@ -143,6 +143,103 @@ export async function createShift(
 }
 
 // ---------------------------------------------------------------------------
+// Calendar module (CAL1.1)
+// ---------------------------------------------------------------------------
+
+type CalendarOverrides = Partial<{
+  type: string;
+  name: string;
+  timezone: string | null;
+  ownerUserId: number | null;
+  projectId: number | null;
+  employeeId: number | null;
+  isDefault: boolean;
+  archivedAt: Date | null;
+}>;
+
+// Defaults to a COMPANY calendar: it is the one type that needs no owner
+// column, so a test that only wants "a calendar to hang events off" gets a
+// valid row without deciding anything. PERSONAL/PROJECT/EMPLOYEE tests pass
+// the matching id explicitly — see CALENDAR_OWNER_COLUMN.
+export async function createCalendar(companyId: number, overrides: CalendarOverrides = {}) {
+  return prisma.calendar.create({
+    data: {
+      companyId,
+      type: overrides.type ?? "COMPANY",
+      name: overrides.name ?? unique("Calendar"),
+      timezone: overrides.timezone ?? null,
+      ownerUserId: overrides.ownerUserId ?? null,
+      projectId: overrides.projectId ?? null,
+      employeeId: overrides.employeeId ?? null,
+      isDefault: overrides.isDefault ?? false,
+      archivedAt: overrides.archivedAt ?? null,
+    },
+  });
+}
+
+type CalendarEventOverrides = Partial<{
+  title: string;
+  description: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  allDay: boolean;
+  timezone: string | null;
+  recurrenceRule: string | null;
+  recurrenceEndsAt: Date | null;
+  status: string;
+  visibility: string;
+  createdByUserId: number;
+  projectId: number | null;
+  customerId: number | null;
+  employeeId: number | null;
+  shiftId: number | null;
+  location: string | null;
+}>;
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+// A one-hour, non-recurring, confirmed, default-visibility event — the shape
+// most tests want, so anything else in the assertion is the thing under test.
+//
+// companyId is passed separately rather than read back from the calendar: a
+// tenant-isolation test needs to be able to construct the MISMATCHED case
+// (event of tenant A on a calendar of tenant B) to prove it is rejected, and a
+// factory that silently derived it could not express that.
+export async function createCalendarEvent(
+  calendarId: number,
+  companyId: number,
+  overrides: CalendarEventOverrides = {}
+) {
+  const startsAt = overrides.startsAt ?? new Date();
+
+  return prisma.calendarEvent.create({
+    data: {
+      calendarId,
+      companyId,
+      title: overrides.title ?? unique("Event"),
+      description: overrides.description ?? null,
+      startsAt,
+      endsAt: overrides.endsAt ?? new Date(startsAt.getTime() + ONE_HOUR_MS),
+      allDay: overrides.allDay ?? false,
+      timezone: overrides.timezone ?? null,
+      recurrenceRule: overrides.recurrenceRule ?? null,
+      recurrenceEndsAt: overrides.recurrenceEndsAt ?? null,
+      status: overrides.status ?? "confirmed",
+      visibility: overrides.visibility ?? "default",
+      // A scalar with no foreign key (it must survive the creator's account
+      // deletion), so 0 is storable and means "this test is not about
+      // authorship". Tests that ARE about authorship pass a real user id.
+      createdByUserId: overrides.createdByUserId ?? 0,
+      projectId: overrides.projectId ?? null,
+      customerId: overrides.customerId ?? null,
+      employeeId: overrides.employeeId ?? null,
+      shiftId: overrides.shiftId ?? null,
+      location: overrides.location ?? null,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Whole-tenant fixture
 // ---------------------------------------------------------------------------
 

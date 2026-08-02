@@ -114,6 +114,16 @@ model Company {
   projectInternalNotes ProjectInternalNote[]
   ownerNoteConversions OwnerNoteConversion[]
 
+  // CAL1.1 — Calendar module (docs/calendar-system-plan.md). Back-relations
+  // only: Prisma requires every relation to be declared on both sides, and
+  // these navigation fields generate NO SQL column. Same as the N1.1 block
+  // above — "0 existing tables modified" is a statement about the DATABASE,
+  // and it holds (scope §7.1).
+  calendars       Calendar[]
+  calendarMembers CalendarMember[]
+  calendarEvents  CalendarEvent[]
+  calendarAudits  CalendarAudit[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -214,6 +224,11 @@ model Employee {
   ownerNotes  OwnerNote[]
   tasks       Task[]
 
+  // CAL1.1 — back-relations only, no SQL column (see Company).
+  calendars            Calendar[]
+  calendarEvents       CalendarEvent[]
+  calendarParticipants CalendarParticipant[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   Shift     Shift[]
@@ -259,6 +274,10 @@ model Project {
   reminders         Reminder[]
   communicationLogs CommunicationLog[]
   internalNotes     ProjectInternalNote[]
+
+  // CAL1.1 — back-relations only, no SQL column (see Company).
+  calendars      Calendar[]
+  calendarEvents CalendarEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -376,6 +395,9 @@ model Customer {
   reminders         Reminder[]
   communicationLogs CommunicationLog[]
 
+  // CAL1.1 — back-relation only, no SQL column (see Company).
+  calendarEvents CalendarEvent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -395,6 +417,10 @@ model Shift {
   end   DateTime?
 
   notes String?
+
+  // CAL1.1 — back-relation only, no SQL column (see Company). An event may
+  // POINT AT a shift; it never copies the shift's start/end/notes (R5).
+  calendarEvents CalendarEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -896,4 +922,438 @@ model EmailSuppression {
   createdAt DateTime @default(now())
 
   @@index([companyId])
+}
+
+// ---------------------------------------------------------------------------
+// Calendar module (CAL1.1) — see docs/calendar-system-plan.md and
+// docs/calendar-cal1-scope.md
+//
+// Nine models, all additive, ZERO existing columns changed. Nothing reads or
+// writes any of them yet: the permission layer is CAL1.3, the first endpoints
+// are CAL1.4/CAL1.5. Five of the nine (Participant, Attachment, Comment,
+// Reminder, Audit) stay empty until CAL2.x — shipped now, like N1.1's six
+// tables, because one schema review is cheaper than two and an empty table
+// carries no risk.
+//
+// The shape rests on two decisions worth restating where the columns live:
+//
+//   D1  ONE event table plus ONE container. The four calendar types
+//       (PERSONAL/COMPANY/PROJECT/EMPLOYEE) are a property of the container,
+//       not four data shapes — permission attaches to the container, so
+//       "Peter can see the Kovacs project calendar" is one row, not one row
+//       per event.
+//
+//   R5  Events REFERENCE their source objects and never copy them. projectId,
+//       customerId, employeeId and shiftId are relations; there is deliberately
+//       no customerName, no projectAddress, no shiftStart column. A copied
+//       customer address goes stale and sends a technician to the wrong
+//       street; a reference cannot. Enforced in review — the schema can only
+//       make it easy, not mandatory (plan §6.5).
+//
+// Convention notes that apply to every model below: Int autoincrement PKs, no
+// Prisma enums (string + constants/calendar*.ts), JSON as String? not the Json
+// column type, append-only models carry no updatedAt, and anything that must
+// outlive a user's deletion is a SCALAR id, not a relation.
+// ---------------------------------------------------------------------------
+
+// The container. What a calendar IS, who owns it, and — via CalendarMember —
+// who may look at it.
+model Calendar {
+  id Int @id @default(autoincrement())
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // CALENDAR_TYPES: PERSONAL | COMPANY | PROJECT | EMPLOYEE.
+  type String
+
+  name        String
+  description String?
+
+  // Hex "#rrggbb", reusing the Company.primaryColor validator.
+  color String?
+
+  // IANA name. NULL = inherit Company.timezone, then the single fallback
+  // stated in services/calendar/timezone.ts (CAL1.2).
+  timezone String?
+
+  // Scalar, NOT a relation — the calendar must outlive its owner's account
+  // deletion, exactly like AuditLog.userId.
+  ownerUserId Int?
+
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  employeeId Int?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  // KNOWN LIMIT (scope §2, CAL1.1): "one default calendar per user" is NOT
+  // expressible here — it needs a partial unique index (WHERE isDefault), which
+  // Prisma cannot declare. Same limitation N1.1 documented for
+  // NotificationPreference's NULL userId. Consequence: CAL1.4 creates
+  // calendars find-then-create, never with a bare create(), and a test pins it.
+  isDefault Boolean @default(false)
+
+  // Soft-delete. DELETE /calendars/:id sets this; the row is never removed,
+  // because its audit trail and events must remain readable.
+  archivedAt DateTime?
+
+  members CalendarMember[]
+  events  CalendarEvent[]
+  audits  CalendarAudit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, type])
+  @@index([ownerUserId])
+  @@index([projectId])
+  @@index([employeeId])
+}
+
+// One permission grant: "this principal has this preset on this calendar".
+// The whole sharing model is rows in this table — there is no shareLevel column
+// anywhere, on purpose (plan §4.8): a denormalised level could drift from the
+// grants and the system would hold two answers to "who can see this?".
+model CalendarMember {
+  id Int @id @default(autoincrement())
+
+  calendarId Int
+  calendar   Calendar @relation(fields: [calendarId], references: [id])
+
+  // Denormalised so "which calendars does this user see?" — the first query of
+  // every calendar read — resolves without a join.
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // PRINCIPAL_TYPES: USER | EMPLOYEE | ROLE | COMPANY.
+  principalType String
+
+  // STRING, not Int: a ROLE grant's principal is the role NAME ("EMPLOYEE"),
+  // not a number. This is the only reason the column is not an Int.
+  principalId String
+
+  // CALENDAR_ROLE_PRESETS (CAL1.3): OWNER | ADMIN | MANAGER | MEMBER | VIEWER
+  // | FREE_BUSY | CUSTOM. Presets expand to permissions at resolution time, so
+  // widening a preset later upgrades every existing grant automatically.
+  preset String
+
+  // JSON string, and ONLY meaningful when preset = "CUSTOM".
+  permissions String?
+
+  // Scalar — who granted it. Survives that user's deletion.
+  grantedByUserId Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One principal gets exactly one grant per calendar. Safe as a constraint:
+  // the table is new and empty, so the repo's "indexes are additive, never
+  // constraints" rule — which protects EXISTING data — does not apply.
+  @@unique([calendarId, principalType, principalId])
+  @@index([companyId, principalType, principalId])
+}
+
+// The event itself.
+model CalendarEvent {
+  id Int @id @default(autoincrement())
+
+  // Required: this is what decides who may read the event.
+  calendarId Int
+  calendar   Calendar @relation(fields: [calendarId], references: [id])
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  title       String
+  description String?
+
+  // Stored UTC. Unlike Shift.end, endsAt is NOT nullable — an open-ended
+  // calendar entry has no meaning, and every window query depends on it.
+  startsAt DateTime
+  endsAt   DateTime
+
+  // All-day is a flag, never 00:00–23:59 UTC: the boundaries are resolved in
+  // the calendar's zone, or a Hungarian all-day event spans two days for a
+  // client reading in UTC (plan §5.1).
+  allDay Boolean @default(false)
+
+  // NULL = inherit the calendar's zone.
+  timezone String?
+
+  // RFC 5545 rule, e.g. "FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261231T230000Z".
+  // Occurrences are expanded at read time, never materialised — "every Monday,
+  // forever" has no row count (D4).
+  recurrenceRule String?
+
+  // The pruning column that makes the window query possible: the last
+  // occurrence's end, computed at WRITE time. NULL = the rule is infinite.
+  // Without it, answering "what is in March?" would mean expanding every
+  // recurring rule in the tenant just to find out which ones reach the window.
+  recurrenceEndsAt DateTime?
+
+  // EVENT_STATUSES / EVENT_VISIBILITIES — constants/calendarEvents.ts.
+  status     String @default("confirmed")
+  visibility String @default("default")
+
+  // Scalar — survives the creator's account deletion.
+  createdByUserId Int
+
+  // R5: references, never copies. See the module header.
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  customerId Int?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  employeeId Int?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  shiftId Int?
+  shift   Shift? @relation(fields: [shiftId], references: [id])
+
+  // An OVERRIDE, not a copy: filled in only when the event genuinely happens
+  // somewhere other than its project/customer address. Left NULL, the address
+  // resolves from the reference at read time and automatically follows the
+  // project when it moves (resolveEventLocation, plan §6.5).
+  location  String?
+  latitude  Float?
+  longitude Float?
+
+  // JSON string (convention — never the Json column type).
+  metadata String?
+
+  occurrences  CalendarEventOccurrence[]
+  participants CalendarParticipant[]
+  attachments  CalendarEventAttachment[]
+  comments     CalendarEventComment[]
+  reminders    CalendarEventReminder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The main window query.
+  @@index([calendarId, startsAt])
+  // Company-wide timeline.
+  @@index([companyId, startsAt])
+  // Source filtering, and the FK scans when a referenced row is deleted.
+  @@index([projectId])
+  @@index([customerId])
+  @@index([employeeId])
+  @@index([shiftId])
+  // Recurring-candidate pruning (see recurrenceEndsAt).
+  @@index([recurrenceEndsAt])
+}
+
+// Exceptions to a recurrence rule — and ONLY the exceptions. "This one is
+// cancelled" or "this one moved"; every other occurrence has no row at all and
+// is computed from the rule.
+//
+// No companyId: this is a child of CalendarEvent, so the tenant is reachable
+// through the parent. Same reasoning as EmailEvent under NotificationDelivery —
+// denormalising here would only add a way for child and parent to disagree,
+// and nothing ever queries this table tenant-scoped and directly.
+model CalendarEventOccurrence {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   CalendarEvent @relation(fields: [eventId], references: [id])
+
+  // WHICH occurrence this overrides: its original computed start.
+  originalStartsAt DateTime
+
+  cancelled Boolean @default(false)
+
+  // Overrides. NULL = inherit from the series.
+  startsAt DateTime?
+  endsAt   DateTime?
+  title    String?
+  location String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One exception per occurrence. New/empty table, so a constraint is fine.
+  @@unique([eventId, originalStartsAt])
+}
+
+// Attendees. Table created here; invitations and RSVP are CAL2.1 — nothing
+// writes this in CAL1.
+model CalendarParticipant {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   CalendarEvent @relation(fields: [eventId], references: [id])
+
+  // Scalar — an attendance record outlives the account that held it.
+  userId Int?
+
+  employeeId Int?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  // External attendee with no account.
+  email String?
+
+  // PARTICIPANT_RESPONSES.
+  response    String  @default("needs_action")
+  isOrganizer Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per user per event. PostgreSQL treats NULLs as distinct, so this
+  // deliberately does NOT restrict external (email-only) attendees, of which an
+  // event may have many.
+  //
+  // This also serves every "the participants of event X" lookup through its
+  // leftmost prefix, so there is deliberately NO separate @@index([eventId]) —
+  // it would be a second index on the same leading column, paid for on every
+  // insert and never chosen over this one. Scope §7.2 listed both; dropped here
+  // for the reason ProjectAssignment already documents in this schema.
+  @@unique([eventId, userId])
+  // employeeId gets its own index because NOTHING else covers it: it is the one
+  // foreign key in this module with no index of its own and no unique whose
+  // leading column it is. Without it, deleting an Employee sequentially scans
+  // this table to apply ON DELETE SET NULL. Harmless while the table is empty
+  // (CAL2.1 fills it), which is precisely why it is cheap to get right now —
+  // the repo indexes its other employee foreign keys the same way
+  // (Task.employeeId, OwnerNote.employeeId).
+  @@index([employeeId])
+}
+
+// Files on an event. Mirrors ProjectAttachment field-for-field so the existing
+// services/storage signed-URL path is reused unchanged — a second upload route
+// would bypass the R1.5 signed-upload guard. API is CAL2.4.
+model CalendarEventAttachment {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   CalendarEvent @relation(fields: [eventId], references: [id])
+
+  // Scalar, matching this model's siblings.
+  userId Int
+
+  fileName String
+  fileType String
+  fileSize Int
+  fileUrl  String
+
+  // Free-form, same rationale as ProjectAttachment.category.
+  category String @default("Other")
+
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+}
+
+// Append-only — hence NO updatedAt, per the schema convention.
+// API is CAL2.4.
+model CalendarEventComment {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   CalendarEvent @relation(fields: [eventId], references: [id])
+
+  userId Int
+
+  content String
+
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+}
+
+// Per-user reminder offsets. The sweep that acts on these is CAL2.3; this must
+// not become a second Reminder model that only ever stores and never delivers
+// (plan §1.1).
+model CalendarEventReminder {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   CalendarEvent @relation(fields: [eventId], references: [id])
+
+  // NULL = applies to everyone on the event.
+  userId Int?
+
+  minutesBefore Int
+
+  // NOTIFICATION_CHANNELS vocabulary, reused rather than redefined.
+  channel String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+}
+
+// D13 — the audit trail. Polymorphic (targetType + targetId, the
+// OwnerNoteConversion pattern) because a permission change happens on the
+// Calendar or the CalendarMember, not on an event: a table keyed on eventId
+// could not have recorded the single most security-relevant thing that
+// happens in this module.
+//
+// Two properties this table depends on, both of which CAL1.1 tests pin:
+//
+//   * targetId carries NO foreign key. That is what lets the audit row for a
+//     deleted event survive the event — answering "who created the thing that
+//     was later removed?", which is the question the log exists for.
+//   * actorUserId is a SCALAR. The row survives the actor's account deletion.
+//
+// companyId IS carried here, unlike the other child tables above, for exactly
+// that reason: the row must remain tenant-attributable after the event it
+// describes is gone, so the parent is not a reliable route to the tenant.
+//
+// Written in the SAME TRANSACTION as the mutation it records (CAL1.4+) — a
+// deliberate departure from logAudit()'s fire-and-forget contract. If the audit
+// write fails, the mutation rolls back. The cost is stated plainly: a problem
+// with this table stops calendar writes. For a log whose purpose is answering
+// security questions, silent holes are worse, because nobody can tell where
+// they are.
+//
+// Append-only — no updatedAt.
+model CalendarAudit {
+  id Int @id @default(autoincrement())
+
+  companyId Int
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // Always set, including for member and participant changes — this is what
+  // makes "what happened on this calendar?" a single query.
+  calendarId Int
+  calendar   Calendar @relation(fields: [calendarId], references: [id])
+
+  // AUDIT_TARGET_TYPES: CALENDAR | EVENT | MEMBER | PARTICIPANT.
+  targetType String
+
+  // Deliberately NOT a foreign key — see the header.
+  targetId Int
+
+  // CALENDAR_AUDIT_ACTIONS.
+  action String
+
+  // Scalar. NULL = the system acted, not a person.
+  actorUserId Int?
+
+  // AUDIT_SOURCES: WEB | API | SYSTEM. Derived server-side from the
+  // authentication path, NEVER read from a header or request body — a
+  // client-settable source would make the table lie about the very field an
+  // investigation starts from.
+  source String
+
+  // req.id (app.ts) — ties every audit row produced by one request together.
+  requestId String?
+
+  // JSON string: { field: { from, to } }. Changed fields only, never a whole
+  // row snapshot — a snapshot would copy private events' titles into the log on
+  // every edit and grow it to a multiple of the real content.
+  changes String?
+
+  createdAt DateTime @default(now())
+
+  // The per-calendar timeline (CAL2.6's reader).
+  @@index([calendarId, createdAt])
+  @@index([companyId, createdAt])
+  // "What happened to this specific event/member?"
+  @@index([targetType, targetId])
+  @@index([actorUserId])
 }
