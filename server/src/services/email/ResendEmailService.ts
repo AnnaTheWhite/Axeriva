@@ -3,7 +3,7 @@ import type {
   EmailContext,
   EmailSendResult,
   EmailService,
-  SubscriptionRenewedEmailPayload,
+  InvoiceReceiptEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../constants/tokenTtl";
@@ -13,6 +13,7 @@ import { passwordResetEmailTemplate } from "../../emails/templates/auth/Password
 import { verificationEmailTemplate } from "../../emails/templates/auth/VerificationEmail";
 import { subscriptionConfirmedEmailTemplate } from "../../emails/templates/billing/SubscriptionConfirmedEmail";
 import { subscriptionRenewedEmailTemplate } from "../../emails/templates/billing/SubscriptionRenewedEmail";
+import { invoicePaidEmailTemplate } from "../../emails/templates/billing/InvoicePaidEmail";
 
 // N1.3 — the templates moved to React Email (src/emails/), so the imports
 // changed and the template calls became async. The transport itself is
@@ -97,10 +98,24 @@ export class ResendEmailService implements EmailService {
   // templates down that road would be unreadable at the call site.
   async sendSubscriptionRenewedEmail(
     to: string,
-    data: SubscriptionRenewedEmailPayload,
+    data: InvoiceReceiptEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult> {
     const { subject, html, text } = await subscriptionRenewedEmailTemplate({
+      ...data,
+      ...resolveContext(context),
+    });
+    return this.send(to, subject, html, text, context);
+  }
+
+  // N1.8 Slice 2 — same payload as the renewal receipt above, different
+  // template. The two messages make different claims; see InvoicePaidEmail.tsx.
+  async sendInvoicePaidEmail(
+    to: string,
+    data: InvoiceReceiptEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    const { subject, html, text } = await invoicePaidEmailTemplate({
       ...data,
       ...resolveContext(context),
     });

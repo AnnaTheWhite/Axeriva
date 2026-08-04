@@ -3,7 +3,7 @@ import type {
   EmailContext,
   EmailSendResult,
   EmailService,
-  SubscriptionRenewedEmailPayload,
+  InvoiceReceiptEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 
@@ -88,13 +88,28 @@ export class MockEmailService implements EmailService {
 
   async sendSubscriptionRenewedEmail(
     to: string,
-    data: SubscriptionRenewedEmailPayload,
+    data: InvoiceReceiptEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult> {
     // The amount is logged because it is the value most worth eyeballing in a
     // dev run — a missing divide-by-100 is obvious here and nowhere else.
     console.log(
       `[MockEmailService] Subscription renewed for ${to} ("${data.companyName}", ${data.planName}, ${data.amountFormatted}) [${locale(context)}]`
+    );
+    return result(context);
+  }
+
+  async sendInvoicePaidEmail(
+    to: string,
+    data: InvoiceReceiptEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    // The service period is logged alongside the amount here, unlike the
+    // renewal above: for a plan change this is the PRORATION window, and a
+    // dev run showing a whole month is the visible symptom of the wrong
+    // invoice line having been picked.
+    console.log(
+      `[MockEmailService] Invoice paid (plan change) for ${to} ("${data.companyName}", ${data.planName}, ${data.amountFormatted}, ${data.periodStartFormatted} – ${data.periodEndFormatted}) [${locale(context)}]`
     );
     return result(context);
   }

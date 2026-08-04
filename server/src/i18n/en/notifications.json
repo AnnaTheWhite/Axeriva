@@ -38,13 +38,18 @@
       "plan": "Plan",
       "period": "Billing period",
       "amount": "Amount",
-      "viewInvoice": "View invoice"
+      "viewInvoice": "View invoice",
+      "manage": "You can view past invoices or change your plan any time from the Subscription page in Axeriva."
     },
     "subscriptionRenewed": {
       "subject": "Your Axeriva subscription renewed — {{amount}}",
       "intro": "Thanks — your subscription has renewed.",
-      "body": "{{companyName}} is on the {{planName}} plan for another billing period. Here are the details:",
-      "manage": "You can view past invoices or change your plan any time from the Subscription page in Axeriva."
+      "body": "{{companyName}} is on the {{planName}} plan for another billing period. Here are the details:"
+    },
+    "invoicePaid": {
+      "subject": "Payment received for your plan change — {{amount}}",
+      "intro": "Thanks — we've received your payment for the plan change.",
+      "body": "{{companyName}} is now on the {{planName}} plan. This invoice covers the difference for the rest of the current billing period:"
     },
     "subscriptionConfirmed": {
       "subject": "Your {{planName}} subscription is active",

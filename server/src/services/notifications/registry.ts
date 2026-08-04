@@ -104,6 +104,24 @@ export const NOTIFICATION_TYPES = {
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },
+  // N1.8 Slice 2 — the mid-cycle plan-change receipt. `invoice.paid` with
+  // billing_reason = subscription_update, which in this product means the
+  // customer approved an upgrade on Stripe's hosted confirmation page: that
+  // portal configuration sets proration_behavior "always_invoice"
+  // (scripts/stripeSetup.ts), so Stripe invoices and charges the proration
+  // immediately instead of rolling it into the next cycle.
+  "billing.invoice_paid": {
+    // Same reasoning as the renewal receipt below — a receipt for a charge the
+    // customer themselves just authorised is exactly what Q2 lets them switch
+    // off. The message they cannot switch off is `billing.plan_upgraded`
+    // (N1.8 Phase 2), which reports the CHANGE rather than the payment.
+    category: "billing_receipts",
+    severity: "success",
+    mandatory: false,
+    recipients: "OWNER",
+    // EMAIL only — a receipt belongs in an inbox, where invoices are kept.
+    channels: ["EMAIL"],
+  },
   // N1.8 Slice 1 — the renewal receipt. `invoice.paid` with
   // billing_reason = subscription_cycle; the other billing_reasons route
   // elsewhere or nowhere (K1), so one payment never produces two emails.

@@ -38,13 +38,18 @@
       "plan": "Csomag",
       "period": "Számlázási időszak",
       "amount": "Összeg",
-      "viewInvoice": "Számla megtekintése"
+      "viewInvoice": "Számla megtekintése",
+      "manage": "A korábbi számlákat megtekintheted, a csomagot bármikor módosíthatod az Axeriva Előfizetés oldalán."
     },
     "subscriptionRenewed": {
       "subject": "Az Axeriva előfizetésed megújult — {{amount}}",
       "intro": "Köszönjük — az előfizetésed megújult.",
-      "body": "A(z) {{companyName}} további egy számlázási időszakra a(z) {{planName}} csomagon marad. A részletek:",
-      "manage": "A korábbi számlákat megtekintheted, a csomagot bármikor módosíthatod az Axeriva Előfizetés oldalán."
+      "body": "A(z) {{companyName}} további egy számlázási időszakra a(z) {{planName}} csomagon marad. A részletek:"
+    },
+    "invoicePaid": {
+      "subject": "Megkaptuk a csomagváltásod díját — {{amount}}",
+      "intro": "Köszönjük — megkaptuk a csomagváltásod díját.",
+      "body": "A(z) {{companyName}} mostantól a(z) {{planName}} csomagon van. Ez a számla a különbözetet fedezi a jelenlegi számlázási időszak hátralévő részére:"
     },
     "subscriptionConfirmed": {
       "subject": "A(z) {{planName}} előfizetésed aktív",

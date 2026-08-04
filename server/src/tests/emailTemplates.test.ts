@@ -1,10 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// N1.8 Slice 2 — stubs the Resend HTTP client so the REAL ResendEmailService can
+// be constructed and its method → template binding checked (see the describe
+// block below). vi.hoisted is required: vi.mock's factory is lifted above the
+// imports, so the array it writes into has to exist before them.
+const { mockSentSubjects } = vi.hoisted(() => ({ mockSentSubjects: [] as string[] }));
+
+vi.mock("resend", () => ({
+  Resend: class {
+    emails = {
+      send: async (payload: { subject: string }) => {
+        mockSentSubjects.push(payload.subject);
+        return { data: { id: "re_test_message" }, error: null };
+      },
+    };
+  },
+}));
 import { welcomeEmailTemplate } from "../emails/templates/auth/WelcomeEmail";
 import { verificationEmailTemplate } from "../emails/templates/auth/VerificationEmail";
 import { passwordResetEmailTemplate } from "../emails/templates/auth/PasswordResetEmail";
 import { invitationEmailTemplate } from "../emails/templates/employees/InvitationEmail";
 import { subscriptionConfirmedEmailTemplate } from "../emails/templates/billing/SubscriptionConfirmedEmail";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
+import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
 import {
   contrastTextColor,
   ctaColors,
@@ -91,6 +109,23 @@ function everyTemplate(locale: NotificationLocale) {
           locale,
         }),
     },
+    // N1.8 Slice 2. The dates are a PART-month window on purpose: this receipt
+    // covers the remainder of a cycle, not a whole one, and a fixture reusing
+    // the renewal's full-month range would read as if the two templates said
+    // the same thing.
+    {
+      name: "invoicePaid",
+      render: () =>
+        invoicePaidEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          planName: "Business",
+          amountFormatted: "€12.50",
+          periodStartFormatted: "15 October 2026",
+          periodEndFormatted: "1 November 2026",
+          invoiceUrl: "https://invoice.stripe.com/i/abc123",
+          locale,
+        }),
+    },
   ];
 }
 
@@ -118,6 +153,66 @@ describe.each(NOTIFICATION_LOCALES)("every template renders in %s", (locale) => 
       expect(subject).not.toContain("{{");
     }
   );
+});
+
+describe("the transport binds each method to the RIGHT template", () => {
+  // N1.8 Slice 2. The two billing receipts take an IDENTICAL payload and render
+  // near-identical layouts, so `sendInvoicePaidEmail` calling
+  // `subscriptionRenewedEmailTemplate` — a one-token slip in a method that was
+  // copy-pasted from the one above it — produces a perfectly valid email that
+  // tells a customer who just paid a mid-cycle difference that their
+  // subscription renewed for another billing period.
+  //
+  // Nothing else catches it. Until Slice 2 the compiler did: each template had
+  // its own props type, so crossing them would not typecheck. Unifying the
+  // payload onto InvoiceReceiptEmailPayload — which is the right call, it is
+  // one contract — removed that protection. And no integration test reaches
+  // here either: the suite runs on MockEmailService, which is a logger and
+  // never renders, so ResendEmailService is the one file in the send path that
+  // no test constructs.
+  //
+  // So it is constructed here, with the network stubbed at the Resend client
+  // and the SUBJECT the transport actually produced compared against each
+  // template's own output. The subjects differ between the two receipts, which
+  // is what makes the binding observable.
+  const payload = {
+    companyName: "Villanyszerelő Kft",
+    planName: "Professional",
+    amountFormatted: "€12.50",
+    periodStartFormatted: "15 October 2026",
+    periodEndFormatted: "1 November 2026",
+    invoiceUrl: "https://invoice.stripe.com/i/abc123",
+  };
+
+  it("sends the plan-change receipt from sendInvoicePaidEmail", async () => {
+    const { ResendEmailService } = await import("../services/email/ResendEmailService");
+    const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
+
+    mockSentSubjects.length = 0;
+    await service.sendInvoicePaidEmail("owner@example.com", payload, { locale: "en" });
+
+    const expected = await invoicePaidEmailTemplate({ ...payload, locale: "en" });
+    const renewal = await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" });
+
+    expect(mockSentSubjects).toHaveLength(1);
+    expect(mockSentSubjects[0]).toBe(expected.subject);
+    // The assertion that gives the one above teeth: the two subjects are not
+    // the same string, so matching the right one is a real constraint.
+    expect(expected.subject).not.toBe(renewal.subject);
+  });
+
+  it("sends the renewal receipt from sendSubscriptionRenewedEmail", async () => {
+    const { ResendEmailService } = await import("../services/email/ResendEmailService");
+    const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
+
+    mockSentSubjects.length = 0;
+    await service.sendSubscriptionRenewedEmail("owner@example.com", payload, { locale: "en" });
+
+    const expected = await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" });
+
+    expect(mockSentSubjects).toHaveLength(1);
+    expect(mockSentSubjects[0]).toBe(expected.subject);
+  });
 });
 
 describe("localization", () => {
@@ -195,6 +290,19 @@ describe("escaping — the guarantee that replaced escapeHtml()", () => {
           planName: MALICIOUS,
           amountFormatted: "€25.00",
           periodStartFormatted: "1 October 2026",
+          periodEndFormatted: "1 November 2026",
+          invoiceUrl: null,
+          locale: "en",
+        }),
+      // N1.8 Slice 2 — same two tenant-controlled values, same reasoning. The
+      // template being a near-copy of the one above is exactly why it is named
+      // here: a copied template does not inherit the original's coverage.
+      () =>
+        invoicePaidEmailTemplate({
+          companyName: MALICIOUS,
+          planName: MALICIOUS,
+          amountFormatted: "€12.50",
+          periodStartFormatted: "15 October 2026",
           periodEndFormatted: "1 November 2026",
           invoiceUrl: null,
           locale: "en",

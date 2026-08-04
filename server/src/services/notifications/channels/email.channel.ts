@@ -1,6 +1,10 @@
 import prisma from "../../../database/prisma";
 import { emailService } from "../../email";
-import type { EmailContext, EmailSendResult } from "../../email/EmailService";
+import type {
+  EmailContext,
+  EmailSendResult,
+  InvoiceReceiptEmailPayload,
+} from "../../email/EmailService";
 import type { NotificationLocale } from "../../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../../constants/tokenTtl";
 import { parseInvoiceNotificationContext } from "../../../emails/billingTypes";
@@ -164,42 +168,22 @@ async function send(
         emailContext
       );
 
-    // N1.8 Slice 1. THE MONEY AND DATES ARE FORMATTED HERE, not in the trigger,
-    // and `locale` is why: it is the RECIPIENT's locale, resolved per delivery
-    // by the dispatcher (User.language overriding Company.language). The
-    // trigger only knows the company's, so anything it formatted was in the
-    // wrong language for any user whose preference differs — a Hungarian email
-    // quoting English-formatted euros. The context therefore carries raw minor
-    // units and UNIX seconds, and one event can serve two owners in two
-    // languages correctly.
-    case "billing.subscription_renewed": {
-      const invoice = parseInvoiceNotificationContext(context);
-
+    // N1.8 Slice 1 — the renewal receipt.
+    case "billing.subscription_renewed":
       return emailService.sendSubscriptionRenewedEmail(
         to,
-        {
-          companyName: invoice.companyName,
-          planName: invoice.planName,
-          amountFormatted: formatMoney({
-            amountMinor: invoice.amountMinor,
-            currency: invoice.currency,
-            locale,
-          }),
-          periodStartFormatted: formatDate({
-            value: invoice.periodStartAt,
-            locale,
-            timeZone: invoice.timeZone,
-          }),
-          periodEndFormatted: formatDate({
-            value: invoice.periodEndAt,
-            locale,
-            timeZone: invoice.timeZone,
-          }),
-          invoiceUrl: invoice.invoiceUrl,
-        },
+        invoiceReceiptPayload(context, locale),
         emailContext
       );
-    }
+
+    // N1.8 Slice 2 — the mid-cycle plan-change receipt. Same context contract,
+    // same formatting, different message.
+    case "billing.invoice_paid":
+      return emailService.sendInvoicePaidEmail(
+        to,
+        invoiceReceiptPayload(context, locale),
+        emailContext
+      );
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of
@@ -208,6 +192,47 @@ async function send(
   // to its channels without a case here, that proof fails at compile time
   // instead of the delivery being silently marked "sent" with nothing sent.
   return assertNoEmailTemplate(type);
+}
+
+// N1.8 — THE MONEY AND DATES ARE FORMATTED HERE, not in the trigger, and
+// `locale` is why: it is the RECIPIENT's locale, resolved per delivery by the
+// dispatcher (User.language overriding Company.language). The trigger only
+// knows the company's, so anything it formatted was in the wrong language for
+// any user whose preference differs — a Hungarian email quoting English-
+// formatted euros. The context therefore carries raw minor units and UNIX
+// seconds, and one event can serve two owners in two languages correctly.
+//
+// Slice 2 lifted this out of the single case it started in. Every billing
+// receipt reads the same context and needs the same four conversions, so
+// leaving it inline would have meant re-deriving "divide by 100, seconds not
+// milliseconds, company timezone, recipient locale" once per slice — four
+// chances each to get one of them wrong, in code no reviewer would read twice.
+function invoiceReceiptPayload(
+  context: DeliveryContext,
+  locale: NotificationLocale
+): InvoiceReceiptEmailPayload {
+  const invoice = parseInvoiceNotificationContext(context);
+
+  return {
+    companyName: invoice.companyName,
+    planName: invoice.planName,
+    amountFormatted: formatMoney({
+      amountMinor: invoice.amountMinor,
+      currency: invoice.currency,
+      locale,
+    }),
+    periodStartFormatted: formatDate({
+      value: invoice.periodStartAt,
+      locale,
+      timeZone: invoice.timeZone,
+    }),
+    periodEndFormatted: formatDate({
+      value: invoice.periodEndAt,
+      locale,
+      timeZone: invoice.timeZone,
+    }),
+    invoiceUrl: invoice.invoiceUrl,
+  };
 }
 
 function assertNoEmailTemplate(type: never): never {

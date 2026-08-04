@@ -7,13 +7,18 @@ import { startQueue, stopQueue } from "../services/queue";
 import { dispatchEvent } from "../services/notifications/dispatcher";
 import { deliverEmail } from "../services/notifications/channels/email.channel";
 import { emailService } from "../services/email";
-import type { SubscriptionRenewedEmailPayload } from "../services/email/EmailService";
+import type { InvoiceReceiptEmailPayload } from "../services/email/EmailService";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
+import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
 import { registerNotificationWorkers } from "../services/notifications/workers";
 import { createCompany, createUser } from "./helpers/factories";
+import { priceIdFor } from "../config/stripePricing";
 import { ROLES } from "../constants/roles";
 
-// N1.8 Slice 1 — billing.subscription_renewed, end to end.
+// N1.8 Slices 1-2 — the two invoice receipts, end to end.
+//
+//   billing.subscription_renewed  ← invoice.paid, subscription_cycle
+//   billing.invoice_paid          ← invoice.paid, subscription_update
 //
 // THE POINT OF THIS FILE: every N1.x defect that reached "done" did so because
 // a test validated a mocked path while the production path was broken —
@@ -27,13 +32,22 @@ import { ROLES } from "../constants/roles";
 //       -> HANDLED_EVENTS replay protection
 //         -> notify() outbox row
 //           -> dispatchEvent fan-out
-//             -> the real email channel and template render
+//             -> the real email channel (recipient locale, formatting)
 //               -> dedupe verification on redelivery
 //
-// Nothing here mocks Stripe's verification, the notification pipeline, or the
-// template. The only thing that is not real is the transport (MockEmailService,
-// selected by RESEND_API_KEY="" in vitest.config.ts), which still returns a
-// message id so the correlation column is exercised.
+// Nothing here mocks Stripe's verification or the notification pipeline. The
+// one thing that is not real is the TRANSPORT (MockEmailService, selected by
+// RESEND_API_KEY="" in vitest.config.ts), which still returns a message id so
+// the correlation column is exercised.
+//
+// ⚠️ WHAT THAT COSTS, stated because an earlier version of this comment claimed
+// the chain rendered "the real template" and it does not: MockEmailService is a
+// logger and renders nothing, so the leg from a transport method to the template
+// it calls is NOT exercised here. Tests below render the templates directly to
+// check their output, and emailTemplates.test.ts pins the method → template
+// binding on the real ResendEmailService. Slice 2 made that binding worth
+// pinning: unifying the two receipts onto one payload type removed the
+// type-level protection that used to make a wrong-template call fail to compile.
 
 const WEBHOOK_SECRET = "whsec_axeriva_integration_suite";
 const signer = new Stripe("sk_test_axeriva_integration_suite");
@@ -53,12 +67,32 @@ const ASSOCIATION_END = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 
 const SERVICE_START = Math.floor(new Date("2026-10-01T00:00:00Z").getTime() / 1000);
 const SERVICE_END = Math.floor(new Date("2026-11-01T00:00:00Z").getTime() / 1000);
 
-// A ONE-OFF CREDIT the support team added mid-cycle — a routine Dashboard
+// A ONE-OFF LINE the support team added mid-cycle — a routine Dashboard
 // action. Stripe sorts pending invoice items BEFORE subscription items
 // (Invoices.d.ts:322), so this line is index 0 on the real payload, and its
 // period is a different, narrower window than the service period.
+//
+// ⚠️ It is a CHARGE with a LARGER amount than the subscription line, and both
+// halves of that are load-bearing. Slice 2 selects among subscription lines by
+// amount, so a rival line with no amount at all (undefined loses every
+// comparison) or with a smaller one cannot win even if the code stopped
+// filtering by line TYPE — which is exactly what happened: the
+// "type filter removed" mutation SURVIVED a full run against fixtures whose
+// support line had no amount, and the filter looked redundant when it is not.
+// A real onboarding fee or extra-seat charge does have an amount, and it can
+// exceed a part-month proration.
+const SUPPORT_CHARGE_MINOR = 5000;
 const CREDIT_START = Math.floor(new Date("2026-09-14T00:00:00Z").getTime() / 1000);
 const CREDIT_END = Math.floor(new Date("2026-09-15T00:00:00Z").getTime() / 1000);
+
+// N1.8 Slice 2 — THE PRORATION WINDOW: from the moment of a mid-cycle plan
+// change to the end of the CURRENT cycle. A part month, and deliberately equal
+// to none of the three windows above: a plan-change receipt that reported the
+// association window (September), the support charge's window (14-15
+// September) or a whole cycle (1 October - 1 November) is then a test failure
+// rather than a plausible-looking date nobody checks.
+const PRORATION_START = Math.floor(new Date("2026-10-15T00:00:00Z").getTime() / 1000);
+const PRORATION_END = Math.floor(new Date("2026-11-01T00:00:00Z").getTime() / 1000);
 
 function invoiceFixture(overrides: Record<string, unknown> = {}) {
   // Shaped from the installed SDK's Invoice type, not from memory. Amounts are
@@ -66,7 +100,7 @@ function invoiceFixture(overrides: Record<string, unknown> = {}) {
   return {
     id: "in_test_renewal_1",
     object: "invoice",
-    customer: "cus_test_renewal",
+    customer: "cus_test_billing",
     billing_reason: "subscription_cycle",
     amount_paid: 2500,
     currency: "eur",
@@ -81,21 +115,35 @@ function invoiceFixture(overrides: Record<string, unknown> = {}) {
     // "the first line" and "the subscription line" were the same thing and a
     // handler taking data[0] passed. Stripe sorts pending invoice items ahead
     // of subscription items (Invoices.d.ts:322), so a real invoice with a
-    // support credit on it looks like this — and only this shape makes the
+    // support charge on it looks like this — and only this shape makes the
     // distinction observable.
     lines: {
       object: "list",
       data: [
         {
-          id: "il_test_credit",
+          id: "il_test_support_charge",
           object: "line_item",
+          amount: SUPPORT_CHARGE_MINOR,
           period: { start: CREDIT_START, end: CREDIT_END },
           parent: { type: "invoice_item_details", invoice_item_details: {} },
         },
+        // Carries a real PRICE, because Slice 2 made the plan name come from
+        // this line rather than from Company.plan — for the renewal receipt
+        // too. Without pricing here, invoicePlanId() returns null on every
+        // renewal, the `?? company.plan` fallback answers instead, and the new
+        // path would be shipped for Slice 1 completely unexercised.
         {
           id: "il_test_subscription",
           object: "line_item",
+          amount: 2500,
           period: { start: SERVICE_START, end: SERVICE_END },
+          pricing: {
+            type: "price_details",
+            price_details: {
+              price: priceIdFor("professional", "eur"),
+              product: "prod_professional",
+            },
+          },
           parent: {
             type: "subscription_item_details",
             subscription_item_details: { proration: false, subscription_item: "si_test" },
@@ -107,6 +155,87 @@ function invoiceFixture(overrides: Record<string, unknown> = {}) {
     invoice_pdf: "https://invoice.stripe.com/i/test.pdf",
     ...overrides,
   };
+}
+
+// N1.8 Slice 2 — a real subscription_update invoice, built ON TOP of the
+// renewal fixture so the two cannot drift in anything but what actually
+// differs.
+//
+// The customer approved an upgrade on Stripe's hosted confirmation page, whose
+// portal configuration prorates with always_invoice. Stripe then issues TWO
+// proration lines — a credit for the unused time on the old plan and a charge
+// for the new plan's remaining time — and BOTH are subscription lines, so this
+// invoice has no non-proration line at all. That is the shape that makes the
+// trigger take the fallback branch of its line selection, which is why the
+// support charge is left sitting at index 0: Stripe's ordering does not change
+// with billing_reason, and a handler reaching for data[0] would report 14-15
+// September on an October plan change.
+//
+// The invoice-level period_start/period_end stay at the ASSOCIATION window
+// inherited from the renewal fixture, so a handler reading those instead of the
+// line period is caught too.
+function planChangeInvoiceFixture(overrides: Record<string, unknown> = {}) {
+  return invoiceFixture({
+    id: "in_test_planchange_1",
+    billing_reason: "subscription_update",
+    // A part-cycle proration, not a full month's price — and not a round
+    // number of euro, so a missing divide-by-100 cannot coincidentally read
+    // like a plausible amount.
+    amount_paid: 1250,
+    lines: {
+      object: "list",
+      data: [
+        // Larger than the plan-change charge below, so it WINS any selection
+        // that stops filtering by line type. See SUPPORT_CHARGE_MINOR.
+        {
+          id: "il_test_support_charge",
+          object: "line_item",
+          amount: SUPPORT_CHARGE_MINOR,
+          period: { start: CREDIT_START, end: CREDIT_END },
+          parent: { type: "invoice_item_details", invoice_item_details: {} },
+        },
+        // The credit for the unused time on the OLD plan. Negative amount, old
+        // price — and listed FIRST, because Stripe's ordering between two
+        // prorations created in the same instant is not something to rely on
+        // and a handler taking the first one must fail here.
+        {
+          id: "il_test_old_plan_credit",
+          object: "line_item",
+          amount: -1500,
+          period: { start: PRORATION_START, end: PRORATION_END },
+          pricing: {
+            type: "price_details",
+            price_details: { price: priceIdFor("starter", "eur"), product: "prod_starter" },
+          },
+          parent: {
+            type: "subscription_item_details",
+            subscription_item_details: { proration: true, subscription_item: "si_test" },
+          },
+        },
+        // The charge for the remaining time on the NEW plan. This is the line
+        // the receipt is about: its price names the plan the customer is now
+        // on, and its amount is what they were charged.
+        {
+          id: "il_test_new_plan_charge",
+          object: "line_item",
+          amount: 2750,
+          period: { start: PRORATION_START, end: PRORATION_END },
+          pricing: {
+            type: "price_details",
+            price_details: {
+              price: priceIdFor("professional", "eur"),
+              product: "prod_professional",
+            },
+          },
+          parent: {
+            type: "subscription_item_details",
+            subscription_item_details: { proration: true, subscription_item: "si_test" },
+          },
+        },
+      ],
+    },
+    ...overrides,
+  });
 }
 
 function stripeEvent(type: string, object: Record<string, unknown>, id?: string) {
@@ -132,12 +261,16 @@ function postWebhook(event: Record<string, unknown>) {
     .send(payload);
 }
 
-async function renewalTenant(overrides: { language?: string | null; timezone?: string | null } = {}) {
+// One company, one owner, one employee — the fixture every billing slice
+// needs. Named for billing rather than for renewals because Slice 2 and the ten
+// after it use the same shape; a helper named after the first slice that
+// happened to need it reads wrong from the second one onwards.
+async function billingTenant(overrides: { language?: string | null; timezone?: string | null } = {}) {
   const company = await createCompany();
   await prisma.company.update({
     where: { id: company.id },
     data: {
-      stripeCustomerId: "cus_test_renewal",
+      stripeCustomerId: "cus_test_billing",
       plan: "professional",
       language: overrides.language ?? "en",
       timezone: overrides.timezone ?? null,
@@ -165,7 +298,7 @@ afterAll(async () => {
 
 describe("Slice 1 — the complete path, nothing stubbed", () => {
   it("turns a signed invoice.paid into a sent renewal email", async () => {
-    const { company, owner, employee } = await renewalTenant();
+    const { company, owner, employee } = await billingTenant();
 
     const res = await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
     expect(res.status).toBe(200);
@@ -193,7 +326,11 @@ describe("Slice 1 — the complete path, nothing stubbed", () => {
     const addresses = deliveries.map((d) => d.recipientAddress);
     expect(addresses).not.toContain(employee.email);
 
-    // 3. The real channel renders the real template and "sends".
+    // 3. The real channel resolves the recipient's locale, formats the raw
+    //    context and hands the finished payload to the transport, which
+    //    "sends". It does NOT render a template: the transport under test is
+    //    MockEmailService, which is a logger by design. Template rendering is
+    //    proved separately, below and in emailTemplates.test.ts.
     await deliverEmail(deliveries[0].id);
     const sent = await prisma.notificationDelivery.findUnique({
       where: { id: deliveries[0].id },
@@ -205,7 +342,7 @@ describe("Slice 1 — the complete path, nothing stubbed", () => {
   });
 
   it("suppresses a Stripe redelivery at BOTH layers", async () => {
-    await renewalTenant();
+    await billingTenant();
 
     const event = stripeEvent("invoice.paid", invoiceFixture());
     const first = await postWebhook(event);
@@ -227,7 +364,7 @@ describe("Slice 1 — the complete path, nothing stubbed", () => {
     // Layer 2, and the reason the key is the INVOICE id rather than the event
     // id. Stripe can emit more than one event id for one invoice; keyed on the
     // event id, each would send its own receipt for a single payment.
-    await renewalTenant();
+    await billingTenant();
 
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture(), "evt_first"));
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture(), "evt_second"));
@@ -243,7 +380,7 @@ describe("Slice 1 — the complete path, nothing stubbed", () => {
   it("sends again for the NEXT invoice", async () => {
     // The other half of the dedupe contract: a genuinely new billing period
     // must not be suppressed.
-    await renewalTenant();
+    await billingTenant();
 
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture(), "evt_month_1"));
     await postWebhook(
@@ -256,49 +393,96 @@ describe("Slice 1 — the complete path, nothing stubbed", () => {
   });
 });
 
-describe("Slice 1 — billing_reason routing (K1)", () => {
+describe("Slices 1-2 — billing_reason routing (K1)", () => {
   it("does NOT send for the first payment of a new subscription", async () => {
     // subscription_create is the checkout flow's; sending here too would mean
     // the customer gets both "welcome" and "renewed" for one charge.
-    await renewalTenant();
+    await billingTenant();
 
     const res = await postWebhook(
       stripeEvent("invoice.paid", invoiceFixture({ billing_reason: "subscription_create" }))
     );
 
     expect(res.status).toBe(200);
-    expect(
-      await prisma.notificationEvent.count({ where: { type: "billing.subscription_renewed" } })
-    ).toBe(0);
+    // NO notification of ANY type — asserted on the whole table rather than on
+    // billing.subscription_renewed alone, because the routing table now has a
+    // second destination and "did not send the renewal" would pass while
+    // sending the plan-change receipt instead.
+    expect(await prisma.notificationEvent.count()).toBe(0);
     // Still recorded in the ledger, so a redelivery is not re-evaluated.
     expect(await prisma.processedStripeEvent.count()).toBe(1);
   });
 
-  it("does NOT send for a mid-cycle plan-change invoice (Slice 2's)", async () => {
-    await renewalTenant();
+  it("does NOT send for a billing_reason the table does not name", async () => {
+    // `manual` — an invoice raised by hand in the Dashboard. Four of Stripe's
+    // seven reasons route nowhere in N1.8, and the handler must treat an
+    // unlisted one as silence rather than as a default.
+    await billingTenant();
 
-    await postWebhook(
-      stripeEvent("invoice.paid", invoiceFixture({ billing_reason: "subscription_update" }))
+    const res = await postWebhook(
+      stripeEvent("invoice.paid", invoiceFixture({ billing_reason: "manual" }))
     );
 
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("routes a mid-cycle plan change to billing.invoice_paid and NOTHING else", async () => {
+    // The K1 property itself: one payment, one email. Slice 1 read this same
+    // event and had to stay silent for it; Slice 2 is the destination that was
+    // missing. If the two branches ever both fire, the customer gets a renewal
+    // receipt and a plan-change receipt for a single charge.
+    await billingTenant();
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_paid" } })
+    ).toBe(1);
     expect(
       await prisma.notificationEvent.count({ where: { type: "billing.subscription_renewed" } })
     ).toBe(0);
+    expect(await prisma.notificationEvent.count()).toBe(1);
+  });
+
+  it("routes a renewal to billing.subscription_renewed and NOTHING else", async () => {
+    // The mirror assertion. Without it, a routing table that pointed BOTH
+    // reasons at billing.invoice_paid would still pass every renewal test that
+    // only counts its own type.
+    await billingTenant();
+
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.subscription_renewed" } })
+    ).toBe(1);
+    expect(await prisma.notificationEvent.count()).toBe(1);
   });
 });
 
+// The transport method each receipt type MUST reach. Two near-identical
+// payloads make "renewed" and "plan change" an easy pair to cross-wire in the
+// channel's switch, and no assertion about the payload could ever see it — the
+// values are the same either way, only the copy the customer reads differs.
+// Spying on the type's own method is what makes that observable.
+const RECEIPT_METHOD = {
+  "billing.subscription_renewed": "sendSubscriptionRenewedEmail",
+  "billing.invoice_paid": "sendInvoicePaidEmail",
+} as const;
+
 // Captures the payload the email channel hands the transport — i.e. what the
 // customer would actually read, after per-recipient locale resolution.
-async function deliveredPayload(): Promise<SubscriptionRenewedEmailPayload> {
-  const event = (await prisma.notificationEvent.findFirst({
-    where: { type: "billing.subscription_renewed" },
-  }))!;
+async function deliveredPayload(
+  type: keyof typeof RECEIPT_METHOD = "billing.subscription_renewed"
+): Promise<InvoiceReceiptEmailPayload> {
+  const event = (await prisma.notificationEvent.findFirst({ where: { type } }))!;
   await dispatchEvent(event.id);
   const delivery = (await prisma.notificationDelivery.findFirst({
     where: { eventId: event.id, channel: "EMAIL" },
   }))!;
 
-  const spy = vi.spyOn(emailService, "sendSubscriptionRenewedEmail");
+  const spy = vi.spyOn(emailService, RECEIPT_METHOD[type]);
   try {
     await deliverEmail(delivery.id);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -315,7 +499,7 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
     // from it told a customer billed in October that their billing period was
     // September: one cycle stale on the document they keep for accounting, and
     // a full year out on an annual plan.
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
 
     const payload = await deliveredPayload();
@@ -325,19 +509,19 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
     expect(payload.periodEndFormatted).toBe("1 November 2026");
   });
 
-  it("ignores a one-off credit line that Stripe sorts ahead of the subscription", async () => {
+  it("ignores a one-off support line that Stripe sorts ahead of the subscription", async () => {
     // The surviving path a re-review found after the first P1 fix. That fix
     // filtered on `item.period`, which is a REQUIRED field on every line item,
     // so the predicate was always true and the code was really `data[0]`.
-    // Stripe puts pending invoice items (a support credit, a one-off charge)
-    // BEFORE subscription items, so data[0] is the credit and the receipt
+    // Stripe puts pending invoice items (a support charge, a one-off credit)
+    // BEFORE subscription items, so data[0] is the support line and the receipt
     // stated its narrow mid-September window instead of the October cycle.
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
 
     const payload = await deliveredPayload();
 
-    // The subscription line's period, not the credit's (14–15 September).
+    // The subscription line's period, not the support line's (14–15 September).
     expect(payload.periodStartFormatted).toBe("1 October 2026");
     expect(payload.periodStartFormatted).not.toContain("September");
   });
@@ -345,7 +529,7 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
   it("prefers the non-proration subscription line", async () => {
     // Matters from Slice 2 on: a subscription_update invoice carries proration
     // lines that ARE subscription lines but describe a partial window.
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(
       stripeEvent(
         "invoice.paid",
@@ -388,11 +572,15 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
     // picks it and the type filter is redundant — which is why removing the
     // filter passed every other test. The filter earns its place only on the
     // FALLBACK path: if every subscription line is a proration, the code takes
-    // subscriptionLines[0], and without the filter that is the credit line
-    // sitting at index 0. A subscription_update invoice carrying a support
-    // credit is exactly that shape, and Slice 2 widens billing_reason to
-    // include it.
-    await renewalTenant({ language: "en" });
+    // the largest-amount one, and without the filter that is the support charge
+    // — which this fixture deliberately makes the biggest line on the invoice.
+    // A subscription_update invoice carrying a support charge is exactly that
+    // shape, and Slice 2 widens billing_reason to include it.
+    //
+    // (Slice 2 replaced the old `subscriptionLines[0]` fallback with that
+    // largest-amount rule, because an all-proration invoice's two lines arrive
+    // in no guaranteed order — see subscriptionInvoiceLine.)
+    await billingTenant({ language: "en" });
     await postWebhook(
       stripeEvent(
         "invoice.paid",
@@ -400,15 +588,21 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
           lines: {
             object: "list",
             data: [
+              // The amounts are what make this fixture able to fail. Slice 2
+              // selects among subscription lines by amount, so this non-
+              // subscription line must be the LARGEST for the type filter to be
+              // the only thing keeping it out.
               {
-                id: "il_credit",
+                id: "il_support_charge",
                 object: "line_item",
+                amount: SUPPORT_CHARGE_MINOR,
                 period: { start: CREDIT_START, end: CREDIT_END },
                 parent: { type: "invoice_item_details", invoice_item_details: {} },
               },
               {
                 id: "il_proration_only",
                 object: "line_item",
+                amount: 2750,
                 period: { start: SERVICE_START, end: SERVICE_END },
                 parent: {
                   type: "subscription_item_details",
@@ -424,7 +618,7 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
     const payload = await deliveredPayload();
 
     // The subscription line's period, even though it is a proration — never the
-    // credit line's, which is what index 0 would give.
+    // support line's, which is what index 0 would give.
     expect(payload.periodStartFormatted).toBe("1 October 2026");
     expect(payload.periodStartFormatted).not.toContain("September");
   });
@@ -432,7 +626,7 @@ describe("Slice 1 — the receipt states the SERVICE period, not the association
   it("falls back to the invoice window when there is no subscription line", async () => {
     // Defensive, and unreachable for subscription_cycle invoices — but a
     // receipt that cannot render is worse than one with a coarser period.
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(
       stripeEvent("invoice.paid", invoiceFixture({ lines: { object: "list", data: [] } }))
     );
@@ -449,7 +643,7 @@ describe("Slice 1 — formatting follows the RECIPIENT, not the company", () => 
     // the COMPANY language — so the body rendered in Hungarian while the
     // amounts and dates stayed English. The context now carries raw values and
     // the channel formats with delivery.locale.
-    const { owner } = await renewalTenant({ language: "en" });
+    const { owner } = await billingTenant({ language: "en" });
     await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
 
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
@@ -463,7 +657,7 @@ describe("Slice 1 — formatting follows the RECIPIENT, not the company", () => 
   });
 
   it("keeps the company language when the recipient has no preference", async () => {
-    await renewalTenant({ language: "hu" });
+    await billingTenant({ language: "hu" });
 
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
     const payload = await deliveredPayload();
@@ -474,7 +668,7 @@ describe("Slice 1 — formatting follows the RECIPIENT, not the company", () => 
   it("stores RAW values in the context, never rendered text", async () => {
     // The property that makes one event serve two owners in two languages. If
     // the trigger ever formats again, this fails.
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
 
     const event = await prisma.notificationEvent.findFirst({
@@ -490,7 +684,7 @@ describe("Slice 1 — formatting follows the RECIPIENT, not the company", () => 
   });
 
   it("converts Stripe minor units — 2500 is 25 euro, not 2500", async () => {
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
 
     const payload = await deliveredPayload();
@@ -498,10 +692,29 @@ describe("Slice 1 — formatting follows the RECIPIENT, not the company", () => 
     expect(payload.planName).toBe("Professional");
   });
 
+  it("names the RENEWAL plan from the invoice too, not from Company.plan", async () => {
+    // Slice 2 changed Slice 1's behaviour here, so Slice 1 needs the matching
+    // coverage: the renewal receipt now also resolves its plan from the price
+    // on the invoice's subscription line. Every other renewal test asserts
+    // "Professional" while Company.plan is ALSO professional, so all of them
+    // pass whichever source is read — the two answers have to be made to
+    // disagree before this is a test at all.
+    //
+    // Business is the stored plan; the invoice was raised for Professional.
+    // Only the invoice can produce the right answer.
+    const { company } = await billingTenant({ language: "en" });
+    await prisma.company.update({ where: { id: company.id }, data: { plan: "business" } });
+
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
+    const payload = await deliveredPayload();
+
+    expect(payload.planName).toBe("Professional");
+  });
+
   it("renders dates in the company's timezone, which can change the DAY", async () => {
     // The service period ends midnight UTC on 1 November — 20:00 on 31 October
     // in New York.
-    await renewalTenant({ language: "en", timezone: "America/New_York" });
+    await billingTenant({ language: "en", timezone: "America/New_York" });
 
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture()));
     const payload = await deliveredPayload();
@@ -518,7 +731,7 @@ describe("Slice 1 — no renewal notice for a dead subscription", () => {
     // subscription_cycle. Without this check the customer received "Acme is on
     // the free plan for another billing period": the renewal claim false, and
     // the plan name the literal string the cancellation path writes.
-    const { company } = await renewalTenant();
+    const { company } = await billingTenant();
     await prisma.company.update({
       where: { id: company.id },
       data: { subscriptionStatus: "canceled", plan: "free" },
@@ -538,7 +751,7 @@ describe("Slice 1 — no renewal notice for a dead subscription", () => {
     // ACTIVE_SUBSCRIPTION_STATUSES includes past_due deliberately, and this
     // branch only runs for a PAID invoice: the payment that clears the arrears
     // must still be acknowledged.
-    const { company } = await renewalTenant();
+    const { company } = await billingTenant();
     await prisma.company.update({
       where: { id: company.id },
       data: { subscriptionStatus: "past_due" },
@@ -554,7 +767,7 @@ describe("Slice 1 — no renewal notice for a dead subscription", () => {
 
 describe("Slice 1 — the invoice link is optional", () => {
   it("renders the receipt with no CTA when Stripe supplied no hosted URL", async () => {
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture({ hosted_invoice_url: null })));
 
     const payload = await deliveredPayload();
@@ -567,7 +780,7 @@ describe("Slice 1 — the invoice link is optional", () => {
   });
 
   it("treats an empty-string URL as absent", async () => {
-    await renewalTenant({ language: "en" });
+    await billingTenant({ language: "en" });
     await postWebhook(stripeEvent("invoice.paid", invoiceFixture({ hosted_invoice_url: "" })));
 
     const payload = await deliveredPayload();
@@ -586,5 +799,358 @@ describe("Slice 1 — an invoice we cannot place", () => {
 
     expect(res.status).toBe(200);
     expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+});
+
+describe("Slice 2 — the complete path, nothing stubbed", () => {
+  it("turns a signed subscription_update invoice into a sent plan-change email", async () => {
+    const { company, owner, employee } = await billingTenant();
+
+    const res = await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+    expect(res.status).toBe(200);
+
+    // 1. The outbox row, keyed on the INVOICE and prefixed with its own type —
+    //    the prefix is what stops the two receipts sharing a key if the routing
+    //    table ever stops being disjoint.
+    const event = await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_paid" },
+    });
+    expect(event).not.toBeNull();
+    expect(event!.dedupeKey).toBe("billing.invoice_paid/in_test_planchange_1");
+    expect(event!.companyId).toBe(company.id);
+
+    // 2. Fan-out reaches the OWNER, EMAIL only. Q5 — every billing.* is
+    //    owner-only, and the company has an employee who must not appear: what
+    //    the company pays is not an employee's business.
+    await dispatchEvent(event!.id);
+    const deliveries = await prisma.notificationDelivery.findMany({
+      where: { eventId: event!.id },
+    });
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].channel).toBe("EMAIL");
+    expect(deliveries[0].recipientAddress).toBe(owner.email);
+    expect(deliveries.map((d) => d.recipientAddress)).not.toContain(employee.email);
+
+    // 3. The real channel resolves the recipient's locale, formats the raw
+    //    context and hands the finished payload to the transport, which
+    //    "sends". It does NOT render a template: the transport under test is
+    //    MockEmailService, which is a logger by design. Template rendering is
+    //    proved separately, below and in emailTemplates.test.ts.
+    await deliverEmail(deliveries[0].id);
+    const sent = await prisma.notificationDelivery.findUnique({
+      where: { id: deliveries[0].id },
+    });
+    expect(sent!.status).toBe("sent");
+    expect(sent!.providerMessageId).toMatch(/^mock_/);
+  });
+
+  it("reaches the plan-change template, not the renewal one", async () => {
+    // The mutation this exists for: the channel's two cases take an identical
+    // payload, so routing billing.invoice_paid to sendSubscriptionRenewedEmail
+    // produces a perfectly valid email that says the wrong thing — the customer
+    // is told their subscription renewed for another billing period when they
+    // in fact just paid a mid-cycle difference. No payload assertion can see
+    // that; only the method actually called can.
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    // deliveredPayload() spies on the type's OWN transport method and fails if
+    // it was not the one called.
+    const payload = await deliveredPayload("billing.invoice_paid");
+
+    // And the rendered copy is the plan-change copy, asserted against the real
+    // template rather than against the i18n file — a render that silently fell
+    // back to the renewal wording would still pass a key-level check.
+    const rendered = await invoicePaidEmailTemplate({ ...payload, locale: "en" });
+    expect(rendered.subject).toBe("Payment received for your plan change — €12.50");
+    expect(rendered.html).toContain("is now on the Professional plan");
+    expect(rendered.html).not.toContain("for another billing period");
+  });
+
+  it("suppresses a DIFFERENT event about the same plan-change invoice", async () => {
+    // The invoice-keyed layer, proved for the new type's own key rather than
+    // inherited from Slice 1: Stripe can emit more than one event id for one
+    // invoice, and a per-event key would receipt the same charge twice.
+    await billingTenant();
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture(), "evt_change_a"));
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture(), "evt_change_b"));
+
+    expect(await prisma.processedStripeEvent.count()).toBe(2);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_paid" } })
+    ).toBe(1);
+  });
+
+  it("sends again for a SECOND plan change", async () => {
+    // A customer who upgrades twice in one month gets two receipts. The other
+    // half of the dedupe contract — a key that dropped the invoice id would
+    // silently swallow this one.
+    await billingTenant();
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture(), "evt_change_1"));
+    await postWebhook(
+      stripeEvent(
+        "invoice.paid",
+        planChangeInvoiceFixture({ id: "in_test_planchange_2" }),
+        "evt_change_2"
+      )
+    );
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_paid" } })
+    ).toBe(2);
+  });
+});
+
+describe("Slice 2 — the receipt states the PRORATION window", () => {
+  it("takes the period from the proration line, not the invoice window", async () => {
+    // A subscription_update invoice is usually ALL proration, so the shared
+    // selector takes its fallback branch. Three wrong answers are reachable
+    // here and each names a different date: the invoice-level association
+    // window (1 September), the support charge sitting at index 0 (14
+    // September), and a whole cycle. Only the proration window is right.
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.invoice_paid");
+
+    expect(payload.periodStartFormatted).toBe("15 October 2026");
+    expect(payload.periodEndFormatted).toBe("1 November 2026");
+    // The support charge's window and the association window are both
+    // September; neither may reach the customer.
+    expect(payload.periodStartFormatted).not.toContain("September");
+  });
+
+  it("converts the proration amount from minor units", async () => {
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.invoice_paid");
+    expect(payload.amountFormatted).toBe("€12.50");
+    expect(payload.planName).toBe("Professional");
+  });
+
+  it("names the plan from the INVOICE, not from our not-yet-updated copy", async () => {
+    // THE RACE. One hosted upgrade makes Stripe emit both
+    // customer.subscription.updated and invoice.paid, with no ordering
+    // guarantee between them — and only the former runs
+    // applySubscriptionUpdate. Delivered in the other order, this handler reads
+    // a Company row that still says Starter and the customer is told "is now on
+    // the Starter plan" seconds after paying to leave it. The return-sync
+    // endpoint closes the window only for a customer who comes back to the app.
+    //
+    // The company is left on the OLD plan here on purpose: that is the state
+    // the racing delivery actually finds.
+    const { company } = await billingTenant({ language: "en" });
+    await prisma.company.update({ where: { id: company.id }, data: { plan: "starter" } });
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+    const payload = await deliveredPayload("billing.invoice_paid");
+
+    // Professional is reachable ONLY from the invoice's charge line. Reading
+    // Company.plan gives Starter; reading the credit line — the other proration,
+    // deliberately sitting first — also gives Starter. One right answer, two
+    // wrong ones that look identical to each other.
+    expect(payload.planName).toBe("Professional");
+  });
+
+  it("keeps the stored plan when the invoice price is unrecognised", async () => {
+    // A legacy or misconfigured price must not blank out the plan name. The
+    // fallback is Company.plan, which is what every pre-Slice-2 receipt used.
+    await billingTenant({ language: "en" });
+
+    await postWebhook(
+      stripeEvent(
+        "invoice.paid",
+        planChangeInvoiceFixture({
+          lines: {
+            object: "list",
+            data: [
+              {
+                id: "il_unknown_price",
+                object: "line_item",
+                amount: 2750,
+                period: { start: PRORATION_START, end: PRORATION_END },
+                pricing: {
+                  type: "price_details",
+                  price_details: { price: "price_from_another_account", product: "prod_x" },
+                },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: true, subscription_item: "si_test" },
+                },
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const payload = await deliveredPayload("billing.invoice_paid");
+    expect(payload.planName).toBe("Professional");
+  });
+
+  it("formats in the RECIPIENT's language, not the company's", async () => {
+    // Slice 1's P2 property, re-proved through the new case: the channel helper
+    // is shared, but the case wiring that hands it `locale` is not.
+    const { owner } = await billingTenant({ language: "en" });
+    await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+    const payload = await deliveredPayload("billing.invoice_paid");
+
+    // ICU separates the amount from the currency code with a NON-BREAKING
+    // space, and this expectation writes that character as a \u00A0 escape
+    // rather than pasting it in. Pasted, it is invisible in the source and a mismatch prints
+    // as "expected '12,50 EUR' to be '12,50 EUR'" — which is what Phase 0 hit
+    // and wrote down. The two Slice 1 expectations above still carry the
+    // literal character; same value, worse to debug.
+    expect(payload.amountFormatted).toBe("12,50\u00A0EUR");
+    expect(payload.periodStartFormatted).toBe("2026. október 15.");
+  });
+
+  it("stores RAW values in the context, never rendered text", async () => {
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    const event = await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_paid" },
+    });
+    const context = JSON.parse(event!.context!);
+
+    expect(context.amountMinor).toBe(1250);
+    expect(context.periodStartAt).toBe(PRORATION_START);
+    expect(context).not.toHaveProperty("amountFormatted");
+  });
+});
+
+describe("Slice 2 — a plan change that took no money", () => {
+  it("sends no receipt for a zero-amount invoice", async () => {
+    // A mid-cycle DOWNGRADE prorates in the customer's favour: the credit for
+    // the old plan's unused time exceeds the new plan's charge, Stripe moves
+    // the difference to the customer's credit balance and finalises this
+    // invoice at zero — which auto-pays and emits invoice.paid all the same.
+    //
+    // "Payment received for your plan change — €0.00" is a receipt for a
+    // payment that did not happen. The change itself is billing.plan_upgraded /
+    // billing.plan_downgraded's message (N1.8 Phase 2); this type reports money
+    // taken, and none was.
+    await billingTenant();
+
+    const res = await postWebhook(
+      stripeEvent("invoice.paid", planChangeInvoiceFixture({ amount_paid: 0 }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    // Still ledgered, so Stripe does not retry it forever.
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("STILL sends the renewal receipt at zero — the gate is not shared", async () => {
+    // The asymmetry, pinned. "Your subscription renewed" is true at zero: a
+    // fully discounted or fully credited cycle still renews the coverage, and
+    // the customer should still be told their plan continues. Widening the
+    // zero-amount gate to cover both receipts would suppress an accurate
+    // message, so the gate names its type and this test is what holds it there.
+    await billingTenant();
+
+    await postWebhook(stripeEvent("invoice.paid", invoiceFixture({ amount_paid: 0 })));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.subscription_renewed" } })
+    ).toBe(1);
+  });
+});
+
+describe("Slice 2 — no plan-change receipt for a dead subscription", () => {
+  it("stays silent when the subscription is no longer active", async () => {
+    // Slice 1's P3, which applies here for the same reason: a plan-change
+    // invoice can sit open through dunning too, and paying it from the hosted
+    // link afterwards resurrects nothing. The receipt names company.plan, which
+    // by then is whatever the cancellation path wrote — so the customer would
+    // read "is now on the free plan" over a paid-invoice headline.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "canceled", plan: "free" },
+    });
+
+    const res = await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("still sends for past_due — a failed payment is a LIVE subscription", async () => {
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "past_due" },
+    });
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_paid" } })
+    ).toBe(1);
+  });
+});
+
+describe("Slices 1-2 — a receipt is a message the customer may switch off", () => {
+  it("suppresses the plan-change receipt when the owner disabled billing_receipts", async () => {
+    // The registry's two policy fields are `category: "billing_receipts"` and
+    // `mandatory: false`, and neither is observable by reading the entry back —
+    // a test that asserted the literals would pass against a registry that the
+    // GATE ignores. So it is proved where it takes effect.
+    //
+    // Q2's line: a "we charged you again" receipt is a courtesy the customer
+    // may decline; the messages they cannot decline are the critical ones
+    // (payment failed, subscription ended), which live in the mandatory
+    // `billing` category. Getting this wrong in either direction is a real
+    // defect — `mandatory: true` makes the switch on the preference screen a
+    // lie, and `category: "billing"` puts the type in a MANDATORY_CATEGORY the
+    // preference API refuses to configure at all.
+    const { company, owner } = await billingTenant();
+    await prisma.notificationPreference.create({
+      data: {
+        companyId: company.id,
+        userId: owner.id,
+        category: "billing_receipts",
+        channel: "EMAIL",
+        enabled: false,
+      },
+    });
+
+    await postWebhook(stripeEvent("invoice.paid", planChangeInvoiceFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_paid" },
+    }))!;
+    await dispatchEvent(event.id);
+
+    const delivery = (await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id },
+    }))!;
+    expect(delivery.status).toBe("suppressed");
+    expect(delivery.suppressionReason).toBe("user_preference");
+  });
+});
+
+describe("Slice 2 — the invoice link is optional", () => {
+  it("renders the receipt with no CTA when Stripe supplied no hosted URL", async () => {
+    await billingTenant({ language: "en" });
+    await postWebhook(
+      stripeEvent("invoice.paid", planChangeInvoiceFixture({ hosted_invoice_url: null }))
+    );
+
+    const payload = await deliveredPayload("billing.invoice_paid");
+    expect(payload.invoiceUrl).toBeNull();
+
+    const rendered = await invoicePaidEmailTemplate({ ...payload, locale: "en" });
+    expect(rendered.html).not.toContain('href=""');
+    expect(rendered.html).toContain("12.50");
   });
 });

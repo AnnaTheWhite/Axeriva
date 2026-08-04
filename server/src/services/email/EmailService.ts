@@ -84,15 +84,36 @@ export interface EmailService {
   // emails/billingTypes.ts, so the trigger and the template cannot drift.
   sendSubscriptionRenewedEmail(
     to: string,
-    data: SubscriptionRenewedEmailPayload,
+    data: InvoiceReceiptEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult>;
+
+  // N1.8 Slice 2 — the mid-cycle plan-change receipt (invoice.paid with
+  // billing_reason = subscription_update). Same payload, different message:
+  // see emails/templates/billing/InvoicePaidEmail.tsx for why the two receipts
+  // are not one template with a flag.
+  sendInvoicePaidEmail(
+    to: string,
+    data: InvoiceReceiptEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult>;
 }
 
+// What an invoice receipt needs, whatever the receipt is FOR.
+//
+// N1.8 Slice 2 renamed this from SubscriptionRenewedEmailPayload and gave it a
+// second caller rather than declaring an identical twin. The five fields are
+// not "what the renewal email happens to want" — they are what any Stripe
+// invoice receipt states: who was billed, for which plan, how much, and for
+// which service window. Slices 3-12 add receipts that differ only in copy, and
+// a per-type payload would give each of them its own chance to drift from the
+// context contract in emails/billingTypes.ts.
+//
 // Every money and date field is a STRING that has already been through
-// utils/billingFormat. See emails/billingTypes.ts for why formatting lives in
-// the trigger and never in the template.
-export type SubscriptionRenewedEmailPayload = {
+// utils/billingFormat — see emails/billingTypes.ts for why the email CHANNEL
+// formats (the recipient's locale is not known any earlier) and the template
+// never does.
+export type InvoiceReceiptEmailPayload = {
   companyName: string;
   planName: string;
   amountFormatted: string;

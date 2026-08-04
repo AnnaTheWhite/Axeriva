@@ -9,7 +9,9 @@ import {
   reconcileCheckoutCompletion,
 } from "../services/stripe/syncSubscription";
 import { notify } from "../services/notifications/notify";
+import type { NotificationTypeKey } from "../services/notifications/registry";
 import { planDisplayName } from "../constants/plans";
+import { planForPriceId } from "../config/stripePricing";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../constants/subscriptionStatuses";
 import { config } from "../config";
 
@@ -44,9 +46,46 @@ const HANDLED_EVENTS = new Set([
   "checkout.session.completed",
   "customer.subscription.updated",
   "customer.subscription.deleted",
-  // N1.8 Slice 1.
+  // N1.8 Slices 1-2. ONE entry for both: Slice 2 routes a different
+  // billing_reason of the SAME Stripe event, so it needs no new Dashboard
+  // subscription — unlike every slice that adds an event type here, which
+  // does (docs/notification-rollout.md §1a-bis).
   "invoice.paid",
 ]);
+
+// N1.8 K1 — `invoice.paid` produces AT MOST ONE customer-facing notification,
+// and `billing_reason` is what decides which. One payment, one email.
+//
+//   subscription_cycle  → the periodic renewal receipt (Slice 1).
+//
+//   subscription_update → the mid-cycle plan-change receipt (Slice 2). In this
+//       product that means an upgrade the customer approved on Stripe's hosted
+//       confirmation page: that portal configuration sets proration_behavior
+//       "always_invoice" (scripts/stripeSetup.ts:107), so Stripe invoices and
+//       charges the proration immediately. Worth knowing before concluding
+//       this handler is dead — under the default proration_behavior the
+//       proration would instead ride the NEXT cycle invoice and this reason
+//       would never arrive at all.
+//
+//   subscription_create → NOTHING, deliberately. It is the FIRST payment,
+//       which checkout.session.completed already acknowledged; sending here
+//       as well would give the customer both "welcome" and a receipt for a
+//       single charge.
+//
+//   everything else (manual, subscription_threshold, quote_accept, …) →
+//       nothing in N1.8.
+//
+// A reason with no entry is still recorded in the ledger before the handler
+// breaks, so a redelivery is never re-evaluated.
+// Keyed off the FIELD's own type rather than a hand-written string union: an
+// SDK upgrade that renames or removes a billing_reason then fails to compile
+// here instead of silently routing nothing.
+const INVOICE_PAID_NOTIFICATION: Partial<
+  Record<NonNullable<Stripe.Invoice["billing_reason"]>, NotificationTypeKey>
+> = {
+  subscription_cycle: "billing.subscription_renewed",
+  subscription_update: "billing.invoice_paid",
+};
 
 // P1 — the SERVICE period, which is not what invoice.period_start/period_end
 // mean.
@@ -83,21 +122,47 @@ const HANDLED_EVENTS = new Set([
 // parent.type === "subscription_item_details" (InvoiceLineItems.d.ts:211).
 // Prefer the non-proration line, because a subscription_update invoice carries
 // proration lines that are also subscription lines but describe a partial
-// window rather than the cycle — that matters from Slice 2 on, when this branch
-// widens beyond billing_reason "subscription_cycle".
+// window rather than the cycle.
+//
+// Slice 2 is where that preference starts paying: a subscription_update invoice
+// is USUALLY all-proration (the credit for the old plan's unused time, the
+// charge for the new plan's remaining time), so it takes the fallback below and
+// reports the remainder of the cycle — which is exactly the window that charge
+// covers. When such an invoice also carries a full-cycle subscription line, that
+// line is the one describing a period the customer was actually billed a cycle
+// for, and it wins.
+function subscriptionInvoiceLine(invoice: Stripe.Invoice): Stripe.InvoiceLineItem | undefined {
+  const subscriptionLines = (invoice.lines?.data ?? []).filter(
+    (item) => item.parent?.type === "subscription_item_details"
+  );
+
+  const fullCycle = subscriptionLines.find(
+    (item) => item.parent?.subscription_item_details?.proration === false
+  );
+  if (fullCycle) return fullCycle;
+
+  // ALL-PRORATION INVOICE — the normal shape of a subscription_update invoice,
+  // and where Slice 2 lives. Stripe puts TWO subscription lines on it and both
+  // describe the same instant: a NEGATIVE credit for the unused time on the OLD
+  // price, and a POSITIVE charge for the remaining time on the NEW one.
+  //
+  // Their order is not something to rely on — Stripe documents prorations as
+  // sorted in reverse chronological order, and these two are created at the
+  // same moment. Taking whichever came first therefore picked the old plan's
+  // line about half the time, which matters because this line now names the
+  // plan the receipt states. The line the customer is PAYING for is the one
+  // with the larger amount; the credit is negative by construction.
+  return subscriptionLines.reduce<Stripe.InvoiceLineItem | undefined>(
+    (best, item) => (best && best.amount >= item.amount ? best : item),
+    undefined
+  );
+}
+
 function invoiceServicePeriod(invoice: Stripe.Invoice): {
   periodStartAt: number;
   periodEndAt: number;
 } {
-  const lines = invoice.lines?.data ?? [];
-  const subscriptionLines = lines.filter(
-    (item) => item.parent?.type === "subscription_item_details"
-  );
-
-  const line =
-    subscriptionLines.find(
-      (item) => item.parent?.subscription_item_details?.proration === false
-    ) ?? subscriptionLines[0];
+  const line = subscriptionInvoiceLine(invoice);
 
   // The invoice-level window only when there is no subscription line at all.
   // It is the association window rather than the service period, so it is a
@@ -106,6 +171,31 @@ function invoiceServicePeriod(invoice: Stripe.Invoice): {
     periodStartAt: line?.period?.start ?? invoice.period_start,
     periodEndAt: line?.period?.end ?? invoice.period_end,
   };
+}
+
+// The plan the invoice actually BILLED, resolved from the price on that same
+// line — not from Company.plan.
+//
+// Company.plan is a copy, and for a plan-change receipt it is a copy that may
+// not have caught up yet. Stripe emits `customer.subscription.updated` and
+// `invoice.paid` for one hosted upgrade with NO ordering guarantee between
+// them, and applySubscriptionUpdate runs on the former. Reached in the order
+// Stripe happens to deliver, this handler can therefore read the plan the
+// customer just LEFT and tell them "you are now on the Starter plan" moments
+// after they paid to leave it. The customer-return sync endpoint closes the
+// window only for a customer who actually returns to the app.
+//
+// The invoice does not have that problem: it is a finished document about a
+// payment that already happened, and the price on it is the price that was
+// charged. Same principle the repo already applies in syncSubscription.ts —
+// resolve the plan from the PRICE that was purchased, never from a string.
+//
+// Falls back to null (caller keeps Company.plan) rather than guessing when the
+// price is unrecognised — a legacy or misconfigured price must not blank out a
+// receipt's plan name.
+function invoicePlanId(invoice: Stripe.Invoice): string | null {
+  const price = subscriptionInvoiceLine(invoice)?.pricing?.price_details?.price;
+  return planForPriceId(typeof price === "string" ? price : price?.id);
 }
 
 async function wasEventProcessed(eventId: string): Promise<boolean> {
@@ -292,7 +382,7 @@ router.post("/", async (req, res) => {
       break;
     }
 
-    // N1.8 Slice 1 — the renewal receipt.
+    // N1.8 Slices 1-2 — the invoice receipts.
     //
     // NO STALE GUARD in the subscription sense: the guard on
     // customer.subscription.updated re-fetches state because a late snapshot
@@ -302,15 +392,23 @@ router.post("/", async (req, res) => {
     // payload's fact is "this invoice was paid" — not "the subscription
     // renewed", and the plan name is not in the payload at all. Hence the
     // liveness check below.
+    //
+    // ONE branch serves both receipts on purpose. Everything after the routing
+    // line — company resolution, the ledger write, the liveness gate, the
+    // service period, the raw context — is identical for the two, and the only
+    // way to keep it identical is to have one copy of it. Slice 2 changed the
+    // TYPE that comes out; it changed nothing about how it is decided.
     case "invoice.paid": {
       const invoice = event.data.object as Stripe.Invoice;
 
-      // K1 — billing_reason is what stops one payment producing two emails.
-      // `subscription_create` is the FIRST payment, which checkout.session
-      // .completed already acknowledged above; sending here as well would mean
-      // a customer gets both "welcome" and "renewed" for the same charge.
-      // Other reasons (manual, subscription_update, …) are Slice 2's.
-      if (invoice.billing_reason !== "subscription_cycle") {
+      // K1 routing — see INVOICE_PAID_NOTIFICATION above. The installed SDK
+      // declares NINE billing reasons (Invoices.d.ts:474); two are mapped and
+      // the other seven produce nothing.
+      const notificationType = invoice.billing_reason
+        ? INVOICE_PAID_NOTIFICATION[invoice.billing_reason]
+        : undefined;
+
+      if (!notificationType) {
         await markEventProcessed(event.id, event.type);
         break;
       }
@@ -332,6 +430,8 @@ router.post("/", async (req, res) => {
 
       await markEventProcessed(event.id, event.type);
 
+      if (!company) break;
+
       // P3 — the subscription must still be ALIVE for "renewed" to be true.
       //
       // A dunning-exhausted subscription is cancelled, but its invoice stays
@@ -347,38 +447,76 @@ router.post("/", async (req, res) => {
       // ACTIVE_SUBSCRIPTION_STATUSES deliberately includes past_due: a renewal
       // that has just failed is still a live subscription, and this branch only
       // runs for a PAID invoice anyway.
-      if (company && !ACTIVE_SUBSCRIPTION_STATUSES.includes(company.subscriptionStatus)) {
+      //
+      // Slice 2 inherits the gate unchanged, and needs it for the same reason:
+      // a plan-change invoice can sit open through dunning too, and paying it
+      // afterwards would otherwise announce "you are now on the — plan", the
+      // plan name being whatever the cancellation path left behind.
+      if (!ACTIVE_SUBSCRIPTION_STATUSES.includes(company.subscriptionStatus)) {
         console.warn(
           `[stripe webhook] invoice.paid for company ${companyId} whose subscription is ` +
-            `${company.subscriptionStatus} — not sending a renewal notice for ${invoice.id}`
+            `${company.subscriptionStatus} — not sending ${notificationType} for ${invoice.id}`
         );
         break;
       }
 
-      if (company) {
-        await notify({
-          type: "billing.subscription_renewed",
-          companyId,
-          // K1/decision 1: keyed on the INVOICE id. A Stripe redelivery of this
-          // event collides and is suppressed; next month's invoice is a
-          // different id and sends. Deliberately not the event id, which would
-          // let two different events about the SAME invoice both send.
-          dedupeKey: `billing.subscription_renewed/${invoice.id}`,
-          // RAW values only — no formatted text. The recipient's locale is not
-          // known here (User.language overrides Company.language and is
-          // resolved per recipient during fan-out), so formatting happens in
-          // the email channel. See emails/billingTypes.ts.
-          context: {
-            companyName: company.name,
-            planName: planDisplayName(company.plan),
-            amountMinor: invoice.amount_paid,
-            currency: invoice.currency,
-            ...invoiceServicePeriod(invoice),
-            ...(company.timezone ? { timeZone: company.timezone } : {}),
-            ...(invoice.hosted_invoice_url ? { invoiceUrl: invoice.hosted_invoice_url } : {}),
-          },
-        });
+      // Slice 2 — a plan change that took no money has no receipt to give.
+      //
+      // A mid-cycle DOWNGRADE prorates in the customer's favour: the credit for
+      // unused time on the old plan exceeds the charge for the new one. Stripe
+      // does not issue a negative invoice — it moves the difference to the
+      // customer's credit balance and finalises this one at zero, which
+      // auto-pays and emits invoice.paid all the same. An existing credit
+      // balance absorbing the whole charge produces the same shape.
+      //
+      // "Payment received for your plan change — €0.00" is then simply untrue,
+      // and it is the same failure class as P3 above: a receipt making a claim
+      // its own payload does not support. The customer is not left uninformed —
+      // the change itself belongs to `billing.plan_upgraded` /
+      // `billing.plan_downgraded` (N1.8 Phase 2), which are mandatory and
+      // report the CHANGE. This type reports MONEY TAKEN, and nothing was.
+      //
+      // Deliberately NOT applied to the renewal receipt: "your subscription
+      // renewed" stays true at zero — a fully discounted cycle still renews the
+      // coverage — so gating that one would suppress an accurate message.
+      if (notificationType === "billing.invoice_paid" && invoice.amount_paid <= 0) {
+        console.warn(
+          `[stripe webhook] ${invoice.id} settled ${invoice.amount_paid} for company ` +
+            `${companyId} — no payment to receipt, not sending ${notificationType}`
+        );
+        break;
       }
+
+      await notify({
+        type: notificationType,
+        companyId,
+        // K1/decision 1: keyed on the INVOICE id. A Stripe redelivery of this
+        // event collides and is suppressed; next month's invoice is a
+        // different id and sends. Deliberately not the event id, which would
+        // let two different events about the SAME invoice both send.
+        //
+        // The type is part of the key, so the two receipts can never collide
+        // with each other — they are keyed on disjoint billing_reasons and so
+        // cannot both arise from one invoice, but a key that relied on that
+        // would be relying on the routing table staying disjoint forever.
+        dedupeKey: `${notificationType}/${invoice.id}`,
+        // RAW values only — no formatted text. The recipient's locale is not
+        // known here (User.language overrides Company.language and is
+        // resolved per recipient during fan-out), so formatting happens in
+        // the email channel. See emails/billingTypes.ts.
+        context: {
+          companyName: company.name,
+          // The invoice's own plan wins over our stored copy — see
+          // invoicePlanId. Company.plan remains the fallback, so a legacy or
+          // unrecognised price still produces a named plan rather than a dash.
+          planName: planDisplayName(invoicePlanId(invoice) ?? company.plan),
+          amountMinor: invoice.amount_paid,
+          currency: invoice.currency,
+          ...invoiceServicePeriod(invoice),
+          ...(company.timezone ? { timeZone: company.timezone } : {}),
+          ...(invoice.hosted_invoice_url ? { invoiceUrl: invoice.hosted_invoice_url } : {}),
+        },
+      });
 
       break;
     }

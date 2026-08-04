@@ -78,7 +78,7 @@ hetekkel később, romló domain-reputációként jelentkezik.
 
 ---
 
-## 1a-bis. ⚠️ N1.8 Slice 1 — Stripe Dashboard: `invoice.paid` feliratkozás
+## 1a-bis. ⚠️ N1.8 Slice 1–2 — Stripe Dashboard: `invoice.paid` feliratkozás
 
 **Ez blokkoló, és a kóddal EGY lépésben végzendő.**
 
@@ -105,6 +105,29 @@ nő eggyel. Ha nem: az endpoint nincs feliratkozva.
 A kanonikus eseménylista a `HANDLED_EVENTS` halmaz
 (`server/src/routes/stripeWebhook.routes.ts`) — minden további N1.8-szelet
 bővíti, és mindegyik ugyanezt a Dashboard-lépést igényli.
+
+### Slice 2 (`billing.invoice_paid`) — **nincs új Dashboard-teendő**
+
+Ezt kifejezetten leírjuk, mert a fenti bekezdés („minden további szelet
+bővíti") önmagában az ellenkezőjét sugallja, és egy üzemeltető joggal keresné a
+Slice 2 lépését.
+
+A Slice 2 **ugyanazt az `invoice.paid` eseményt** dolgozza fel, csak másik
+`billing_reason` ágon (`subscription_update` → csomagváltás-számla, a
+`subscription_cycle` → megújulás mellett). A `HANDLED_EVENTS` halmaz
+**változatlan**, tehát ha a Slice 1 feliratkozása megtörtént, a Slice 2 minden
+további nélkül él.
+
+⚠️ **Amitől viszont a Slice 2 függ, és a Dashboardon él:** a
+`subscription_update` számla csak azért jön létre egyáltalán, mert az
+upgrade-megerősítő portál-konfiguráció `proration_behavior: "always_invoice"`
+beállítású (`server/src/scripts/stripeSetup.ts`). Ha ez valaha `create_prorations`-re
+változik, a Stripe a prorációt a **következő ciklusszámlára** teszi, a
+`subscription_update` ok soha nem érkezik meg, és a csomagváltás-nyugta némán
+megszűnik — kód-változás nélkül. Ellenőrzés a deploy után: egy éles
+csomagváltás után
+`SELECT COUNT(*) FROM "NotificationEvent" WHERE type='billing.invoice_paid';`
+nő eggyel.
 
 ---
 
