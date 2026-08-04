@@ -19,8 +19,33 @@ export function isCalendarType(value: unknown): value is CalendarType {
 // PERSONAL is singled out throughout the permission layer (CAL1.3): it is the
 // one type whose access the BUSINESS_OWNER role does NOT confer, because the
 // content is not business data (R2, plan §4.6 step 3 / §4.8). Named here so the
-// resolver can express that exception without a bare string literal.
+// share-level API (CAL1.4) can express that exception without a bare string
+// literal.
 export const PRIVATE_BY_DEFAULT_CALENDAR_TYPE: CalendarType = "PERSONAL";
+
+// The types whose permission authority is the COMPANY OWNER (plan §4.8) — i.e.
+// the ones a BUSINESS_OWNER reaches by role alone, and the ones a DEVELOPER
+// keeps cross-tenant access to.
+//
+// ⚠️ THIS IS AN ALLOW-LIST, AND THAT IS THE POINT. The obvious way to write the
+// R2 exception is `type !== "PERSONAL"`, and it fails OPEN: `Calendar.type` is
+// an unconstrained TEXT column (migration.sql:5) that nothing validates today,
+// so a row reading "personal", "Personal", "PERSONAL " or a future "TEAM" would
+// satisfy that test and hand the company owner — and a cross-tenant DEVELOPER —
+// the full ten-permission set on a calendar that may well be someone's private
+// one. Measured, not theorised: every one of those five values passes the
+// deny-list form.
+//
+// Written out as literals rather than derived by filtering PERSONAL out of
+// CALENDAR_TYPES, because deriving it would just move the deny-list up a level.
+// A NEW calendar type must be added here BY HAND, after someone decides which
+// authority governs it; until then it is invisible to owners and operators,
+// which is the safe direction.
+export const BUSINESS_AUTHORITY_CALENDAR_TYPES = ["COMPANY", "PROJECT", "EMPLOYEE"] as const;
+
+export function isBusinessAuthorityCalendarType(value: string): boolean {
+  return (BUSINESS_AUTHORITY_CALENDAR_TYPES as readonly string[]).includes(value);
+}
 
 // Which types carry which optional owner column on Calendar. Pinned as data so
 // CAL1.4's create path and CAL1.1's tests agree on the shape without either
