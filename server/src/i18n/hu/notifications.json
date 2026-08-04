@@ -51,6 +51,16 @@
       "intro": "Köszönjük — megkaptuk a csomagváltásod díját.",
       "body": "A(z) {{companyName}} mostantól a(z) {{planName}} csomagon van. Ez a számla a különbözetet fedezi a jelenlegi számlázási időszak hátralévő részére:"
     },
+    "invoiceFailed": {
+      "subject": "Nem sikerült levonnunk az Axeriva-díjat — {{amount}}",
+      "subjectFinal": "Teendőd van — nem ment át az Axeriva-fizetés ({{amount}})",
+      "introFirst": "Megpróbáltuk levonni a(z) {{companyName}} Axeriva-előfizetésének díját, de a fizetés nem ment át.",
+      "introRepeat": "A(z) {{companyName}} Axeriva-előfizetésének díját továbbra sem sikerült levonnunk.",
+      "retryScheduled": "A következő automatikus próbálkozás ideje: {{date}}. Csak akkor járhat sikerrel, ha van érvényes fizetési mód a fiókban, ezért a legbiztosabb, ha most frissíted az adataidat.",
+      "retryNone": "Több automatikus próbálkozás nincs ütemezve. Ahhoz, hogy az előfizetésed megmaradjon, kérjük, frissítsd a fizetési adataidat.",
+      "cta": "Fizetési adatok frissítése",
+      "consequence": "Ha a fizetés nem történik meg, az előfizetés megszűnik, és az Axeriva csak olvasható módba vált: az adataitok érintetlenül megmaradnak, de a csapat nem tud változtatni rajtuk, amíg a számlázás nem rendeződik."
+    },
     "subscriptionConfirmed": {
       "subject": "A(z) {{planName}} előfizetésed aktív",
       "intro": "Köszönjük az előfizetést!",

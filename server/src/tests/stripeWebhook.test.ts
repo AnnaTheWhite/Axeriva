@@ -549,12 +549,22 @@ describe("checkout.session.completed", () => {
 
 describe("unhandled events", () => {
   it("acknowledges an event type it does not handle without touching data", async () => {
+    // N1.8 Slice 3 repointed this from `invoice.payment_failed`, which is now
+    // HANDLED. Left alone it would still have passed — the old fixture has no
+    // `parent`, so the new handler's scope filter drops it — while proving
+    // nothing about unhandled events and quietly writing a
+    // ProcessedStripeEvent row it never asserted on. A test that survives the
+    // deletion of the thing it tested is the exact failure class this
+    // milestone keeps finding, so it is repointed rather than left green.
+    //
+    // `charge.refunded` is genuinely unhandled: absent from both the switch
+    // and HANDLED_EVENTS, so it takes the `default:` branch.
     const company = await createCompany({ plan: "starter", subscriptionStatus: "trialing" });
 
     const res = await postWebhook(
-      event("invoice.payment_failed", {
-        id: "in_test_123",
-        object: "invoice",
+      event("charge.refunded", {
+        id: "ch_test_123",
+        object: "charge",
         customer: "cus_test_123",
         metadata: { companyId: String(company.id) },
       })
@@ -566,5 +576,11 @@ describe("unhandled events", () => {
     const after = await prisma.company.findUnique({ where: { id: company.id } });
     expect(after!.plan).toBe("starter");
     expect(after!.subscriptionStatus).toBe("trialing");
+
+    // The property that actually distinguishes "unhandled" from "handled and
+    // dropped": only types in HANDLED_EVENTS are ledgered. Without this the
+    // test passes for a handled event that merely declines to act, which is
+    // precisely how it survived Slice 3 pointing at invoice.payment_failed.
+    expect(await prisma.processedStripeEvent.count()).toBe(0);
   });
 });

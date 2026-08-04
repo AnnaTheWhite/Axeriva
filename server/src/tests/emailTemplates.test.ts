@@ -23,6 +23,7 @@ import { invitationEmailTemplate } from "../emails/templates/employees/Invitatio
 import { subscriptionConfirmedEmailTemplate } from "../emails/templates/billing/SubscriptionConfirmedEmail";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
+import { invoiceFailedEmailTemplate } from "../emails/templates/billing/InvoiceFailedEmail";
 import {
   contrastTextColor,
   ctaColors,
@@ -30,6 +31,7 @@ import {
   resolveLogoUrl,
 } from "../emails/components/theme";
 import { NOTIFICATION_LOCALES, type NotificationLocale } from "../constants/notifications";
+import { t } from "../i18n";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../constants/tokenTtl";
 
 // N1.3 — the five emails, now rendered by React Email.
@@ -126,6 +128,34 @@ function everyTemplate(locale: NotificationLocale) {
           locale,
         }),
     },
+    // N1.8 Slice 3 — BOTH branches, as two entries. They are structurally
+    // different messages with disjoint i18n keys, so a single entry would leave
+    // half of this template's copy unrendered by the well-formedness block and
+    // a missing key in the other half would surface only in production.
+    {
+      name: "invoiceFailed(retry scheduled)",
+      render: () =>
+        invoiceFailedEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          amountFormatted: "€59.99",
+          attemptNumber: 1,
+          nextAttemptFormatted: "18 October 2026",
+          portalUrl: "https://app.axeriva.com/subscription",
+          locale,
+        }),
+    },
+    {
+      name: "invoiceFailed(no further attempt)",
+      render: () =>
+        invoiceFailedEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          amountFormatted: "€59.99",
+          attemptNumber: 4,
+          nextAttemptFormatted: null,
+          portalUrl: "https://app.axeriva.com/subscription",
+          locale,
+        }),
+    },
   ];
 }
 
@@ -201,6 +231,41 @@ describe("the transport binds each method to the RIGHT template", () => {
     expect(expected.subject).not.toBe(renewal.subject);
   });
 
+  it("sends the failure notice from sendInvoiceFailedEmail", async () => {
+    const { ResendEmailService } = await import("../services/email/ResendEmailService");
+    const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
+
+    mockSentSubjects.length = 0;
+    await service.sendInvoiceFailedEmail(
+      "owner@example.com",
+      {
+        companyName: "Villanyszerelő Kft",
+        amountFormatted: "€59.99",
+        attemptNumber: 1,
+        nextAttemptFormatted: "18 October 2026",
+        portalUrl: "https://app.axeriva.com/subscription",
+      },
+      { locale: "en" }
+    );
+
+    const expected = await invoiceFailedEmailTemplate({
+      companyName: "Villanyszerelő Kft",
+      amountFormatted: "€59.99",
+      attemptNumber: 1,
+      nextAttemptFormatted: "18 October 2026",
+      portalUrl: "https://app.axeriva.com/subscription",
+      locale: "en",
+    });
+
+    expect(mockSentSubjects).toHaveLength(1);
+    expect(mockSentSubjects[0]).toBe(expected.subject);
+    // And it is not one of the receipts — the three billing methods now take
+    // three different payload types, but a wrong template would still render.
+    expect(expected.subject).not.toBe(
+      (await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" })).subject
+    );
+  });
+
   it("sends the renewal receipt from sendSubscriptionRenewedEmail", async () => {
     const { ResendEmailService } = await import("../services/email/ResendEmailService");
     const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
@@ -212,6 +277,192 @@ describe("the transport binds each method to the RIGHT template", () => {
 
     expect(mockSentSubjects).toHaveLength(1);
     expect(mockSentSubjects[0]).toBe(expected.subject);
+  });
+});
+
+describe("the failure notice's copy logic (N1.8 Slice 3)", () => {
+  const base = {
+    companyName: "Villanyszerelő Kft",
+    amountFormatted: "€59.99",
+    portalUrl: "https://app.axeriva.com/subscription",
+  };
+
+  const scheduled = (attemptNumber: number, locale: NotificationLocale) =>
+    invoiceFailedEmailTemplate({
+      ...base,
+      attemptNumber,
+      nextAttemptFormatted: "18 October 2026",
+      locale,
+    });
+
+  const noRetry = (attemptNumber: number, locale: NotificationLocale) =>
+    invoiceFailedEmailTemplate({ ...base, attemptNumber, nextAttemptFormatted: null, locale });
+
+  it.each(NOTIFICATION_LOCALES)(
+    "never prints the attempt number, in %s",
+    async (locale) => {
+      // Stripe counts AUTOMATIC retries only — "manual payment attempts after
+      // the first attempt do not affect the retry schedule" (Invoices.d.ts:176)
+      // — so the number is a floor on what the customer experienced, not a
+      // count of it. There is also no total in the payload, so "attempt 3 of 4"
+      // cannot be supported.
+      //
+      // Asserted by RENDERING TWICE with two different counts that select the
+      // same wording branch and requiring the output to be identical. A
+      // "not.toContain('7')" cannot express this — the digit occurs in hex
+      // colours and font sizes throughout the layout, so that assertion fails
+      // on a correct template and would have to be weakened until it proved
+      // nothing.
+      const seven = await scheduled(7, locale);
+      const nine = await scheduled(9, locale);
+
+      expect(seven.html).toBe(nine.html);
+      expect(seven.text).toBe(nine.text);
+      expect(seven.subject).toBe(nine.subject);
+    }
+  );
+
+  it.each(NOTIFICATION_LOCALES)(
+    "uses a DIFFERENT opening for a repeat failure, in %s",
+    async (locale) => {
+      // The other half of the same contract: attemptNumber must not be printed,
+      // but it must still do something. A payload field that changes nothing is
+      // a dead contract field, and this is what stops the branch being deleted
+      // as unused.
+      const first = await scheduled(1, locale);
+      const repeat = await scheduled(3, locale);
+
+      expect(first.html).not.toBe(repeat.html);
+
+      // Pinned at the BOUNDARY, not merely somewhere either side of it.
+      // Comparing 1 with 3 leaves `attemptNumber > 2` passing, which would tell
+      // a customer on their second failure that this is the first — the exact
+      // moment the tone is supposed to change.
+      const second = await scheduled(2, locale);
+      expect(second.html).not.toBe(first.html);
+      expect(second.html).toBe(repeat.html);
+    }
+  );
+
+  it.each(NOTIFICATION_LOCALES)(
+    "says nothing about a next attempt when none is scheduled, in %s",
+    async (locale) => {
+      // THE BRANCH THAT MATTERS. A single message with an optional "we'll try
+      // again on X" tail leaves, when the tail is dropped, a reassuring
+      // sentence in the one case where nothing further happens automatically.
+      // Asserted in BOTH languages because a Hungarian translation that
+      // flattens the two branches makes the message false in Hungarian only —
+      // which no English-reading reviewer would catch.
+      const { html } = await noRetry(4, locale);
+
+      expect(html).not.toContain("18 October 2026");
+      // The scheduled branch's whole sentence must be absent, not merely the
+      // date: its text is what promises another attempt.
+      const scheduledSentence = t(locale, "billing.invoiceFailed.retryScheduled", {
+        date: "18 October 2026",
+      });
+      expect(html).not.toContain(scheduledSentence.slice(0, 30));
+      // ...and the urgent instruction is present instead.
+      expect(html).toContain(t(locale, "billing.invoiceFailed.retryNone").slice(0, 30));
+    }
+  );
+
+  it.each(NOTIFICATION_LOCALES)("keeps the CTA in BOTH branches, in %s", async (locale) => {
+    // The action is identical whether or not Stripe intends to retry, so the
+    // urgent branch losing its CTA would be the worst possible place for it.
+    for (const render of [() => scheduled(1, locale), () => noRetry(4, locale)]) {
+      const { html } = await render();
+      expect(html).toContain("https://app.axeriva.com/subscription");
+      const anchors = html.match(/<a\s/g) ?? [];
+      expect(anchors.length).toBe(1);
+    }
+  });
+
+  it("does not promise a retry in the no-further-attempt copy, in either language", async () => {
+    // The branch test above compares the rendered output against the i18n
+    // string it came from, so it is self-referential: rewrite the Hungarian
+    // retryNone to say "hamarosan újra próbálkozunk" and that test still
+    // passes while the message becomes FALSE — in Hungarian only, where no
+    // English-reading reviewer would notice.
+    //
+    // This asserts the property directly, on the copy, per language. The words
+    // are the ones a retry promise cannot avoid: EN "again", HU "újra"
+    // (again) and "próbálkoz-" (attempt).
+    // Banning the word "attempt" outright does not work and the failure is
+    // instructive: the correct Hungarian is "Több automatikus próbálkozás
+    // NINCS ütemezve" — it contains "próbálkozás" inside a NEGATION. A
+    // word-ban cannot tell a promise from a denial, so the test asserts the
+    // denial positively and bans only the words that mean "again".
+    // Asserted as a DENIAL that is present in one branch and absent from the
+    // other. An earlier version of this test also banned the words meaning
+    // "again" — and that ban committed the very error the comment above warns
+    // about: "we will NOT try again automatically" is a correct denial that
+    // contains "again", so the ban would fail on good copy. Word bans cannot
+    // read polarity in either direction; only the paired presence/absence can.
+    const NEGATION: Record<NotificationLocale, string> = { en: "no further", hu: "nincs" };
+
+    for (const locale of NOTIFICATION_LOCALES) {
+      const none = t(locale, "billing.invoiceFailed.retryNone").toLowerCase();
+      const scheduled = t(locale, "billing.invoiceFailed.retryScheduled").toLowerCase();
+
+      expect(none, `${locale}/retryNone does not deny a further attempt`).toContain(
+        NEGATION[locale]
+      );
+      // The scheduled branch must NOT carry the denial — otherwise the two
+      // strings could be swapped, or made identical, and the assertion above
+      // would still hold. This is what catches the urgent branch being
+      // flattened into a retry promise.
+      expect(scheduled, `${locale}/retryScheduled denies the retry it announces`).not.toContain(
+        NEGATION[locale]
+      );
+    }
+  });
+
+  it("escalates the SUBJECT only when no further attempt is scheduled", async () => {
+    // Not on the attempt count, which cannot be trusted to reflect how many
+    // times the customer has actually been charged.
+    const scheduledLate = await scheduled(9, "en");
+    const urgent = await noRetry(1, "en");
+
+    expect(scheduledLate.subject).toBe(
+      "We couldn't collect your Axeriva payment — €59.99"
+    );
+    expect(urgent.subject).toBe(
+      "Action needed — your Axeriva payment didn't go through (€59.99)"
+    );
+  });
+
+  it("has no plan name anywhere in its copy", async () => {
+    // This is the test that holds the trigger's no-liveness-gate decision in
+    // place. Slice 3 sends without checking Company state, which is only safe
+    // while the copy asserts nothing about it — and a copy edit is all it would
+    // take to reintroduce a claim with nothing behind it.
+    //
+    // Asserted against the i18n STRINGS rather than the rendered HTML, because
+    // the rendered page carries shared chrome this template does not control:
+    // the footer tagline is "Workforce Management for Field Service
+    // Businesses", so a scan of the HTML for "Business" fails on a correct
+    // template. The property that matters is a property of the copy.
+    const KEYS = [
+      "subject",
+      "subjectFinal",
+      "introFirst",
+      "introRepeat",
+      "retryScheduled",
+      "retryNone",
+      "cta",
+      "consequence",
+    ];
+
+    for (const locale of NOTIFICATION_LOCALES) {
+      for (const key of KEYS) {
+        const value = t(locale, `billing.invoiceFailed.${key}`);
+        expect(value, `${locale}/${key}`).not.toBe(`billing.invoiceFailed.${key}`);
+        for (const plan of ["Starter", "Professional", "Business", "Enterprise", "planName"]) {
+          expect(value, `${locale}/${key} names ${plan}`).not.toContain(plan);
+        }
+      }
+    }
   });
 });
 
@@ -305,6 +556,25 @@ describe("escaping — the guarantee that replaced escapeHtml()", () => {
           periodStartFormatted: "15 October 2026",
           periodEndFormatted: "1 November 2026",
           invoiceUrl: null,
+          locale: "en",
+        }),
+      // N1.8 Slice 3 — companyName is interpolated into both opening variants.
+      () =>
+        invoiceFailedEmailTemplate({
+          companyName: MALICIOUS,
+          amountFormatted: "€59.99",
+          attemptNumber: 1,
+          nextAttemptFormatted: "18 October 2026",
+          portalUrl: "https://app.axeriva.com/subscription",
+          locale: "en",
+        }),
+      () =>
+        invoiceFailedEmailTemplate({
+          companyName: MALICIOUS,
+          amountFormatted: "€59.99",
+          attemptNumber: 4,
+          nextAttemptFormatted: null,
+          portalUrl: "https://app.axeriva.com/subscription",
           locale: "en",
         }),
     ]) {

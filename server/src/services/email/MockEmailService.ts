@@ -4,6 +4,7 @@ import type {
   EmailSendResult,
   EmailService,
   InvoiceReceiptEmailPayload,
+  PaymentFailureEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 
@@ -110,6 +111,21 @@ export class MockEmailService implements EmailService {
     // invoice line having been picked.
     console.log(
       `[MockEmailService] Invoice paid (plan change) for ${to} ("${data.companyName}", ${data.planName}, ${data.amountFormatted}, ${data.periodStartFormatted} – ${data.periodEndFormatted}) [${locale(context)}]`
+    );
+    return result(context);
+  }
+
+  async sendInvoiceFailedEmail(
+    to: string,
+    data: PaymentFailureEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    // The next attempt is logged as the literal "none" when absent rather than
+    // being omitted: that is the branch that produces the urgent copy, and a
+    // dev run in which it is silently missing looks identical to one where it
+    // was never populated.
+    console.log(
+      `[MockEmailService] Invoice payment FAILED for ${to} ("${data.companyName}", ${data.amountFormatted}, attempt ${data.attemptNumber}, next attempt: ${data.nextAttemptFormatted ?? "none"}) [${locale(context)}]`
     );
     return result(context);
   }

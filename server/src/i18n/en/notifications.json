@@ -51,6 +51,16 @@
       "intro": "Thanks — we've received your payment for the plan change.",
       "body": "{{companyName}} is now on the {{planName}} plan. This invoice covers the difference for the rest of the current billing period:"
     },
+    "invoiceFailed": {
+      "subject": "We couldn't collect your Axeriva payment — {{amount}}",
+      "subjectFinal": "Action needed — your Axeriva payment didn't go through ({{amount}})",
+      "introFirst": "We tried to collect the payment for {{companyName}}'s Axeriva subscription, and it didn't go through.",
+      "introRepeat": "We still haven't been able to collect the payment for {{companyName}}'s Axeriva subscription.",
+      "retryScheduled": "The next automatic attempt is scheduled for {{date}}. It can only succeed if there's a working payment method on file, so updating your details now is the surest way to avoid an interruption.",
+      "retryNone": "No further automatic attempt is scheduled. To keep your subscription running, please update your payment details.",
+      "cta": "Update payment details",
+      "consequence": "If the payment isn't completed, the subscription ends and Axeriva switches to read-only: your data stays exactly as it is, but nobody on the team can make changes until billing is sorted out."
+    },
     "subscriptionConfirmed": {
       "subject": "Your {{planName}} subscription is active",
       "intro": "Thanks for subscribing!",

@@ -7,9 +7,13 @@ import { startQueue, stopQueue } from "../services/queue";
 import { dispatchEvent } from "../services/notifications/dispatcher";
 import { deliverEmail } from "../services/notifications/channels/email.channel";
 import { emailService } from "../services/email";
-import type { InvoiceReceiptEmailPayload } from "../services/email/EmailService";
+import type {
+  InvoiceReceiptEmailPayload,
+  PaymentFailureEmailPayload,
+} from "../services/email/EmailService";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
+import { invoiceFailedEmailTemplate } from "../emails/templates/billing/InvoiceFailedEmail";
 import { registerNotificationWorkers } from "../services/notifications/workers";
 import { createCompany, createUser } from "./helpers/factories";
 import { priceIdFor } from "../config/stripePricing";
@@ -236,6 +240,47 @@ function planChangeInvoiceFixture(overrides: Record<string, unknown> = {}) {
     },
     ...overrides,
   });
+}
+
+// N1.8 Slice 3 — a FAILED subscription payment.
+//
+// Shaped to be droppable in every way the handler must drop, so each guard has
+// a fixture that can prove it: `parent.type` and `collection_method` are the
+// scope filter's two halves, `amount_remaining` is the zero refusal's, and
+// `next_payment_attempt` is the branch that decides how urgent the copy is.
+//
+// amount_due and amount_remaining DELIBERATELY DIFFER. Slice 3 reports what is
+// still outstanding, not what was billed; with the two equal, a handler reading
+// either field would look correct.
+// Early in the UTC day ON PURPOSE: 03:00Z on 18 October is still 17 October in
+// Los Angeles (UTC-7 in October), which is what lets the timezone test below
+// prove the zone reaches the formatter. At 09:00Z both zones say the 18th and
+// that test would pass against code that ignored Company.timezone entirely.
+const NEXT_ATTEMPT_AT = Math.floor(new Date("2026-10-18T03:00:00Z").getTime() / 1000);
+
+function failedInvoiceFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "in_test_failed_1",
+    object: "invoice",
+    customer: "cus_test_billing",
+    billing_reason: "subscription_cycle",
+    collection_method: "charge_automatically",
+    currency: "eur",
+    // 5999 due, 1000 already settled -> 4999 is the money that failed. The
+    // three MUST satisfy Stripe's own invariant (amount_remaining = amount_due
+    // - amount_paid, Invoices.d.ts:163-166): an impossible fixture is a licence
+    // for the handler to be wrong in a way no real payload would reveal.
+    amount_due: 5999,
+    amount_paid: 1000,
+    amount_remaining: 4999,
+    attempt_count: 1,
+    next_payment_attempt: NEXT_ATTEMPT_AT,
+    parent: {
+      type: "subscription_details",
+      subscription_details: { subscription: "sub_test_billing" },
+    },
+    ...overrides,
+  };
 }
 
 function stripeEvent(type: string, object: Record<string, unknown>, id?: string) {
@@ -469,13 +514,21 @@ describe("Slices 1-2 — billing_reason routing (K1)", () => {
 const RECEIPT_METHOD = {
   "billing.subscription_renewed": "sendSubscriptionRenewedEmail",
   "billing.invoice_paid": "sendInvoicePaidEmail",
+  "billing.invoice_failed": "sendInvoiceFailedEmail",
 } as const;
 
 // Captures the payload the email channel hands the transport — i.e. what the
 // customer would actually read, after per-recipient locale resolution.
-async function deliveredPayload(
-  type: keyof typeof RECEIPT_METHOD = "billing.subscription_renewed"
-): Promise<InvoiceReceiptEmailPayload> {
+// Slice 3's payload is a different SHAPE, not a variant of the receipt one, so
+// the helper resolves the type per notification rather than returning a union
+// every call site would have to narrow.
+type PayloadFor<T extends keyof typeof RECEIPT_METHOD> = T extends "billing.invoice_failed"
+  ? PaymentFailureEmailPayload
+  : InvoiceReceiptEmailPayload;
+
+async function deliveredPayload<
+  T extends keyof typeof RECEIPT_METHOD = "billing.subscription_renewed"
+>(type: T = "billing.subscription_renewed" as T): Promise<PayloadFor<T>> {
   const event = (await prisma.notificationEvent.findFirst({ where: { type } }))!;
   await dispatchEvent(event.id);
   const delivery = (await prisma.notificationDelivery.findFirst({
@@ -486,7 +539,7 @@ async function deliveredPayload(
   try {
     await deliverEmail(delivery.id);
     expect(spy).toHaveBeenCalledTimes(1);
-    return spy.mock.calls[0][1];
+    return spy.mock.calls[0][1] as PayloadFor<T>;
   } finally {
     spy.mockRestore();
   }
@@ -1096,6 +1149,432 @@ describe("Slice 2 — no plan-change receipt for a dead subscription", () => {
     expect(
       await prisma.notificationEvent.count({ where: { type: "billing.invoice_paid" } })
     ).toBe(1);
+  });
+});
+
+describe("Slice 3 — the failed payment, end to end", () => {
+  it("turns a signed invoice.payment_failed into a sent warning", async () => {
+    const { company, owner, employee } = await billingTenant();
+
+    const res = await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+    expect(res.status).toBe(200);
+
+    const event = await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_failed" },
+    });
+    expect(event).not.toBeNull();
+    // K2 — the EVENT id, not the invoice id. See the "every retry" test below
+    // for what that buys.
+    expect(event!.dedupeKey).toBe("billing.invoice_failed/evt_invoice.payment_failed_1");
+    expect(event!.companyId).toBe(company.id);
+
+    await dispatchEvent(event!.id);
+    const deliveries = await prisma.notificationDelivery.findMany({
+      where: { eventId: event!.id },
+    });
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].channel).toBe("EMAIL");
+    expect(deliveries[0].recipientAddress).toBe(owner.email);
+    expect(deliveries.map((d) => d.recipientAddress)).not.toContain(employee.email);
+
+    await deliverEmail(deliveries[0].id);
+    const sent = await prisma.notificationDelivery.findUnique({
+      where: { id: deliveries[0].id },
+    });
+    expect(sent!.status).toBe("sent");
+    expect(sent!.providerMessageId).toMatch(/^mock_/);
+  });
+
+  it("warns about EVERY automatic retry, not just the first", async () => {
+    // THE POINT OF K2, and the plan's own sabotage row (event.id -> invoice.id).
+    // Stripe retries a failed subscription charge several times over days; each
+    // is a separate failure the customer has to hear about. Keyed on the
+    // invoice, the customer would be told once and then never again — going
+    // quiet precisely as the situation got worse.
+    await billingTenant();
+
+    await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture({ attempt_count: 1 }), "evt_try_1")
+    );
+    await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture({ attempt_count: 2 }), "evt_try_2")
+    );
+
+    // SAME invoice id in both, different event ids.
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_failed" } })
+    ).toBe(2);
+  });
+
+  it("still suppresses a redelivery of the SAME event", async () => {
+    // The other half: every retry sends, but Stripe resending one retry does
+    // not. HANDLED_EVENTS short-circuits it before the handler runs.
+    await billingTenant();
+
+    const event = stripeEvent("invoice.payment_failed", failedInvoiceFixture(), "evt_once");
+    const first = await postWebhook(event);
+    const second = await postWebhook(event);
+
+    expect(first.body.duplicate).toBeUndefined();
+    expect(second.body.duplicate).toBe(true);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_failed" } })
+    ).toBe(1);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+});
+
+describe("Slice 3 — scope: only auto-collected SUBSCRIPTION invoices", () => {
+  it("ignores a one-off invoice raised from the Dashboard", async () => {
+    // parent: null is what a manual invoice looks like — there is no "manual"
+    // member of Parent.Type. The email's entire instruction ("update your
+    // payment details in the Portal") is wrong for one: the Portal manages the
+    // SUBSCRIPTION's payment method and cannot settle a standalone invoice.
+    await billingTenant();
+
+    const res = await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture({ parent: null }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    // Ledgered anyway, so Stripe does not retry it forever — and so a
+    // markEventProcessed that sits AFTER the scope break fails here.
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("ignores an invoice generated by a QUOTE", async () => {
+    // parent.type has two members (Invoices.d.ts:862) and `parent: null` is a
+    // third state. Tested only against null, the filter could be narrowed to
+    // `!invoice.parent` and still pass — while admitting quote_details
+    // invoices, for which the Portal advice is just as wrong.
+    await billingTenant();
+
+    await postWebhook(
+      stripeEvent(
+        "invoice.payment_failed",
+        failedInvoiceFixture({ parent: { type: "quote_details", quote_details: {} } })
+      )
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("ignores a send_invoice subscription invoice", async () => {
+    // The subtle half. next_payment_attempt is null for send_invoice invoices
+    // BY DEFINITION (Invoices.d.ts:334-336), not because dunning gave up — so
+    // without this filter every one of them would take the most urgent branch
+    // this message has, for an invoice Stripe was never going to auto-charge
+    // and is itself emailing with payment instructions.
+    await billingTenant();
+
+    await postWebhook(
+      stripeEvent(
+        "invoice.payment_failed",
+        failedInvoiceFixture({ collection_method: "send_invoice", next_payment_attempt: null })
+      )
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("sends regardless of billing_reason, including null", async () => {
+    // Guards against a future reviewer 'restoring symmetry' with Slices 1-2 by
+    // re-implementing the scope filter as a billing_reason allowlist.
+    // billing_reason is NULLABLE (Invoices.d.ts:203), and a subscription
+    // failure whose reason is null or the legacy "subscription" is a real
+    // dunning failure where /subscription is exactly the right advice.
+    await billingTenant();
+
+    await postWebhook(
+      stripeEvent(
+        "invoice.payment_failed",
+        failedInvoiceFixture({ billing_reason: null }),
+        "evt_reason_null"
+      )
+    );
+    await postWebhook(
+      stripeEvent(
+        "invoice.payment_failed",
+        failedInvoiceFixture({ id: "in_thr", billing_reason: "subscription_threshold" }),
+        "evt_reason_threshold"
+      )
+    );
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_failed" } })
+    ).toBe(2);
+  });
+
+  it("does not send when nothing is outstanding", async () => {
+    await billingTenant();
+
+    const res = await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture({ amount_remaining: 0 }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+});
+
+describe("Slice 3 — it sends when the receipts would NOT", () => {
+  it.each(["canceled", "unpaid"])(
+    "still warns when the subscription is already %s",
+    async (subscriptionStatus) => {
+      // The decision that separates this type from Slices 1-2: NO liveness gate.
+      // Copying theirs would do nothing at the first failure (active/past_due
+      // both pass) and would bite only at the TERMINAL one — once
+      // customer.subscription.deleted has landed and written canceled. That is
+      // the most important message in the sequence, and Stripe guarantees no
+      // ordering between the two events, so the gate would drop it
+      // nondeterministically.
+      const { company } = await billingTenant();
+      await prisma.company.update({
+        where: { id: company.id },
+        data: { subscriptionStatus, plan: "free" },
+      });
+
+      await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+      expect(
+        await prisma.notificationEvent.count({ where: { type: "billing.invoice_failed" } })
+      ).toBe(1);
+    }
+  );
+
+  it("stays silent when the company has already REPLACED the failing subscription", async () => {
+    // The one exception to "no gate", and on a different axis from liveness.
+    // Terminal dunning cancels the old subscription, which unblocks a fresh
+    // Checkout — the intended recovery — and that rewrites
+    // Company.stripeSubscriptionId. Stripe retries a non-2xx delivery for days,
+    // so the OLD invoice's final payment_failed can land afterwards. Sending it
+    // then tells a customer who has just paid that their payment failed and
+    // their access is at risk, and they cannot switch it off.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_test_replacement", subscriptionStatus: "active" },
+    });
+
+    const res = await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture())
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("still warns when the company is on the SAME subscription", async () => {
+    // The guard must be about identity, not merely about the column being set.
+    // Suppressing whenever stripeSubscriptionId is populated would silence the
+    // ordinary case — which is every real dunning failure.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_test_billing", subscriptionStatus: "past_due" },
+    });
+
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_failed" } })
+    ).toBe(1);
+  });
+
+  it("still warns when the replacement subscription is ALSO dead", async () => {
+    // Silence is only safe when we can see the customer's billing is fine. A
+    // different-but-dead subscription is not that, so the warning goes out.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_test_replacement", subscriptionStatus: "canceled" },
+    });
+
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.invoice_failed" } })
+    ).toBe(1);
+  });
+
+  it("reaches the owner even with the category switched off", async () => {
+    // mandatory: true. `billing` is a MANDATORY_CATEGORY, so the preference API
+    // refuses to write this row at all — it is inserted directly, which is the
+    // only way to prove the GATE ignores it rather than the API refusing it.
+    const { company, owner } = await billingTenant();
+    await prisma.notificationPreference.create({
+      data: {
+        companyId: company.id,
+        userId: owner.id,
+        category: "billing",
+        channel: "EMAIL",
+        enabled: false,
+      },
+    });
+
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_failed" },
+    }))!;
+    await dispatchEvent(event.id);
+
+    const delivery = (await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id },
+    }))!;
+    expect(delivery.status).toBe("pending");
+    expect(delivery.suppressionReason).toBeNull();
+  });
+
+  it("sends nothing for customer.subscription.updated -> past_due", async () => {
+    // K2's second half: one failed payment, ONE letter. Stripe fires both
+    // invoice.payment_failed AND customer.subscription.updated(past_due) for a
+    // single failure; only the former carries the data this message needs, so
+    // the latter must stay a pure state write.
+    const { company } = await billingTenant();
+
+    await postWebhook(
+      stripeEvent("customer.subscription.updated", {
+        id: "sub_test_billing",
+        object: "subscription",
+        status: "past_due",
+        customer: "cus_test_billing",
+        metadata: { companyId: String(company.id) },
+        items: { object: "list", data: [] },
+      })
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+});
+
+describe("Slice 3 — what the customer is actually told", () => {
+  it("reports the OUTSTANDING amount, not what was billed", async () => {
+    // amount_due 5999, amount_paid 1000 -> 4999 is the money that failed.
+    // amount_due would name money the customer already handed over, on the one
+    // number this email exists to communicate.
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.invoice_failed");
+
+    expect(payload.amountFormatted).toBe("€49.99");
+  });
+
+  it("passes the REAL attempt count through, not a constant", async () => {
+    // Every other test uses the fixture's attempt_count of 1, which is also
+    // what a hardcoded `attemptNumber: 1` would produce — so none of them can
+    // tell the pass-through from a constant. A value that appears nowhere else
+    // in the fixture can.
+    await billingTenant({ language: "en" });
+    await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture({ attempt_count: 3 }))
+    );
+
+    const payload = await deliveredPayload("billing.invoice_failed");
+    expect(payload.attemptNumber).toBe(3);
+  });
+
+  it("renders the next attempt in the company's timezone, which can change the DAY", async () => {
+    // The context carries Company.timezone purely for this. Without a test
+    // that makes the zone matter, dropping the field entirely would go
+    // unnoticed: 09:00 UTC on 18 October is still 17 October in Los Angeles.
+    await billingTenant({ language: "en", timezone: "America/Los_Angeles" });
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.invoice_failed");
+    expect(payload.nextAttemptFormatted).toBe("17 October 2026");
+  });
+
+  it("formats the next attempt in the RECIPIENT's language", async () => {
+    const { owner } = await billingTenant({ language: "en" });
+    await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
+
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+    const payload = await deliveredPayload("billing.invoice_failed");
+
+    expect(payload.amountFormatted).toBe("49,99\u00A0EUR");
+    expect(payload.nextAttemptFormatted).toBe("2026. október 18.");
+  });
+
+  it("passes null through as null — never as 1970", async () => {
+    // The single worst output this template could produce. formatDate({value:0})
+    // does NOT throw and does NOT return the "—" fallback: 0 is a valid Date,
+    // so a `?? 0` anywhere on this path renders "1 January 1970" in a critical
+    // email. Asserted on the payload AND on the rendered HTML.
+    await billingTenant({ language: "en" });
+    await postWebhook(
+      stripeEvent("invoice.payment_failed", failedInvoiceFixture({ next_payment_attempt: null }))
+    );
+
+    const payload = await deliveredPayload("billing.invoice_failed");
+    expect(payload.nextAttemptFormatted).toBeNull();
+
+    const rendered = await invoiceFailedEmailTemplate({ ...payload, locale: "en" });
+    expect(rendered.html).not.toContain("1970");
+    expect(rendered.html).not.toContain("January");
+  });
+
+  it("builds the CTA from the app URL, and does not store it in the event", async () => {
+    // portalUrl is a property of the DEPLOYMENT, not of the event. A copy
+    // frozen into the context would go stale against an APP_URL change while
+    // the row sat in the outbox — and it is the only CTA of a critical email.
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_failed" },
+    }))!;
+    const context = JSON.parse(event.context!);
+    expect(context).not.toHaveProperty("portalUrl");
+
+    const payload = await deliveredPayload("billing.invoice_failed");
+
+    // Asserted as a LITERAL, not as `${config.frontendUrl}/subscription`. That
+    // interpolation is the implementation restated: it holds for
+    // config.frontendUrl alone, for a wrong path, for any value at all — a test
+    // that cannot fail for the property it names. The suite runs with APP_URL
+    // unset, so config.ts's documented fallback is the expected origin here.
+    expect(payload.portalUrl).toBe("http://localhost:5173/subscription");
+  });
+
+  it("stores RAW values in the context, never rendered text", async () => {
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.invoice_failed" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    expect(context.amountMinor).toBe(4999);
+    expect(context.attemptNumber).toBe(1);
+    expect(context.nextAttemptAt).toBe(NEXT_ATTEMPT_AT);
+    expect(context).not.toHaveProperty("amountFormatted");
+    expect(context).not.toHaveProperty("nextAttemptFormatted");
+    // No plan and no status: the trigger has verified neither, and the
+    // no-liveness-gate decision depends on the copy never claiming them.
+    expect(context).not.toHaveProperty("planName");
+  });
+
+  it("renders end to end from a context with no plan or period", async () => {
+    // Catches reusing parseInvoiceNotificationContext, which hard-requires
+    // planName, periodStartAt and periodEndAt and would throw
+    // BillingContractError — killing a mandatory critical email inside the
+    // worker rather than at the trigger.
+    await billingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.payment_failed", failedInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.invoice_failed");
+    const rendered = await invoiceFailedEmailTemplate({ ...payload, locale: "en" });
+
+    expect(rendered.html).toContain("49.99");
+    expect(rendered.html).toContain("18 October 2026");
   });
 });
 

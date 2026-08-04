@@ -180,6 +180,79 @@ export function parseInvoiceNotificationContext(
   };
 }
 
+// N1.8 Slice 3 — the raw context for a FAILED payment.
+//
+// A separate type and a separate parser, not a reuse of the invoice one above,
+// and the reason is not tidiness. parseInvoiceNotificationContext hard-requires
+// planName, periodStartAt and periodEndAt; a failure context has none of the
+// three, so reusing it would throw BillingContractError inside the email
+// channel — i.e. a MANDATORY, critical notification dying in a worker three
+// retries later instead of at the trigger. That inversion is exactly what the
+// note further down this file warns against.
+//
+// `nextAttemptAt` is EXPLICITLY nullable rather than merely optional, because
+// null is a meaning here and not an absence: Stripe has scheduled no further
+// automatic attempt, which is the most urgent state this message has. It must
+// survive the round trip through JSON as null and never arrive as 0 — see the
+// channel, where 0 would format as 1 January 1970 rather than failing.
+//
+// No planName and no subscription status, deliberately. Slice 3 sends without
+// a liveness gate (see the trigger), and the price of that is that this email
+// may only assert what the INVOICE proves: an amount that failed, whether
+// another attempt is scheduled, and where to act.
+export type PaymentFailureNotificationContext = {
+  companyName: string;
+  // Stripe minor units — invoice.amount_remaining, NOT amount_paid.
+  amountMinor: number;
+  currency: string;
+  // Stripe's attempt_count. Chooses WORDING only; never rendered. See the
+  // template for why the number itself must not reach the customer.
+  attemptNumber: number;
+  // UNIX seconds, or null when no further automatic attempt is scheduled.
+  nextAttemptAt?: number | null;
+  timeZone?: string | null;
+};
+
+export function parsePaymentFailureNotificationContext(
+  context: Record<string, unknown>
+): PaymentFailureNotificationContext {
+  const str = (key: string): string => {
+    const value = context[key];
+    if (typeof value !== "string" || value.length === 0) {
+      throw new BillingContractError(`payment failure context is missing "${key}"`);
+    }
+    return value;
+  };
+
+  const num = (key: string): number => {
+    const value = context[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new BillingContractError(
+        `payment failure context "${key}" must be a finite number, got ${String(value)}`
+      );
+    }
+    return value;
+  };
+
+  return {
+    companyName: str("companyName"),
+    amountMinor: num("amountMinor"),
+    currency: str("currency"),
+    // Through the NUMBER check, not the emptiness check: attempt_count of 0 or
+    // 1 is entirely legitimate and an emptiness test would reject 0.
+    attemptNumber: num("attemptNumber"),
+    // Anything that is not a finite number is "no attempt scheduled". A
+    // missing key, an explicit null and a NaN all collapse to the same
+    // meaning, which is the safe direction: the urgent branch never depends on
+    // a value being present, only on one being absent.
+    nextAttemptAt:
+      typeof context.nextAttemptAt === "number" && Number.isFinite(context.nextAttemptAt)
+        ? context.nextAttemptAt
+        : null,
+    timeZone: typeof context.timeZone === "string" ? context.timeZone : null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Runtime validation
 // ---------------------------------------------------------------------------

@@ -51,6 +51,12 @@ const HANDLED_EVENTS = new Set([
   // subscription — unlike every slice that adds an event type here, which
   // does (docs/notification-rollout.md §1a-bis).
   "invoice.paid",
+  // N1.8 Slice 3. A NEW event type, so it DOES need the Stripe Dashboard step:
+  // an endpoint not subscribed to invoice.payment_failed simply never receives
+  // it, the case never runs, not one dunning warning is ever sent — and the
+  // suite stays green, because the tests POST signed payloads straight at this
+  // route and cannot observe endpoint subscription at all.
+  "invoice.payment_failed",
 ]);
 
 // N1.8 K1 — `invoice.paid` produces AT MOST ONE customer-facing notification,
@@ -515,6 +521,194 @@ router.post("/", async (req, res) => {
           ...invoiceServicePeriod(invoice),
           ...(company.timezone ? { timeZone: company.timezone } : {}),
           ...(invoice.hosted_invoice_url ? { invoiceUrl: invoice.hosted_invoice_url } : {}),
+        },
+      });
+
+      break;
+    }
+
+    // N1.8 Slice 3 — the failed-payment notice.
+    //
+    // K2: the dedupeKey is the EVENT id, which is the opposite of the two
+    // receipts and is the whole point. Every automatic dunning retry is a
+    // separate failure the customer needs to hear about, so a key on the
+    // invoice id would announce the first failure and silently swallow every
+    // one after it. `invoice.id + attempt_count` was considered and rejected:
+    // Stripe documents that a MANUAL retry in the Portal does not increment
+    // attempt_count (Invoices.d.ts:176), so that key collides exactly when a
+    // customer has tried to fix the problem themselves and failed again.
+    //
+    // Redelivery of the SAME event is still suppressed twice over — the
+    // HANDLED_EVENTS ledger short-circuits it before this case runs, and the
+    // event-keyed dedupeKey collides underneath.
+    case "invoice.payment_failed": {
+      const invoice = event.data.object as Stripe.Invoice;
+
+      // SCOPE — this message is only correct for money Stripe is
+      // AUTO-COLLECTING for a SUBSCRIPTION, and both halves of that matter.
+      //
+      // Keyed on the invoice's STRUCTURE, not on billing_reason. The reason
+      // field answers "why was this invoice raised", which is what Slices 1-2
+      // needed because it chose between two receipts; here there is one
+      // destination and the question is different — "is /subscription where the
+      // customer fixes this". billing_reason is also nullable
+      // (Invoices.d.ts:203), so a reason allowlist would silently drop a
+      // genuine subscription failure whose reason is null or legacy
+      // "subscription", both of which are real dunning failures.
+      //
+      //   parent.type === "subscription_details" — a manual invoice raised from
+      //     the Dashboard has parent: null (there is no "manual" member of
+      //     Parent.Type, Invoices.d.ts:862). For such an invoice the entire
+      //     instruction this email gives is wrong: the Customer Portal manages
+      //     the SUBSCRIPTION's payment method and cannot settle a one-off.
+      //
+      //   collection_method === "charge_automatically" — a send_invoice invoice
+      //     has next_payment_attempt null BY DEFINITION (Invoices.d.ts:334-336),
+      //     not because dunning has given up. Without this half, every such
+      //     invoice would take the most urgent branch this message has — "no
+      //     further automatic attempt is scheduled" — for an invoice that was
+      //     never going to be auto-charged and that Stripe itself is emailing
+      //     with payment instructions.
+      if (
+        invoice.parent?.type !== "subscription_details" ||
+        invoice.collection_method !== "charge_automatically"
+      ) {
+        console.warn(
+          `[stripe webhook] invoice.payment_failed for ${invoice.id} is not an ` +
+            `auto-collected subscription invoice (parent ${invoice.parent?.type ?? "none"}, ` +
+            `collection ${invoice.collection_method}) — acknowledged, not notified`
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const companyId = await resolveCompanyId(
+        undefined,
+        typeof invoice.customer === "string" ? invoice.customer : null
+      );
+
+      if (!companyId) {
+        console.warn(
+          `[stripe webhook] invoice.payment_failed for unknown customer, dropping ${invoice.id}`
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const company = await prisma.company.findUnique({ where: { id: companyId } });
+
+      await markEventProcessed(event.id, event.type);
+
+      if (!company) break;
+
+      // NO LIVENESS GATE HERE, and that is a decision rather than an omission —
+      // the opposite of the one Slices 1-2 make three cases up.
+      //
+      // Their gate exists because "you are on the X plan for another billing
+      // period" is a COVERAGE claim read out of the Company row, and it is
+      // false for a dead subscription. This message makes no such claim: "we
+      // could not collect X" comes from the invoice and stays true in every
+      // subscription status.
+      //
+      // Copying the gate here would do nothing in the states where it is
+      // harmless (at the first failure the stored status is active or past_due,
+      // both of which pass) and would bite in exactly one place — the FINAL
+      // dunning failure, once customer.subscription.deleted has already landed
+      // and written canceled. That is the most important message in the whole
+      // sequence, and Stripe guarantees no ordering between the two events, so
+      // the gate would drop it nondeterministically and silently.
+      //
+      // What pays for having no gate is the copy: the template may not name a
+      // plan and may not state the subscription's current status, because
+      // nothing here has verified either. See InvoiceFailedEmail.tsx.
+      //
+      // ...WITH ONE EXCEPTION, on a different axis from liveness: the invoice
+      // may belong to a subscription the company has already REPLACED.
+      //
+      // The status gate asks "is the subscription dead", and dropping it is
+      // right. This asks "is this invoice even about the subscription they are
+      // on", and the answer changes what the message means. Terminal dunning
+      // cancels the old subscription, which unblocks a fresh Checkout
+      // (CLOSED_SUBSCRIPTION_STATUSES) — the intended recovery path — and
+      // reconcileCheckoutCompletion then rewrites Company.stripeSubscriptionId.
+      // Stripe meanwhile retries a non-2xx delivery for days, so the OLD
+      // invoice's final payment_failed can land after that flip.
+      //
+      // At that point two of this email's four claims are false: "to keep your
+      // subscription running, update your payment details" (theirs is running,
+      // and this invoice has nothing to do with it) and "if the payment isn't
+      // completed the subscription ends and Axeriva switches to read-only"
+      // (it already ended, and they are not read-only). The customer has just
+      // paid, and is told their payment failed and access is at risk. Being
+      // mandatory, they cannot switch it off.
+      //
+      // Same shape as the isForeign guard the customer.subscription.updated
+      // case already applies, and it is deliberately narrow: it fires ONLY when
+      // the company is on a DIFFERENT subscription that is itself live. During
+      // the checkout race this guard has to survive — a new subscription's
+      // events arriving before the checkout handler has written its id —
+      // Company.stripeSubscriptionId is still the OLD one, so the ids MATCH and
+      // nothing is suppressed. If the replacement is not live either, the
+      // warning still goes out: we only stay silent when we can see the
+      // customer's billing is actually fine.
+      const invoiceSubscriptionId =
+        typeof invoice.parent.subscription_details?.subscription === "string"
+          ? invoice.parent.subscription_details.subscription
+          : (invoice.parent.subscription_details?.subscription?.id ?? null);
+
+      if (
+        company.stripeSubscriptionId &&
+        invoiceSubscriptionId &&
+        company.stripeSubscriptionId !== invoiceSubscriptionId &&
+        ACTIVE_SUBSCRIPTION_STATUSES.includes(company.subscriptionStatus)
+      ) {
+        console.warn(
+          `[stripe webhook] invoice.payment_failed for ${invoice.id} belongs to ` +
+            `${invoiceSubscriptionId}, but company ${companyId} is on ` +
+            `${company.stripeSubscriptionId} (${company.subscriptionStatus}) — superseded, not notifying`
+        );
+        break;
+      }
+
+      // Nothing was outstanding, so there is no failure to report. The same
+      // refusal Slice 2 makes for a zero-amount receipt, for the same reason:
+      // "we couldn't collect €0.00" names nothing the customer can act on.
+      // Reaching this contradicts our model of dunning, hence error not warn.
+      if (invoice.amount_remaining <= 0) {
+        console.error(
+          `[stripe webhook] invoice.payment_failed for ${invoice.id} with ` +
+            `amount_remaining ${invoice.amount_remaining} — nothing outstanding, not notifying`
+        );
+        break;
+      }
+
+      await notify({
+        type: "billing.invoice_failed",
+        companyId,
+        dedupeKey: `billing.invoice_failed/${event.id}`,
+        context: {
+          companyName: company.name,
+          // amount_REMAINING, not amount_due and emphatically not amount_paid.
+          //
+          // amount_remaining is defined as amount_due minus amount_paid
+          // (Invoices.d.ts:163-166), so it inherits amount_due's credit-balance
+          // handling and additionally excludes anything already collected. On a
+          // part-settled invoice, amount_due names money the customer has
+          // already handed over — on the one number this email exists to
+          // communicate. In ordinary dunning nothing is paid and the two are
+          // identical, so this costs nothing and is strictly safer.
+          //
+          // (This narrows docs/notification-n18-plan.md §3, which names
+          // amount_due; the doc is amended in the same commit.)
+          amountMinor: invoice.amount_remaining,
+          currency: invoice.currency,
+          attemptNumber: invoice.attempt_count,
+          // number | null, passed through UNCHANGED. null is the meaning
+          // "Stripe has scheduled no further automatic attempt", which selects
+          // a different message downstream — it must never be coerced to 0,
+          // which formats as 1 January 1970 rather than failing.
+          nextAttemptAt: invoice.next_payment_attempt,
+          ...(company.timezone ? { timeZone: company.timezone } : {}),
         },
       });
 

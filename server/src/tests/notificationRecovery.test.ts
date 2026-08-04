@@ -51,6 +51,36 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
     expect(broken).toEqual([]);
   });
 
+  it("keeps the billing category/mandatory table the plan settled", () => {
+    // N1.8 Slice 3. docs/notification-n18-plan.md §4 splits billing in two:
+    //   `billing`          — critical, NOT switchable  -> mandatory: true
+    //   `billing_receipts` — courtesies, switchable    -> mandatory: false
+    //
+    // Neither half is observable through the gate on its own. A mandatory type
+    // ignores preferences whatever its category, so mutating `billing` to
+    // `billing_receipts` on billing.invoice_failed changes no delivery outcome
+    // and no behavioural test can see it — while quietly moving a critical
+    // warning into the bucket the preference screen offers to switch off, the
+    // day someone relaxes `mandatory`.
+    //
+    // So the TABLE is the invariant, and it is asserted as a pair: a category
+    // change alone now fails here, and so does a mandatory change alone.
+    const wrong = Object.entries(NOTIFICATION_TYPES)
+      .filter(([, d]) => d.category === "billing" || d.category === "billing_receipts")
+      .filter(([, d]) => d.mandatory !== (d.category === "billing"))
+      .map(([key, d]) => `${key} (${d.category}, mandatory: ${d.mandatory})`);
+
+    expect(wrong).toEqual([]);
+
+    // And the split is populated on both sides — an empty filter above would
+    // also produce [] and prove nothing.
+    const byCategory = Object.entries(NOTIFICATION_TYPES)
+      .filter(([, d]) => d.category === "billing" || d.category === "billing_receipts")
+      .map(([key, d]) => [key, d.category]);
+    expect(byCategory).toContainEqual(["billing.invoice_failed", "billing"]);
+    expect(byCategory).toContainEqual(["billing.subscription_renewed", "billing_receipts"]);
+  });
+
   it("gives every EMAIL type a template branch in the channel", async () => {
     // The compile-time exhaustiveness guard in email.channel.ts catches a type
     // with no case, but only if someone runs tsc. This is the runtime twin.
@@ -63,12 +93,13 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
 
     // The assertion exists so ADDING one is a deliberate act that updates this
     // list and the switch together — and it did its job on N1.8 Slice 1, which
-    // is why billing.subscription_renewed is here. Seven today; N1.8 takes it
+    // is why billing.subscription_renewed is here. Eight today; N1.8 takes it
     // to sixteen, one slice at a time.
     expect(emailTypes.sort()).toEqual([
       "auth.password_reset",
       "auth.verify_email",
       "auth.welcome",
+      "billing.invoice_failed",
       "billing.invoice_paid",
       "billing.subscription_created",
       "billing.subscription_renewed",

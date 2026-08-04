@@ -97,6 +97,18 @@ export interface EmailService {
     data: InvoiceReceiptEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult>;
+
+  // N1.8 Slice 3 — the failed-payment notice. A DIFFERENT payload from the two
+  // receipts, not the same one with fields unused: a failure has no plan, no
+  // service period and no invoice link, and it carries two things they do not
+  // (the attempt count and the next scheduled attempt). Reusing
+  // InvoiceReceiptEmailPayload here would mean a contract most of whose fields
+  // are meaningless for the message being sent.
+  sendInvoiceFailedEmail(
+    to: string,
+    data: PaymentFailureEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult>;
 }
 
 // What an invoice receipt needs, whatever the receipt is FOR.
@@ -120,4 +132,23 @@ export type InvoiceReceiptEmailPayload = {
   periodStartFormatted: string;
   periodEndFormatted: string;
   invoiceUrl?: string | null;
+};
+
+// N1.8 Slice 3. Satisfies PaymentFailureEmailData (emails/billingTypes.ts) plus
+// the company name every template greets with.
+//
+// `nextAttemptFormatted` is nullable and that nullability is load-bearing copy
+// logic: null means Stripe has scheduled no further automatic attempt, which
+// selects a structurally different message rather than dropping a clause. See
+// InvoiceFailedEmail.tsx.
+//
+// `attemptNumber` arrives as a NUMBER and is never rendered — it only chooses
+// wording. It is not pre-rendered into a string precisely so no template can
+// print it by accident.
+export type PaymentFailureEmailPayload = {
+  companyName: string;
+  amountFormatted: string;
+  attemptNumber: number;
+  nextAttemptFormatted?: string | null;
+  portalUrl: string;
 };

@@ -104,6 +104,35 @@ export const NOTIFICATION_TYPES = {
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },
+  // N1.8 Slice 3 — the failed-payment notice. `invoice.payment_failed`, for a
+  // subscription invoice Stripe is auto-collecting.
+  "billing.invoice_failed": {
+    // `billing`, NOT `billing_receipts`: the two receipts are courtesies a
+    // customer may switch off, and this is the message that tells them their
+    // company is heading for read-only. Q2 draws the line exactly here.
+    category: "billing",
+    severity: "critical",
+    // Ignores every preference and company toggle. The end of Stripe's dunning
+    // cycle moves the subscription to canceled or unpaid, both of which make
+    // the whole company read-only (services/readOnly.ts) — a customer who
+    // silenced this and then lost write access was never warned.
+    mandatory: true,
+    // NOT bypassesComplaintSuppression, and the consequence is written down
+    // rather than left implicit. That flag is reserved for messages whose loss
+    // is an ACCOUNT LOCKOUT the recipient asked for seconds ago
+    // (auth.password_reset). A dunning notice is not that, and mailing an
+    // address that reported us as spam damages the sending domain for every
+    // tenant. THE RESIDUAL RISK, stated so it is a decision and not an
+    // oversight: an owner on the suppression list never receives this, and
+    // because the type is EMAIL-only there is no second channel behind it.
+    recipients: "OWNER",
+    // EMAIL only. An in-app banner for read-only mode already exists on its own
+    // path (services/readOnly.ts feeds the frontend's global state), so an
+    // IN_APP entry here would be a second, worse copy of a warning the product
+    // already shows — and the customer whose card is dead needs it in their
+    // inbox, not behind a login.
+    channels: ["EMAIL"],
+  },
   // N1.8 Slice 2 — the mid-cycle plan-change receipt. `invoice.paid` with
   // billing_reason = subscription_update, which in this product means the
   // customer approved an upgrade on Stripe's hosted confirmation page: that

@@ -152,9 +152,19 @@ stripeWebhook.routes.ts:90):
 |---|---|---|
 | `billing.subscription_renewed` | `…/{invoice.id}` | `amount_paid`(:158), `currency`(:219), `period_start`(:361), `period_end`(:357), `hosted_invoice_url`(:307), `invoice_pdf`(:311) |
 | `billing.invoice_paid` | `…/{invoice.id}` | ua. |
-| `billing.invoice_failed` | **`…/{event.id}`** (K2) | `attempt_count`(:178), `next_payment_attempt`(:336), `amount_due`(:150) |
+| `billing.invoice_failed` | **`…/{event.id}`** (K2) | `attempt_count`(:178), `next_payment_attempt`(:336), ~~`amount_due`(:150)~~ → **`amount_remaining`(:166)**, lásd alább |
 | `billing.renewal_upcoming` | **`…/{subscriptionId}/{period_end}`** (K3) | `invoice.parent.subscription_details.subscription`(:856) — **nincs `invoice.id`** |
 | `billing.payment_method_updated` | `…/{paymentMethod.id}` | `card.brand`(:246), `card.last4`, `card.exp_month`(:266) |
+
+> **Slice 3 implementációs korrekció (`amount_due` → `amount_remaining`).** A
+> telepített SDK szerint `amount_remaining` = `amount_due − amount_paid`
+> (Invoices.d.ts:163-166), tehát örökli az `amount_due` minden jóváírás- és
+> `starting_balance`-kezelését, **és** levonja azt, amit már beszedtünk. Egy
+> részben kiegyenlített számlán az `amount_due` olyan pénzt nevez meg, amit az
+> ügyfél már átadott — pont azon az egyetlen számon, amiért a levél létezik. A
+> szokásos dunning-esetben `amount_paid = 0`, tehát a kettő azonos: a
+> szigorítás ingyen van. Kiegészül egy elutasítással: `amount_remaining <= 0`
+> esetén **nem megy levél** (nincs mit bejelenteni).
 
 **Stale guard:** a meglévő guard subscription-alakú és **nem vihető át**. Az
 invoice-események **önmagukban teljesek** (minden adat a payloadban van, nincs

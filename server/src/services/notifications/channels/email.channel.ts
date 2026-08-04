@@ -4,10 +4,15 @@ import type {
   EmailContext,
   EmailSendResult,
   InvoiceReceiptEmailPayload,
+  PaymentFailureEmailPayload,
 } from "../../email/EmailService";
+import { config } from "../../../config";
 import type { NotificationLocale } from "../../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../../constants/tokenTtl";
-import { parseInvoiceNotificationContext } from "../../../emails/billingTypes";
+import {
+  parseInvoiceNotificationContext,
+  parsePaymentFailureNotificationContext,
+} from "../../../emails/billingTypes";
 import { formatDate, formatMoney } from "../../../utils/billingFormat";
 import { redactEventContextIfSettled } from "../notify";
 import { isNotificationType } from "../registry";
@@ -184,6 +189,15 @@ async function send(
         invoiceReceiptPayload(context, locale),
         emailContext
       );
+
+    // N1.8 Slice 3 — the failed-payment notice. A different context contract
+    // and a different payload from the two receipts above.
+    case "billing.invoice_failed":
+      return emailService.sendInvoiceFailedEmail(
+        to,
+        paymentFailurePayload(context, locale),
+        emailContext
+      );
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of
@@ -232,6 +246,54 @@ function invoiceReceiptPayload(
       timeZone: invoice.timeZone,
     }),
     invoiceUrl: invoice.invoiceUrl,
+  };
+}
+
+// N1.8 Slice 3 — the failed-payment payload.
+//
+// TWO THINGS HERE ARE NOT SYMMETRIC WITH THE RECEIPT HELPER ABOVE, and both are
+// deliberate.
+//
+// 1. `nextAttemptFormatted` is computed by BRANCHING on null, never by
+//    formatting a coerced value. formatDate({ value: 0 }) does not throw and
+//    does not return the "—" fallback — 0 is a perfectly valid Date, so it
+//    renders "1 January 1970". In a message whose whole point is "here is when
+//    we will try again", that is the worst available output, and it is what a
+//    `?? 0` or a non-null assertion would produce.
+//
+//    Day precision (formatDate, not formatDateTime) on purpose: Stripe's retry
+//    time-of-day is an implementation detail of its dunning scheduler, and
+//    printing it invites a customer to watch the clock for a minute that means
+//    nothing to them.
+//
+// 2. `portalUrl` is BUILT HERE rather than carried in the event context. It is
+//    not Stripe data and it is not per-event: it is a property of this
+//    deployment, and a copy stored in a queued NotificationEvent would go stale
+//    against an APP_URL change while the row waited.
+//
+//    ⚠️ config.frontendUrl falls back to http://localhost:5173 when APP_URL is
+//    unset (config.ts). In production that would be the only CTA of a critical
+//    email pointing at nothing — which is an operational failure, not a code
+//    one, and is why the rollout doc lists APP_URL as a precondition.
+function paymentFailurePayload(
+  context: DeliveryContext,
+  locale: NotificationLocale
+): PaymentFailureEmailPayload {
+  const failure = parsePaymentFailureNotificationContext(context);
+
+  return {
+    companyName: failure.companyName,
+    amountFormatted: formatMoney({
+      amountMinor: failure.amountMinor,
+      currency: failure.currency,
+      locale,
+    }),
+    attemptNumber: failure.attemptNumber,
+    nextAttemptFormatted:
+      failure.nextAttemptAt === null || failure.nextAttemptAt === undefined
+        ? null
+        : formatDate({ value: failure.nextAttemptAt, locale, timeZone: failure.timeZone }),
+    portalUrl: `${config.frontendUrl}/subscription`,
   };
 }
 

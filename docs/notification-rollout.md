@@ -129,6 +129,68 @@ csomagváltás után
 `SELECT COUNT(*) FROM "NotificationEvent" WHERE type='billing.invoice_paid';`
 nő eggyel.
 
+### Slice 3 (`billing.invoice_failed`) — ⚠️ **ÚJ Dashboard-esemény, blokkoló**
+
+A Slice 2-vel ellentétben ez **új Stripe-eseménytípust** vesz fel a
+`HANDLED_EVENTS` halmazba:
+
+```
++ "invoice.payment_failed"
+```
+
+Amíg az endpoint nincs feliratkozva rá, a Stripe **el sem küldi**, a `case`
+soha nem fut, és **egyetlen sikertelen-fizetés figyelmeztetés sem megy ki** —
+miközben a tesztsuite zöld marad. Ez a mérföldkő legfontosabb levele: a
+dunning végén az előfizetés `canceled`/`unpaid` lesz, és a cég **csak olvasható
+módba** kerül (`services/readOnly.ts`). Aki nem kapja meg, figyelmeztetés
+nélkül veszíti el az írási jogot.
+
+**Teendő:**
+
+1. Stripe Dashboard → **Developers → Webhooks** → a meglévő endpoint
+2. **"Select events"** → `invoice.payment_failed` hozzáadása
+3. Mentés
+
+**Ellenőrzés a deploy után:** *Send test event* → `invoice.payment_failed`, majd
+`SELECT COUNT(*) FROM "ProcessedStripeEvent" WHERE type='invoice.payment_failed';`
+nő eggyel.
+
+#### ⚠️ Sorrend: itt a „push előtt" szabály alól **kivételt javaslunk**
+
+A fenti §1a-bis és a terv §6 egységesen azt mondja, hogy a feliratkozás **push
+előtt** történjen — azért, hogy el ne felejtődjön. Erre az eseményre ez
+**adatvesztést okoz**, és a két kockázat nem egyenrangú:
+
+| Sorrend | Kockázat |
+|---|---|
+| Feliratkozás **a deploy ELŐTT** | A régi kód a `default:` ágon **200-zal nyugtázza** az eseményt → a Stripe nem próbálja újra → az ablakban beeső valódi fizetési hibáról **nem megy ki levél**. Némán történik: se hibalog, se sorbanálló elem. |
+| Feliratkozás **a deploy UTÁN** | A Stripe addig el sem küldi az eseményt, tehát semmi nem vész el; az egyetlen kockázat, hogy **elfelejtjük** — ezt viszont a lenti ellenőrző lekérdezés kimutatja. |
+
+**Javaslat: deploy → azonnal feliratkozás → ellenőrző lekérdezés.**
+
+⚠️ **Pontosítás, mert a korábbi megfogalmazás túlzott:** a deploy előtti ablak
+**visszamenőleg helyrehozható**. A `default:` ág nem ír `ProcessedStripeEvent`
+sort (csak a `HANDLED_EVENTS`-beli típusok kerülnek a főkönyvbe), tehát az
+érintett eseményeket a Stripe Dashboard **Resend** funkciójával újra le lehet
+küldeni, és az új kód normálisan feldolgozza őket — az idempotencia-őr nem
+nyeli el. A helyreállítás viszont **feltételezi, hogy valaki észreveszi**: nincs
+riasztás, ami szólna. A javaslat tehát nem „az adatvesztés visszafordíthatatlan"
+alapon áll, hanem azon, hogy a felejtést egy lekérdezés kimutatja, az elmaradt
+levelet viszont csak kézi átvizsgálás.
+
+#### Előfeltétel: `APP_URL`
+
+A levél **egyetlen** CTA-ja a `${APP_URL}/subscription` oldalra mutat
+(`config.frontendUrl`). Ha az `APP_URL` nincs beállítva, a config
+`http://localhost:5173`-ra esik vissza — vagyis egy kritikus levél egyetlen
+gombja a semmibe mutat. Éles környezetben az `APP_URL` megléte ennek a
+szeletnek **előfeltétele**, nem opció.
+
+> Miért nem Stripe Billing Portal-link a gombban: a portál-session URL rövid
+> életű és egyszer használatos, tehát egy levélbe sütve mire elolvassák, halott
+> link. Ezért a saját `/subscription` oldalunkra megyünk, ahonnan az ügyfél
+> hitelesítve nyit portál-sessiont.
+
 ---
 
 ## 1c. N1.7 — nincs ops-teendő

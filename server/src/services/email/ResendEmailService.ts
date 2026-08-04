@@ -4,6 +4,7 @@ import type {
   EmailSendResult,
   EmailService,
   InvoiceReceiptEmailPayload,
+  PaymentFailureEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../constants/tokenTtl";
@@ -14,6 +15,7 @@ import { verificationEmailTemplate } from "../../emails/templates/auth/Verificat
 import { subscriptionConfirmedEmailTemplate } from "../../emails/templates/billing/SubscriptionConfirmedEmail";
 import { subscriptionRenewedEmailTemplate } from "../../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../../emails/templates/billing/InvoicePaidEmail";
+import { invoiceFailedEmailTemplate } from "../../emails/templates/billing/InvoiceFailedEmail";
 
 // N1.3 — the templates moved to React Email (src/emails/), so the imports
 // changed and the template calls became async. The transport itself is
@@ -116,6 +118,19 @@ export class ResendEmailService implements EmailService {
     context?: EmailContext
   ): Promise<EmailSendResult> {
     const { subject, html, text } = await invoicePaidEmailTemplate({
+      ...data,
+      ...resolveContext(context),
+    });
+    return this.send(to, subject, html, text, context);
+  }
+
+  // N1.8 Slice 3 — the failed-payment notice.
+  async sendInvoiceFailedEmail(
+    to: string,
+    data: PaymentFailureEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    const { subject, html, text } = await invoiceFailedEmailTemplate({
       ...data,
       ...resolveContext(context),
     });
