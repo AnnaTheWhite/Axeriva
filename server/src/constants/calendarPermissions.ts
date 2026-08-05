@@ -186,6 +186,47 @@ export function permissionsForPreset(
   return new Set(CALENDAR_PRESET_PERMISSIONS[preset]);
 }
 
+// --- Share levels (R2/R4, plan §4.8) --------------------------------------
+//
+// What the owner of a PERSONAL calendar chooses to expose to their company.
+//
+// ⚠️ THE LEVEL IS NOT A COLUMN, AND MUST NEVER BECOME ONE. It is the presence
+// and preset of the COMPANY grant row, and nothing else. A Calendar.shareLevel
+// column could drift out of step with the actual grants, and the system would
+// then hold two different answers to "who can see this?" — precisely the defect
+// the dead Company.notificationsEnabled switches once caused. Keeping it
+// derived means enforcement runs down ONE code path: the §4.6 resolution order.
+//
+// GET/PUT /calendars/:id/share-level is therefore a convenience view over the
+// COMPANY grant, not a second mechanism.
+export const CALENDAR_SHARE_LEVELS = ["PRIVATE", "FREE_BUSY", "DETAILS"] as const;
+export type CalendarShareLevel = (typeof CALENDAR_SHARE_LEVELS)[number];
+
+export function isCalendarShareLevel(value: unknown): value is CalendarShareLevel {
+  return typeof value === "string" && (CALENDAR_SHARE_LEVELS as readonly string[]).includes(value);
+}
+
+// The preset each level writes to the COMPANY grant. PRIVATE is null — the
+// ABSENCE of the row — which is why the default needs no migration and no
+// backfill: a brand-new personal calendar is private because nothing grants
+// anything on it yet.
+export const SHARE_LEVEL_PRESET: Record<CalendarShareLevel, CalendarRolePreset | null> = {
+  PRIVATE: null,
+  FREE_BUSY: "FREE_BUSY",
+  DETAILS: "VIEWER",
+};
+
+// The reverse reading, for GET /share-level. Any preset that is not one of the
+// two share presets is reported as CUSTOM-shaped sharing rather than being
+// squeezed into a level it does not match — the API must not claim a calendar
+// is "FREE_BUSY" when the owner actually granted MANAGER to the whole company.
+export function shareLevelForCompanyGrant(preset: string | null | undefined): CalendarShareLevel | "OTHER" {
+  if (!preset) return "PRIVATE";
+  if (preset === SHARE_LEVEL_PRESET.FREE_BUSY) return "FREE_BUSY";
+  if (preset === SHARE_LEVEL_PRESET.DETAILS) return "DETAILS";
+  return "OTHER";
+}
+
 // Ranks presets by breadth, for the privilege-escalation guard CAL1.4 needs:
 // nobody may grant a preset wider than the one they themselves hold. CUSTOM is
 // deliberately absent — its breadth depends on its stored list, so it must be

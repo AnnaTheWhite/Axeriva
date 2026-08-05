@@ -29,6 +29,7 @@ import accessRoutes from "./routes/access.routes";
 import employeeAccessRoutes from "./routes/employeeAccess.routes";
 import resendWebhookRoutes from "./routes/resendWebhook.routes";
 import notificationsRoutes from "./routes/notifications.routes";
+import calendarsRoutes from "./routes/calendars.routes";
 import { stripeErrorHandler } from "./services/stripe/stripeErrors";
 // Importing this must NOT construct pg-boss — services/queue is
 // side-effect-free by design, precisely so app.ts stays mountable in tests.
@@ -235,6 +236,12 @@ app.use("/notifications", authMiddleware, notificationsRoutes);
 app.use("/projects", tenantWrite, projectActivityRoutes);
 app.use("/attachments", tenantWrite, attachmentsRoutes);
 app.use("/owner-notes", tenantWrite, ownerNotesRoutes);
+
+// CAL1.4 — the calendar module's first write surface. Through `tenantWrite`,
+// so a lapsed (read-only) company inherits the write block automatically and
+// GET/HEAD/OPTIONS keep working. No UI calls it yet; the calendar becomes
+// visible at CAL1.6. Rollback for the whole milestone is removing this line.
+app.use("/calendars", tenantWrite, calendarsRoutes);
 
 // JSON 404 for unknown routes — without this Express falls through to its
 // default HTML "Cannot GET ..." page, which is wrong for a JSON API.

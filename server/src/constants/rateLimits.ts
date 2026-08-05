@@ -54,4 +54,12 @@ export const RATE_LIMITS = {
   // save carries the whole changed set, so a busy session is a handful of
   // requests, not one per checkbox.
   NOTIFICATION_PREFS: { windowMs: HOUR_MS, max: 60 },
+
+  // CAL1.4 — the calendar module's write endpoints (create/update/archive a
+  // calendar, and every grant or share-level change). Keyed per USER, not per
+  // IP: this is authenticated tenant self-service, so the thing worth bounding
+  // is one account rewriting its sharing in a loop, not a shared office NAT.
+  // Generous, because a person reorganising a calendar's members makes a
+  // handful of requests in a burst and must never meet a limiter.
+  CALENDAR_WRITES: { windowMs: HOUR_MS, max: 120 },
 } as const;

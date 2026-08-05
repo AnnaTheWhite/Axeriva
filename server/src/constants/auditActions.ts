@@ -24,4 +24,12 @@ export const AUDIT_ACTIONS = {
   // carries the employeeId and the revoked userId. The Employee row itself
   // is untouched — see employeeAccess.routes.ts.
   EMPLOYEE_ACCESS_REVOKED: "EMPLOYEE_ACCESS_REVOKED",
+  // CAL1.4 (D13) — someone changed who can see or do what on a calendar:
+  // a member grant added, altered or revoked, or a personal calendar's
+  // share level changed. Mirrored here IN ADDITION to the module's own
+  // CalendarAudit table, because a permission change is a security event and
+  // belongs where the operator already looks for security events
+  // (/admin/logs). Calendar EVENT mutations are deliberately not mirrored —
+  // their volume would bury a log that sees a handful of rows a day.
+  CALENDAR_PERMISSION_CHANGED: "CALENDAR_PERMISSION_CHANGED",
 } as const;
