@@ -5,6 +5,7 @@ import type {
   EmailService,
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  UpcomingRenewalEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
 
@@ -126,6 +127,19 @@ export class MockEmailService implements EmailService {
     // was never populated.
     console.log(
       `[MockEmailService] Invoice payment FAILED for ${to} ("${data.companyName}", ${data.amountFormatted}, attempt ${data.attemptNumber}, next attempt: ${data.nextAttemptFormatted ?? "none"}) [${locale(context)}]`
+    );
+    return result(context);
+  }
+
+  async sendRenewalUpcomingEmail(
+    to: string,
+    data: UpcomingRenewalEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    // The DATE is the value worth eyeballing in a dev run here: an off-by-one
+    // cycle reads as a plausible date and is invisible anywhere else.
+    console.log(
+      `[MockEmailService] Renewal upcoming for ${to} ("${data.companyName}", ${data.amountFormatted} on ${data.renewalDateFormatted}) [${locale(context)}]`
     );
     return result(context);
   }

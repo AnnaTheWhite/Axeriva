@@ -79,6 +79,7 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
       .map(([key, d]) => [key, d.category]);
     expect(byCategory).toContainEqual(["billing.invoice_failed", "billing"]);
     expect(byCategory).toContainEqual(["billing.subscription_renewed", "billing_receipts"]);
+    expect(byCategory).toContainEqual(["billing.renewal_upcoming", "billing_receipts"]);
   });
 
   it("gives every EMAIL type a template branch in the channel", async () => {
@@ -101,6 +102,7 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
       "auth.welcome",
       "billing.invoice_failed",
       "billing.invoice_paid",
+      "billing.renewal_upcoming",
       "billing.subscription_created",
       "billing.subscription_renewed",
       "employees.invitation",

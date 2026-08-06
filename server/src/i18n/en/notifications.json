@@ -39,6 +39,7 @@
       "period": "Billing period",
       "amount": "Amount",
       "viewInvoice": "View invoice",
+      "chargeDate": "Payment date",
       "manage": "You can view past invoices or change your plan any time from the Subscription page in Axeriva."
     },
     "subscriptionRenewed": {
@@ -50,6 +51,12 @@
       "subject": "Payment received for your plan change — {{amount}}",
       "intro": "Thanks — we've received your payment for the plan change.",
       "body": "{{companyName}} is now on the {{planName}} plan. This invoice covers the difference for the rest of the current billing period:"
+    },
+    "renewalUpcoming": {
+      "subject": "Your next Axeriva payment — {{amount}} on {{date}}",
+      "intro": "A heads-up about your next payment, so nothing catches you out.",
+      "body": "We'll charge {{amount}} to the payment method on file for {{companyName}} on {{date}}.",
+      "changeNote": "If you'd like to change or cancel before then, you can do it any time from the Subscription page in Axeriva."
     },
     "invoiceFailed": {
       "subject": "We couldn't collect your Axeriva payment — {{amount}}",

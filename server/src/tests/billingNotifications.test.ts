@@ -10,6 +10,7 @@ import { emailService } from "../services/email";
 import type {
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  UpcomingRenewalEmailPayload,
 } from "../services/email/EmailService";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
@@ -283,6 +284,112 @@ function failedInvoiceFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// N1.8 Slice 4 — an UPCOMING invoice preview.
+//
+// TIMESTAMPS ARE DERIVED FROM THE CLOCK, not hardcoded like every fixture above.
+// Slice 4 refuses to announce a renewal that has already passed, so a fixed 2026
+// date would turn this whole block green-then-red the moment real time crossed
+// it — a time bomb, and the staleness gate would stop being tested long before
+// anyone noticed.
+const DAY_SECONDS = 24 * 60 * 60;
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+// FOUR MUTUALLY DISTINCT INSTANTS, because there are four plausible fields a
+// handler could read and only one is right. Slice 1's constants are deliberately
+// NOT reused: there ASSOCIATION_END equals SERVICE_START, which would make the
+// invoice-level window and the cycle line's start indistinguishable — exactly
+// the coincidence that let Slice 1's off-by-one-cycle bug ship.
+const RENEWS_AT = nowSeconds() + 7 * DAY_SECONDS; // the ONE right answer
+const CYCLE_END = RENEWS_AT + 30 * DAY_SECONDS; // one whole cycle late
+const ASSOC_START = RENEWS_AT - 30 * DAY_SECONDS; // a date already past
+const ASSOC_END = RENEWS_AT - DAY_SECONDS; // the Slice 1 trap, near but wrong
+// Mid-cycle and GENUINELY IN THE PAST. RENEWS_AT is only 7 days out, so
+// "RENEWS_AT - 3 days" would have been 4 days in the FUTURE — which still
+// satisfies the staleness gate, so a handler that wrongly picked the proration
+// line would have produced a plausible future date and sailed through. Anchored
+// to the clock instead of to RENEWS_AT so it cannot drift back into the future.
+const UPCOMING_PRORATION_START = nowSeconds() - 10 * DAY_SECONDS;
+
+function upcomingInvoiceFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    // NO `id`. Stripe does not send one for this event (Events.d.ts:1554) even
+    // though the SDK types it as required, so the fixture omits it: any handler
+    // or log line that reads invoice.id here must produce "undefined" and be
+    // caught rather than quietly working against a fixture that was kinder than
+    // production.
+    object: "invoice",
+    customer: "cus_test_billing",
+    billing_reason: "upcoming",
+    collection_method: "charge_automatically",
+    currency: "eur",
+    // All three differ, so a handler reading the wrong one is visible.
+    subtotal: 6000,
+    total: 5500,
+    amount_due: 4500,
+    period_start: ASSOC_START,
+    period_end: ASSOC_END,
+    parent: {
+      type: "subscription_details",
+      subscription_details: { subscription: "sub_test_billing" },
+    },
+    lines: {
+      object: "list",
+      data: [
+        // A one-off support charge, sorted first by Stripe and carrying the
+        // largest amount — so any largest-amount or data[0] selection loses.
+        {
+          id: "il_upcoming_support_charge",
+          object: "line_item",
+          amount: 9000,
+          period: { start: UPCOMING_PRORATION_START, end: RENEWS_AT },
+          parent: { type: "invoice_item_details", invoice_item_details: {} },
+        },
+        // A PRORATION subscription line, also larger than the cycle line. This
+        // is the one subscriptionInvoiceLine()'s fallback would pick, and its
+        // period.start is already in the past.
+        {
+          id: "il_upcoming_proration",
+          object: "line_item",
+          amount: 7000,
+          period: { start: UPCOMING_PRORATION_START, end: RENEWS_AT },
+          parent: {
+            type: "subscription_item_details",
+            subscription_item_details: { proration: true, subscription_item: "si_test" },
+          },
+        },
+        // THE CYCLE LINE. Smallest amount, last in the list — the right answer
+        // is reachable only by asking what the line IS.
+        {
+          id: "il_upcoming_cycle",
+          object: "line_item",
+          amount: 2500,
+          period: { start: RENEWS_AT, end: CYCLE_END },
+          parent: {
+            type: "subscription_item_details",
+            subscription_item_details: { proration: false, subscription_item: "si_test" },
+          },
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+// The company shape Slice 4's gates require: on THIS subscription, active, not
+// cancelling. Every gate test starts from here and breaks exactly one thing.
+async function renewingTenant(overrides: { language?: string | null; timezone?: string | null } = {}) {
+  const tenant = await billingTenant(overrides);
+  await prisma.company.update({
+    where: { id: tenant.company.id },
+    data: {
+      stripeSubscriptionId: "sub_test_billing",
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: false,
+    },
+  });
+  return tenant;
+}
+
 function stripeEvent(type: string, object: Record<string, unknown>, id?: string) {
   return {
     id: id ?? `evt_${type}_1`,
@@ -515,6 +622,7 @@ const RECEIPT_METHOD = {
   "billing.subscription_renewed": "sendSubscriptionRenewedEmail",
   "billing.invoice_paid": "sendInvoicePaidEmail",
   "billing.invoice_failed": "sendInvoiceFailedEmail",
+  "billing.renewal_upcoming": "sendRenewalUpcomingEmail",
 } as const;
 
 // Captures the payload the email channel hands the transport — i.e. what the
@@ -524,7 +632,9 @@ const RECEIPT_METHOD = {
 // every call site would have to narrow.
 type PayloadFor<T extends keyof typeof RECEIPT_METHOD> = T extends "billing.invoice_failed"
   ? PaymentFailureEmailPayload
-  : InvoiceReceiptEmailPayload;
+  : T extends "billing.renewal_upcoming"
+    ? UpcomingRenewalEmailPayload
+    : InvoiceReceiptEmailPayload;
 
 async function deliveredPayload<
   T extends keyof typeof RECEIPT_METHOD = "billing.subscription_renewed"
@@ -1575,6 +1685,404 @@ describe("Slice 3 — what the customer is actually told", () => {
 
     expect(rendered.html).toContain("49.99");
     expect(rendered.html).toContain("18 October 2026");
+  });
+});
+
+describe("Slice 4 — the advance notice, end to end", () => {
+  it("turns a signed invoice.upcoming into a sent heads-up", async () => {
+    const { company, owner, employee } = await renewingTenant();
+
+    const res = await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    expect(res.status).toBe(200);
+
+    const event = await prisma.notificationEvent.findFirst({
+      where: { type: "billing.renewal_upcoming" },
+    });
+    expect(event).not.toBeNull();
+    // K3 — subscription + the renewal instant. There is no invoice id to key on.
+    expect(event!.dedupeKey).toBe(`billing.renewal_upcoming/sub_test_billing/${RENEWS_AT}`);
+    expect(event!.companyId).toBe(company.id);
+
+    await dispatchEvent(event!.id);
+    const deliveries = await prisma.notificationDelivery.findMany({
+      where: { eventId: event!.id },
+    });
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].recipientAddress).toBe(owner.email);
+    expect(deliveries.map((d) => d.recipientAddress)).not.toContain(employee.email);
+
+    await deliverEmail(deliveries[0].id);
+    const sent = await prisma.notificationDelivery.findUnique({
+      where: { id: deliveries[0].id },
+    });
+    expect(sent!.status).toBe("sent");
+    expect(sent!.providerMessageId).toMatch(/^mock_/);
+  });
+
+  it("warns ONCE per cycle, and again the NEXT cycle", async () => {
+    // Both halves of K3 in one test. Two Stripe deliveries for one renewal are
+    // two DIFFERENT event ids, so the HANDLED_EVENTS ledger cannot suppress the
+    // second — only the dedupeKey can, which is why it may not be event-keyed.
+    // And the next cycle must get through, which is why the key may not be the
+    // subscription alone (the plan's own K3 sabotage row).
+    await renewingTenant();
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture(), "evt_up_a"));
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture(), "evt_up_b"));
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.renewal_upcoming" } })
+    ).toBe(1);
+
+    const nextCycle = upcomingInvoiceFixture({
+      lines: {
+        object: "list",
+        data: [
+          {
+            id: "il_next_cycle",
+            object: "line_item",
+            amount: 2500,
+            period: { start: CYCLE_END, end: CYCLE_END + 30 * DAY_SECONDS },
+            parent: {
+              type: "subscription_item_details",
+              subscription_item_details: { proration: false, subscription_item: "si_test" },
+            },
+          },
+        ],
+      },
+    });
+    await postWebhook(stripeEvent("invoice.upcoming", nextCycle, "evt_up_next"));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.renewal_upcoming" } })
+    ).toBe(2);
+  });
+
+  it("keys on the very instant it emails", async () => {
+    // If the key were built from invoice.period_end while the email rendered
+    // the cycle line's start, the two would agree in the happy path and diverge
+    // exactly when a pending invoice item stretches the association window — at
+    // which point at-most-once stops tracking the claim being made.
+    await renewingTenant();
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.renewal_upcoming" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    // Both sides asserted against the FIXTURE's known instant, not against each
+    // other. Comparing the key to the context alone cannot fail: the handler
+    // builds them from one local, so they agree even when that local holds the
+    // wrong field entirely. An independent oracle is what makes this a test.
+    expect(event.dedupeKey!.split("/").pop()).toBe(String(RENEWS_AT));
+    expect(context.renewsAt).toBe(RENEWS_AT);
+  });
+
+  it("suppresses a redelivery of the same event", async () => {
+    await renewingTenant();
+    const event = stripeEvent("invoice.upcoming", upcomingInvoiceFixture(), "evt_up_once");
+
+    const first = await postWebhook(event);
+    const second = await postWebhook(event);
+
+    expect(first.body.duplicate).toBeUndefined();
+    expect(second.body.duplicate).toBe(true);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+});
+
+describe("Slice 4 — the date is the CYCLE line's start", () => {
+  it("states when the next cycle BEGINS", async () => {
+    // Four candidates, one right answer. invoice.period_end (a day before) is
+    // the Slice 1 trap; line.period.end is a whole cycle late; the proration
+    // and support lines start three days ago. Only the cycle line's period
+    // .start is the renewal.
+    await renewingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.renewal_upcoming");
+    const expected = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    }).format(new Date(RENEWS_AT * 1000));
+
+    expect(payload.renewalDateFormatted).toBe(expected);
+  });
+
+  it("stores the cycle line's start in the context, not any neighbour", async () => {
+    await renewingTenant();
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.renewal_upcoming" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    expect(context.renewsAt).toBe(RENEWS_AT);
+    // Every wrong answer, named, so a change to the selector says which one it
+    // regressed to.
+    expect(context.renewsAt).not.toBe(ASSOC_END);
+    expect(context.renewsAt).not.toBe(ASSOC_START);
+    expect(context.renewsAt).not.toBe(CYCLE_END);
+    expect(context.renewsAt).not.toBe(UPCOMING_PRORATION_START);
+  });
+
+  it("sends NOTHING when the preview has no full-cycle line", async () => {
+    // Deliberately no fallback. subscriptionInvoiceLine()'s largest-amount
+    // fallback would return the proration here, whose period.start is already
+    // in the past — a plausible-looking date that fails silently. Refusing does
+    // not.
+    await renewingTenant();
+    await postWebhook(
+      stripeEvent(
+        "invoice.upcoming",
+        upcomingInvoiceFixture({
+          lines: {
+            object: "list",
+            data: [
+              {
+                id: "il_only_proration",
+                object: "line_item",
+                amount: 7000,
+                period: { start: UPCOMING_PRORATION_START, end: RENEWS_AT },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: true, subscription_item: "si_test" },
+                },
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("renders the date in the company's timezone, which can change the DAY", async () => {
+    // For this message the zone is not cosmetic: the whole content is one date.
+    const lateNight = RENEWS_AT - (RENEWS_AT % DAY_SECONDS) + 23 * 60 * 60; // 23:00 UTC
+    await renewingTenant({ language: "en", timezone: "Pacific/Auckland" });
+    await postWebhook(
+      stripeEvent(
+        "invoice.upcoming",
+        upcomingInvoiceFixture({
+          lines: {
+            object: "list",
+            data: [
+              {
+                id: "il_cycle_late",
+                object: "line_item",
+                amount: 2500,
+                period: { start: lateNight, end: lateNight + 30 * DAY_SECONDS },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: false, subscription_item: "si_test" },
+                },
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const payload = await deliveredPayload("billing.renewal_upcoming");
+    const inAuckland = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeZone: "Pacific/Auckland",
+    }).format(new Date(lateNight * 1000));
+    const inUtc = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    }).format(new Date(lateNight * 1000));
+
+    // The fixture is chosen so the two genuinely differ — otherwise this test
+    // would pass against code that ignored the zone entirely.
+    expect(inAuckland).not.toBe(inUtc);
+    expect(payload.renewalDateFormatted).toBe(inAuckland);
+  });
+});
+
+describe("Slice 4 — the amount is what Stripe will actually take", () => {
+  it("uses amount_due, not total or subtotal", async () => {
+    // 6000 subtotal, 5500 total, 4500 due — the gap is account credit, which
+    // only amount_due accounts for. Quoting total would overstate the charge to
+    // exactly the customers holding credit from a mid-cycle downgrade.
+    await renewingTenant({ language: "en" });
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+
+    const payload = await deliveredPayload("billing.renewal_upcoming");
+    expect(payload.amountFormatted).toBe("€45.00");
+  });
+
+  it("says nothing when nothing will be charged", async () => {
+    await renewingTenant();
+    await postWebhook(
+      stripeEvent("invoice.upcoming", upcomingInvoiceFixture({ amount_due: 0 }))
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("formats in the RECIPIENT's language", async () => {
+    const { owner } = await renewingTenant({ language: "en" });
+    await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    const payload = await deliveredPayload("billing.renewal_upcoming");
+
+    expect(payload.amountFormatted).toBe("45,00\u00A0EUR");
+  });
+});
+
+describe("Slice 4 — the gates that make the sentence true", () => {
+  it("says nothing when the customer has already cancelled", async () => {
+    // "We'll charge you on the 1st" to someone who cancelled last week is how
+    // you cause the chargeback this message exists to prevent.
+    const { company } = await renewingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { cancelAtPeriodEnd: true },
+    });
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing in past_due, where the mandatory dunning email contradicts it", async () => {
+    // The reason this uses its own predicate rather than
+    // ACTIVE_SUBSCRIPTION_STATUSES, which includes past_due: that customer is
+    // already receiving billing.invoice_failed saying the subscription is about
+    // to end and access is at risk. Two Axeriva emails asserting opposite
+    // things, and only the wrong one can be switched off.
+    const { company } = await renewingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "past_due" },
+    });
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("DOES send while trialing — the first real charge is the point", async () => {
+    // The single highest-value instance of this notice: the customer has never
+    // been billed, and the card may have been collected only at signup. Guards
+    // against over-gating the status predicate down to "active".
+    const { company } = await renewingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "trialing" },
+    });
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.renewal_upcoming" } })
+    ).toBe(1);
+  });
+
+  it.each([
+    ["a DIFFERENT subscription", "sub_something_else"],
+    ["no stored subscription at all", null],
+  ])("says nothing when the company is on %s", async (_label, stripeSubscriptionId) => {
+    const { company } = await renewingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId },
+    });
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing for a manually managed plan", async () => {
+    // Founder/Enterprise are operator-assigned and applySubscriptionUpdate
+    // refuses to write Company for them, so every field the gates read is
+    // frozen and none of it can be trusted.
+    const { company } = await renewingTenant();
+    await prisma.company.update({ where: { id: company.id }, data: { plan: "founder" } });
+
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing about a renewal that has already happened", async () => {
+    // The only claim in this milestone that decays purely by arriving late. A
+    // redelivery days after the fact would announce a charge already taken.
+    await renewingTenant();
+    const past = nowSeconds() - 2 * DAY_SECONDS;
+
+    await postWebhook(
+      stripeEvent(
+        "invoice.upcoming",
+        upcomingInvoiceFixture({
+          lines: {
+            object: "list",
+            data: [
+              {
+                id: "il_cycle_past",
+                object: "line_item",
+                amount: 2500,
+                period: { start: past, end: past + 30 * DAY_SECONDS },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: false, subscription_item: "si_test" },
+                },
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+});
+
+describe("Slice 4 — previews this handler must not act on", () => {
+  it.each([
+    ["a Dashboard one-off invoice", { parent: null }],
+    ["a quote-generated invoice", { parent: { type: "quote_details", quote_details: {} } }],
+    ["a send_invoice subscription", { collection_method: "send_invoice" }],
+  ])("ignores %s", async (_label, override) => {
+    await renewingTenant();
+    await postWebhook(stripeEvent("invoice.upcoming", upcomingInvoiceFixture(override)));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("refuses, and logs usably, when the subscription id is missing", async () => {
+    // The SDK types this non-nullable, but the same interface types `id` as
+    // required and Stripe demonstrably omits THAT for this event — so it is
+    // checked, not trusted. The id is half the dedupeKey: without it there is
+    // no at-most-once protection at all.
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await renewingTenant();
+      await postWebhook(
+        stripeEvent(
+          "invoice.upcoming",
+          upcomingInvoiceFixture({
+            parent: { type: "subscription_details", subscription_details: {} },
+          })
+        )
+      );
+
+      expect(await prisma.notificationEvent.count()).toBe(0);
+      expect(await prisma.processedStripeEvent.count()).toBe(1);
+
+      // And the log must not print "undefined" — this event has no invoice id,
+      // so copying the sibling branches' `${invoice.id}` logging would leave an
+      // operator with nothing to search for.
+      const logged = warn.mock.calls.map((c) => String(c[0])).join(" ");
+      expect(logged).toContain("no subscription id");
+      expect(logged).not.toContain("undefined");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

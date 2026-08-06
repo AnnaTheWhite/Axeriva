@@ -191,6 +191,57 @@ szeletnek **előfeltétele**, nem opció.
 > link. Ezért a saját `/subscription` oldalunkra megyünk, ahonnan az ügyfél
 > hitelesítve nyit portál-sessiont.
 
+### Slice 4 (`billing.renewal_upcoming`) — ⚠️ **ÚJ esemény ÉS egy rejtett Dashboard-beállítás**
+
+Ez a szelet **két** Dashboard-függőséggel rendelkezik, és a második az, amelyik
+némán megölheti.
+
+**(1) Új eseménytípus a `HANDLED_EVENTS`-ben:**
+
+```
++ "invoice.upcoming"
+```
+
+Ugyanaz a teendő és ugyanaz a sorrend-javaslat, mint a Slice 3-nál (deploy →
+feliratkozás → ellenőrzés).
+
+**(2) ⚠️ A LEAD TIME — ez nincs sehol a kódban.** A Stripe az
+`invoice.upcoming`-ot *X nappal* a következő számla előtt küldi, ahol X egy
+**fiókszintű Dashboard-beállítás**
+(Settings → Billing → Subscriptions and emails), és a telepített SDK ezt szó
+szerint le is írja (`Events.d.ts:1554`: „Occurs X number of days before a
+subscription is scheduled to create an invoice … where X is determined by your
+subscriptions settings").
+
+**A repóban ennek semmilyen reprezentációja nincs**: nem env-változó, nem a
+`stripeSetup.ts` állítja, teszt nem látja. Ha X = 0 / ki van kapcsolva, a
+Slice 4 **készen, zölden, és teljesen működésképtelenül** áll élesben.
+
+**Teendő, és írd is be ide a számot, hogy egy későbbi változás diffelhető
+legyen:**
+
+- Beállított lead time: `____ nap` (kitöltendő az ellenőrzéskor)
+
+**Ellenőrzés az első valós ciklusforduló után:**
+
+```
+SELECT COUNT(*) FROM "ProcessedStripeEvent" WHERE type='invoice.upcoming';
+SELECT COUNT(*) FROM "NotificationEvent"    WHERE type='billing.renewal_upcoming';
+```
+
+Az első azt mutatja, hogy megérkezik-e egyáltalán; a második, hogy át is jut-e a
+kapukon.
+
+> **Ezért mond a levél KONKRÉT DÁTUMOT és nem azt, hogy „3 nap múlva".** Ha az
+> operátor átállítja X-et 3-ról 30-ra, egy „3 nap múlva" szöveg kód-változás
+> nélkül, némán hazuggá válik. Egy dátum nem.
+
+**Nyitott kérdés, amit az első ciklus válaszol meg:** küld-e a Stripe
+`invoice.upcoming`-ot olyan előfizetésre, aminél a `cancel_at_period_end` be van
+állítva. A kezelő mindenképp elnémítja ezt az esetet (különben egy már lemondott
+ügyfélnek ígérnénk terhelést), és ilyenkor `warn`-t logol — tehát a naplóból egy
+cikluson belül kiderül, hogy a kapu élő-e vagy holt kód.
+
 ---
 
 ## 1c. N1.7 — nincs ops-teendő

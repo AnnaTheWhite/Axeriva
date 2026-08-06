@@ -104,6 +104,24 @@ export const NOTIFICATION_TYPES = {
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },
+  // N1.8 Slice 4 — the advance notice for the next charge (invoice.upcoming).
+  "billing.renewal_upcoming": {
+    // `billing_receipts`: a courtesy heads-up, and Q2 lets a customer decline
+    // courtesies. It is NOT the dunning warning, which is `billing`.
+    category: "billing_receipts",
+    // `info`, not `warning`: nothing is wrong. This message exists so the
+    // charge is expected, not so the customer acts.
+    severity: "info",
+    mandatory: false,
+    recipients: "OWNER",
+    channels: ["EMAIL"],
+    // ⚠️ ACCEPTED RISK, recorded rather than left implicit: switchable + owner-
+    // only means an owner who muted receipts, or a company whose billing
+    // contact is not the owner, gets no advance warning of a charge — which
+    // inverts this type's chargeback-prevention purpose for exactly those
+    // tenants. K3 fixes the flags; the consequence is written down so a future
+    // reader sees a decision and not an oversight.
+  },
   // N1.8 Slice 3 — the failed-payment notice. `invoice.payment_failed`, for a
   // subscription invoice Stripe is auto-collecting.
   "billing.invoice_failed": {

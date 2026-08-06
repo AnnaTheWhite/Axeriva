@@ -13,6 +13,7 @@ import type { NotificationTypeKey } from "../services/notifications/registry";
 import { planDisplayName } from "../constants/plans";
 import { planForPriceId } from "../config/stripePricing";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../constants/subscriptionStatuses";
+import { isManuallyManaged } from "../services/planAccess";
 import { config } from "../config";
 
 const router = Router();
@@ -57,6 +58,13 @@ const HANDLED_EVENTS = new Set([
   // suite stays green, because the tests POST signed payloads straight at this
   // route and cannot observe endpoint subscription at all.
   "invoice.payment_failed",
+  // N1.8 Slice 4. Another NEW event type, so another Dashboard subscription —
+  // and this one has a SECOND Dashboard dependency behind it: how many days
+  // ahead Stripe emits invoice.upcoming is an account-level setting with no
+  // representation in this repository at all (Events.d.ts:1554). If it is off,
+  // this slice ships complete, fully green, and never sends one email. See
+  // docs/notification-rollout.md.
+  "invoice.upcoming",
 ]);
 
 // N1.8 K1 — `invoice.paid` produces AT MOST ONE customer-facing notification,
@@ -161,6 +169,25 @@ function subscriptionInvoiceLine(invoice: Stripe.Invoice): Stripe.InvoiceLineIte
   return subscriptionLines.reduce<Stripe.InvoiceLineItem | undefined>(
     (best, item) => (best && best.amount >= item.amount ? best : item),
     undefined
+  );
+}
+
+// N1.8 Slice 4 — the line that describes the CYCLE ABOUT TO BEGIN.
+//
+// A separate selector from subscriptionInvoiceLine above, and the difference is
+// the whole point rather than duplication. That one is built to always return
+// something: its fallback takes the largest-amount proration, which is right for
+// a receipt about money already taken. Here that fallback would be a defect —
+// a proration's period.start is a mid-cycle instant already in the PAST, and
+// this message's only content is a future date. A plausible wrong date fails
+// silently; refusing does not.
+//
+// So: the non-proration subscription line, or nothing.
+function upcomingRenewalLine(invoice: Stripe.Invoice): Stripe.InvoiceLineItem | undefined {
+  return (invoice.lines?.data ?? []).find(
+    (item) =>
+      item.parent?.type === "subscription_item_details" &&
+      item.parent.subscription_item_details?.proration === false
   );
 }
 
@@ -708,6 +735,201 @@ router.post("/", async (req, res) => {
           // a different message downstream — it must never be coerced to 0,
           // which formats as 1 January 1970 rather than failing.
           nextAttemptAt: invoice.next_payment_attempt,
+          ...(company.timezone ? { timeZone: company.timezone } : {}),
+        },
+      });
+
+      break;
+    }
+
+    // N1.8 Slice 4 — the advance notice for the next charge.
+    //
+    // THIS EVENT'S PAYLOAD IS A PREVIEW, NOT AN INVOICE, and two things follow.
+    // It has no id — Events.d.ts:1554 says so outright ("will not have an
+    // invoice ID") even though Invoices.d.ts:130 types `id` as a required
+    // string, so the type demonstrably lies for this event and `invoice.id`
+    // must never be read here, not even in a log line. And it is the ONLY
+    // billing message that asserts something about the FUTURE, so the gates
+    // below are what make the sentence true rather than defensive padding.
+    case "invoice.upcoming": {
+      const invoice = event.data.object as Stripe.Invoice;
+
+      // Scope, identical in shape to Slice 3's and for the same reasons: a
+      // Dashboard-raised invoice has parent: null, and on a send_invoice
+      // invoice Stripe emails its own payment instructions and charges no card,
+      // so "we'll charge you on X" would be false in its central claim.
+      if (
+        invoice.parent?.type !== "subscription_details" ||
+        invoice.collection_method !== "charge_automatically"
+      ) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming is not an auto-collected subscription ` +
+            `preview (parent ${invoice.parent?.type ?? "none"}, ` +
+            `collection ${invoice.collection_method}) — acknowledged, not notified`
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      // The subscription id is HALF THE DEDUPEKEY, so its absence is not
+      // something to work around — without it there is no at-most-once
+      // protection at all and the customer could be told about one renewal
+      // repeatedly. The SDK types it non-nullable (Invoices.d.ts:856), but the
+      // same interface types `id` as required and that is already proven false
+      // for this event, so it is checked rather than trusted. ERROR, not warn:
+      // reaching it means the payload shape is not what this handler was built
+      // against.
+      const subscriptionId =
+        typeof invoice.parent.subscription_details?.subscription === "string"
+          ? invoice.parent.subscription_details.subscription
+          : (invoice.parent.subscription_details?.subscription?.id ?? null);
+
+      if (!subscriptionId) {
+        console.error(
+          "[stripe webhook] invoice.upcoming with no subscription id in " +
+            "parent.subscription_details — cannot key or verify it, not notifying"
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      // THE RENEWAL INSTANT. The non-proration subscription line's period
+      // START, which is when the cycle being previewed BEGINS.
+      //
+      // Every other candidate is wrong in a way that still renders as a
+      // plausible date. invoice.period_start/period_end is the invoice-item
+      // ASSOCIATION window (Invoices.d.ts:354-361) — the field that produced
+      // this repo's shipped Slice 1 bug, one cycle stale. line.period.END is a
+      // full cycle late, which on an annual plan is a year. A proration line's
+      // period.start is already in the past.
+      const renewalLine = upcomingRenewalLine(invoice);
+      const renewsAt = renewalLine?.period?.start;
+
+      if (!renewsAt) {
+        console.error(
+          `[stripe webhook] invoice.upcoming for ${subscriptionId} has no non-proration ` +
+            "subscription line — cannot state a renewal date, not notifying"
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const companyId = await resolveCompanyId(
+        undefined,
+        typeof invoice.customer === "string" ? invoice.customer : null
+      );
+
+      if (!companyId) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for unknown customer, dropping ${subscriptionId}`
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const company = await prisma.company.findUnique({ where: { id: companyId } });
+
+      await markEventProcessed(event.id, event.type);
+
+      if (!company) break;
+
+      // THE GATES. Unlike the receipts, which report something that already
+      // happened, this predicts a charge — so every one of these exists because
+      // without it the sentence is false for a reachable customer. All of them
+      // read the Company row; none calls Stripe, because a retrieve placed
+      // after the ledger write would, on a transient failure, throw → non-2xx →
+      // redelivery → short-circuited by the ledger and silently lost.
+      //
+      //  - manually managed (Founder/Enterprise): applySubscriptionUpdate
+      //    refuses to write Company for these, so every field below is frozen
+      //    and nothing here can be trusted.
+      //  - a DIFFERENT subscription: strict equality, deliberately stricter
+      //    than Slice 3's guard. That one errs toward sending because its
+      //    message is mandatory and losing it is the greater harm; here sending
+      //    a charge warning about a subscription the company has left is pure
+      //    harm. A null stored id is also refused — we cannot confirm the
+      //    preview is theirs.
+      //  - status: {active, trialing} and NOT ACTIVE_SUBSCRIPTION_STATUSES,
+      //    which includes past_due. A past_due customer is already receiving
+      //    the MANDATORY dunning warning saying the subscription is about to
+      //    end; adding an optional "we'll charge you on the 1st" would have
+      //    Axeriva assert both at once, and they can only switch off the
+      //    correct one. Written as its own predicate, not the shared constant,
+      //    precisely so this divergence is visible.
+      //  - cancelAtPeriodEnd: they have already cancelled. Telling them a
+      //    charge is coming is how you cause the chargeback this message exists
+      //    to prevent.
+      //  - amount: a heads-up about being charged nothing warns of nothing.
+      //  - already elapsed: the only claim in this milestone that decays purely
+      //    by arriving late — a redelivery days later would announce a renewal
+      //    that has already happened.
+      if (isManuallyManaged(company.plan)) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for company ${companyId} on manually managed ` +
+            `plan ${company.plan} — not notifying`
+        );
+        break;
+      }
+
+      if (company.stripeSubscriptionId !== subscriptionId) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for ${subscriptionId}, but company ${companyId} ` +
+            `is on ${company.stripeSubscriptionId ?? "no subscription"} — not notifying`
+        );
+        break;
+      }
+
+      if (company.subscriptionStatus !== "active" && company.subscriptionStatus !== "trialing") {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for company ${companyId} whose subscription is ` +
+            `${company.subscriptionStatus} — not notifying`
+        );
+        break;
+      }
+
+      if (company.cancelAtPeriodEnd) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for company ${companyId}, which has already ` +
+            "cancelled at period end — not notifying"
+        );
+        break;
+      }
+
+      if (invoice.amount_due <= 0) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for ${subscriptionId} previews ` +
+            `${invoice.amount_due} — nothing to warn about, not notifying`
+        );
+        break;
+      }
+
+      if (renewsAt * 1000 <= Date.now()) {
+        console.warn(
+          `[stripe webhook] invoice.upcoming for ${subscriptionId} renews at ${renewsAt}, ` +
+            "which has already passed — not notifying"
+        );
+        break;
+      }
+
+      await notify({
+        type: "billing.renewal_upcoming",
+        companyId,
+        // K3 — the subscription plus the instant it renews. There is no invoice
+        // id to key on, and `event.id` would be wrong in the other direction:
+        // two Stripe deliveries for ONE renewal are two event ids, so the
+        // ledger would not catch them and the customer would be warned twice
+        // about one charge. Keyed on the very value the email states, so the
+        // key and the claim cannot drift apart.
+        dedupeKey: `billing.renewal_upcoming/${subscriptionId}/${renewsAt}`,
+        context: {
+          companyName: company.name,
+          // The whole invoice total, which is what Stripe will actually take —
+          // amount_due alone accounts for account credit and starting_balance
+          // (Invoices.d.ts:147-150). It can include a pending invoice item, so
+          // the copy says "we'll charge X", never "your plan costs X".
+          amountMinor: invoice.amount_due,
+          currency: invoice.currency,
+          renewsAt,
           ...(company.timezone ? { timeZone: company.timezone } : {}),
         },
       });

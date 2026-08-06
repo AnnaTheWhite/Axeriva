@@ -24,6 +24,7 @@ import { subscriptionConfirmedEmailTemplate } from "../emails/templates/billing/
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
 import { invoiceFailedEmailTemplate } from "../emails/templates/billing/InvoiceFailedEmail";
+import { upcomingRenewalEmailTemplate } from "../emails/templates/billing/UpcomingRenewalEmail";
 import {
   contrastTextColor,
   ctaColors,
@@ -156,6 +157,17 @@ function everyTemplate(locale: NotificationLocale) {
           locale,
         }),
     },
+    // N1.8 Slice 4.
+    {
+      name: "renewalUpcoming",
+      render: () =>
+        upcomingRenewalEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          amountFormatted: "€25.00",
+          renewalDateFormatted: "1 November 2026",
+          locale,
+        }),
+    },
   ];
 }
 
@@ -266,6 +278,29 @@ describe("the transport binds each method to the RIGHT template", () => {
     );
   });
 
+  it("sends the advance notice from sendRenewalUpcomingEmail", async () => {
+    const { ResendEmailService } = await import("../services/email/ResendEmailService");
+    const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
+
+    const upcoming = {
+      companyName: "Villanyszerelő Kft",
+      amountFormatted: "€25.00",
+      renewalDateFormatted: "1 November 2026",
+    };
+
+    mockSentSubjects.length = 0;
+    await service.sendRenewalUpcomingEmail("owner@example.com", upcoming, { locale: "en" });
+
+    const expected = await upcomingRenewalEmailTemplate({ ...upcoming, locale: "en" });
+    expect(mockSentSubjects).toHaveLength(1);
+    expect(mockSentSubjects[0]).toBe(expected.subject);
+    // Distinct from the renewal RECEIPT, whose subject is superficially similar
+    // and whose payload the type system no longer keeps apart at this seam.
+    expect(expected.subject).not.toBe(
+      (await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" })).subject
+    );
+  });
+
   it("sends the renewal receipt from sendSubscriptionRenewedEmail", async () => {
     const { ResendEmailService } = await import("../services/email/ResendEmailService");
     const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
@@ -277,6 +312,103 @@ describe("the transport binds each method to the RIGHT template", () => {
 
     expect(mockSentSubjects).toHaveLength(1);
     expect(mockSentSubjects[0]).toBe(expected.subject);
+  });
+});
+
+describe("the advance notice's copy (N1.8 Slice 4)", () => {
+  const AMOUNT = "€25.00";
+  const DATE = "1 November 2026";
+  const render = (locale: NotificationLocale) =>
+    upcomingRenewalEmailTemplate({
+      companyName: "Villanyszerelő Kft",
+      amountFormatted: AMOUNT,
+      renewalDateFormatted: DATE,
+      locale,
+    });
+
+  it.each(NOTIFICATION_LOCALES)(
+    "puts the amount and the date in the right slots, in %s",
+    async (locale) => {
+      // The two values are both plain strings, so transposing them in the
+      // subject or swapping the two InfoRows compiles, renders, and passes
+      // every other test in this file: the well-formedness block only looks for
+      // leftover "{{", the escaping loop only looks for an evil anchor, and the
+      // transport-binding test compares the service's subject against this same
+      // template, so it moves in lockstep with any swap. Only asserting WHICH
+      // value landed WHERE can see it.
+      const { subject, html } = await render(locale);
+
+      // Each panel row is isolated by slicing between its label and the next,
+      // then checked for the value it should carry AND against the one it
+      // should not. Comparing indexOf positions does not work here: the amount
+      // row is last, so "where is the date after the amount label" is -1 and
+      // the comparison silently inverts.
+      const dateLabel = t(locale, "billing.common.chargeDate");
+      const amountLabel = t(locale, "billing.common.amount");
+      const dateAt = html.indexOf(dateLabel);
+      const amountAt = html.indexOf(amountLabel, dateAt);
+
+      expect(dateAt, `${locale}: no ${dateLabel} row`).toBeGreaterThan(-1);
+      expect(amountAt, `${locale}: no ${amountLabel} row after it`).toBeGreaterThan(dateAt);
+
+      const dateRow = html.slice(dateAt, amountAt);
+      const amountRow = html.slice(amountAt);
+
+      expect(dateRow).toContain(DATE);
+      expect(dateRow).not.toContain(AMOUNT);
+      expect(amountRow).toContain(AMOUNT);
+      expect(amountRow).not.toContain(DATE);
+
+      // And the subject renders both, with the amount first — matching the
+      // "{{amount}} … {{date}}" order both catalogues declare.
+      expect(subject).toContain(AMOUNT);
+      expect(subject).toContain(DATE);
+      expect(subject.indexOf(AMOUNT)).toBeLessThan(subject.indexOf(DATE));
+    }
+  );
+
+  it("is charge-framed and never says the subscription renews", async () => {
+    // The template's stated reason: "renews" is FALSE for a trial's first real
+    // charge, which is the single highest-value instance of this notice, and
+    // the status gate deliberately admits trialing. A test is what stops a
+    // later copy edit reintroducing the word.
+    const { html, subject } = await render("en");
+    for (const forbidden of ["renew", "Renew"]) {
+      expect(subject).not.toContain(forbidden);
+      // The body copy only — the footer tagline and layout chrome are shared.
+      expect(t("en", "billing.renewalUpcoming.body")).not.toContain(forbidden);
+      expect(t("en", "billing.renewalUpcoming.intro")).not.toContain(forbidden);
+    }
+    expect(html).toContain(AMOUNT);
+  });
+
+  it("states an absolute date and never a relative lead time", async () => {
+    // How many days ahead Stripe emits invoice.upcoming is an account-level
+    // Dashboard setting with no representation in this repo, so "in 3 days"
+    // would silently become a lie the day an operator changes it.
+    for (const locale of NOTIFICATION_LOCALES) {
+      for (const key of ["subject", "intro", "body", "changeNote"]) {
+        const value = t(locale, `billing.renewalUpcoming.${key}`).toLowerCase();
+        for (const relative of ["days", "nap múlva", "hamarosan", "next week"]) {
+          expect(value, `${locale}/${key} uses a relative lead time`).not.toContain(relative);
+        }
+      }
+    }
+  });
+
+  it("names no plan", async () => {
+    // The amount is the whole invoice total and can include a pending invoice
+    // item, and Company.plan lags a scheduled downgrade — so there is no honest
+    // plan name to print. Asserted on the copy, not the rendered page, because
+    // the shared footer contains "Businesses".
+    for (const locale of NOTIFICATION_LOCALES) {
+      for (const key of ["subject", "intro", "body", "changeNote"]) {
+        const value = t(locale, `billing.renewalUpcoming.${key}`);
+        for (const plan of ["Starter", "Professional", "Business", "Enterprise", "planName"]) {
+          expect(value, `${locale}/${key} names ${plan}`).not.toContain(plan);
+        }
+      }
+    }
   });
 });
 
@@ -575,6 +707,14 @@ describe("escaping — the guarantee that replaced escapeHtml()", () => {
           attemptNumber: 4,
           nextAttemptFormatted: null,
           portalUrl: "https://app.axeriva.com/subscription",
+          locale: "en",
+        }),
+      // N1.8 Slice 4 — companyName is interpolated into the body sentence.
+      () =>
+        upcomingRenewalEmailTemplate({
+          companyName: MALICIOUS,
+          amountFormatted: "€25.00",
+          renewalDateFormatted: "1 November 2026",
           locale: "en",
         }),
     ]) {

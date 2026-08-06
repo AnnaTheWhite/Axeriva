@@ -44,6 +44,17 @@ launch-adósságok, nem backlog.*
 | 5 | **`CompanyProfileSection` hardkódolt angol validációs üzenetei** — magyar UI-ban is angolul jelennek meg („Company name is required." stb.); i18n kulcsokra váltás mindkét szótárban | audit frontend-sweep |
 | 6 | *(→ előrehozva #0-ként, bővített scope-pal — lásd fent)* | B6 follow-up 1+2 |
 
+## N1.8 — tudatosan elfogadott korlátok
+
+*Anna 2026-08-05-én mindkettőt **elfogadott korlátként** vette tudomásul; egyik
+sem blokkolja a Slice 4 mergét. Itt vannak rögzítve, hogy ne felejtődjenek el.*
+
+| # | Tétel | Forrás |
+|---|---|---|
+| N1 | **Az `invoice.upcoming` lead time kizárólag a Stripe Dashboardon él.** A Stripe *X nappal* a következő számla előtt küldi az eseményt, ahol X **fiókszintű beállítás** (`Events.d.ts:1554`) — nincs env-változó, a `stripeSetup.ts` nem állítja, teszt nem látja. **Ha X = 0 / ki van kapcsolva, a `billing.renewal_upcoming` készen, zölden és működésképtelenül áll élesben.** Teendő: a beállított érték ellenőrzése és **beírása** a [notification-rollout.md](notification-rollout.md) Slice 4 szakaszába (van hozzá kipontozott hely), plusz az ott megadott két ellenőrző lekérdezés az első valós ciklusforduló után. Ugyanaz a hibaosztály, mint a Slice 2 `always_invoice` függősége, egy fokkal rosszabb: az legalább látszik a repóban. | N1.8 Slice 4 review; elfogadva 2026-08-05 |
+| N2 | **A `Company.timezone` alapértelmezés nélküli, így a dátumos billing-levelek UTC-ben számolnak.** A mező nullable, a regisztráció nem tölti ki, a beállítás-űrlap nem detektál böngésző-zónát — tehát a legtöbb tenantnál UTC. A Stripe ciklushorgony a checkout pillanata, így egy 01:30-kor előfizető budapesti ügyfél `period.start`-ja 23:30 UTC az **előző** naptári napon, és a „következő fizetés" levél azt a napot nevezi meg. Korlátos (±1 nap, és az utána érkező nyugta a valós dátumot közli), de a Slice 4-nél a nap **maga az üzenet**. Lehetséges irányok: `Company.timezone` kitöltése regisztrációkor (böngésző-detektálás), vagy időzóna-címke a levélben. Érinti a Slice 1–2 időszak-dátumait is, ott kozmetikai. | N1.8 Slice 4 review; elfogadva 2026-08-05 |
+| N3 | **Dupla mondatvégi pont a magyar `invoiceFailed.retryScheduled`-ben.** Az ICU `hu-HU` hosszú dátum ponttal végződik („2026. október 18."), a Slice 3-ban committolt szöveg pedig még egy pontot tesz utána: „…ideje: 2026. október 18.. Csak akkor…". Kozmetikai, a Slice 4 ugyanezt a csapdát már elkerüli (a dátum mondatvégen áll). Külön, apró javítás — nem a Slice 4 dolga a committolt Slice 3 csendes átírása. | N1.8 Slice 4 review |
+
 ## Backlog (minor)
 
 | # | Tétel | Forrás |

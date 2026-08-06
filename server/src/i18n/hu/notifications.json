@@ -39,6 +39,7 @@
       "period": "Számlázási időszak",
       "amount": "Összeg",
       "viewInvoice": "Számla megtekintése",
+      "chargeDate": "Fizetés dátuma",
       "manage": "A korábbi számlákat megtekintheted, a csomagot bármikor módosíthatod az Axeriva Előfizetés oldalán."
     },
     "subscriptionRenewed": {
@@ -50,6 +51,12 @@
       "subject": "Megkaptuk a csomagváltásod díját — {{amount}}",
       "intro": "Köszönjük — megkaptuk a csomagváltásod díját.",
       "body": "A(z) {{companyName}} mostantól a(z) {{planName}} csomagon van. Ez a számla a különbözetet fedezi a jelenlegi számlázási időszak hátralévő részére:"
+    },
+    "renewalUpcoming": {
+      "subject": "A következő Axeriva-fizetésed: {{amount}} — {{date}}",
+      "intro": "Előre szólunk a következő fizetésről, hogy semmi ne érjen váratlanul.",
+      "body": "A(z) {{companyName}} fiókjában megadott fizetési módot {{amount}} összeggel terheljük meg. A terhelés napja: {{date}}",
+      "changeNote": "Ha addig módosítanál vagy lemondanál, bármikor megteheted az Axeriva Előfizetés oldalán."
     },
     "invoiceFailed": {
       "subject": "Nem sikerült levonnunk az Axeriva-díjat — {{amount}}",

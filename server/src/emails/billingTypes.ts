@@ -253,6 +253,65 @@ export function parsePaymentFailureNotificationContext(
   };
 }
 
+// N1.8 Slice 4 — the raw context for an UPCOMING renewal.
+//
+// Its own type and parser, for the same reason Slice 3 has one: reusing
+// parseInvoiceNotificationContext would hard-require planName, periodStartAt and
+// periodEndAt, none of which this message has or should have.
+//
+// `currency` is carried even though UpcomingRenewalEmailData has no currency
+// field. The template does not need it; formatMoney does (utils/billingFormat),
+// and the formatting happens in the channel. Omitting it because the TEMPLATE
+// type lacks it is the obvious mistake here, and it would surface three worker
+// retries deep instead of at the trigger.
+//
+// NO planName, deliberately, and NO invoice url/number. Company.plan lags a
+// scheduled downgrade until the schedule flips, so a plan name taken from it
+// would sit beside the NEXT phase's price — the Slice 2 failure class. And a
+// preview invoice is unfinalized: its hosted url and number are null by
+// definition.
+export type UpcomingRenewalNotificationContext = {
+  companyName: string;
+  // Stripe minor units — invoice.amount_due, the whole invoice total.
+  amountMinor: number;
+  currency: string;
+  // UNIX SECONDS: the instant the next cycle STARTS, taken from the
+  // non-proration subscription line's period.start. This is the one number the
+  // whole message exists to communicate.
+  renewsAt: number;
+  timeZone?: string | null;
+};
+
+export function parseUpcomingRenewalNotificationContext(
+  context: Record<string, unknown>
+): UpcomingRenewalNotificationContext {
+  const str = (key: string): string => {
+    const value = context[key];
+    if (typeof value !== "string" || value.length === 0) {
+      throw new BillingContractError(`upcoming renewal context is missing "${key}"`);
+    }
+    return value;
+  };
+
+  const num = (key: string): number => {
+    const value = context[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new BillingContractError(
+        `upcoming renewal context "${key}" must be a finite number, got ${String(value)}`
+      );
+    }
+    return value;
+  };
+
+  return {
+    companyName: str("companyName"),
+    amountMinor: num("amountMinor"),
+    currency: str("currency"),
+    renewsAt: num("renewsAt"),
+    timeZone: typeof context.timeZone === "string" ? context.timeZone : null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Runtime validation
 // ---------------------------------------------------------------------------

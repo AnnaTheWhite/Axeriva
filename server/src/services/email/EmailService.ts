@@ -109,6 +109,14 @@ export interface EmailService {
     data: PaymentFailureEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult>;
+
+  // N1.8 Slice 4 — the advance notice for the next charge. Two formatted values
+  // and the company name; deliberately no plan, no URL, no invoice number.
+  sendRenewalUpcomingEmail(
+    to: string,
+    data: UpcomingRenewalEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult>;
 }
 
 // What an invoice receipt needs, whatever the receipt is FOR.
@@ -151,4 +159,18 @@ export type PaymentFailureEmailPayload = {
   attemptNumber: number;
   nextAttemptFormatted?: string | null;
   portalUrl: string;
+};
+
+// N1.8 Slice 4. Satisfies UpcomingRenewalEmailData (emails/billingTypes.ts) plus
+// the company name.
+//
+// Kept at exactly this width on purpose: a preview invoice is unfinalized, so it
+// has no hosted page, no PDF and no number, and the amount is the whole invoice
+// total rather than a plan price — so there is no honest plan name to add
+// either. Every field a future "friendlier email" change might reach for is
+// absent from the payload rather than present and unused.
+export type UpcomingRenewalEmailPayload = {
+  companyName: string;
+  amountFormatted: string;
+  renewalDateFormatted: string;
 };

@@ -5,6 +5,7 @@ import type {
   EmailSendResult,
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  UpcomingRenewalEmailPayload,
 } from "../../email/EmailService";
 import { config } from "../../../config";
 import type { NotificationLocale } from "../../../constants/notifications";
@@ -12,6 +13,7 @@ import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../../constants/toke
 import {
   parseInvoiceNotificationContext,
   parsePaymentFailureNotificationContext,
+  parseUpcomingRenewalNotificationContext,
 } from "../../../emails/billingTypes";
 import { formatDate, formatMoney } from "../../../utils/billingFormat";
 import { redactEventContextIfSettled } from "../notify";
@@ -198,6 +200,14 @@ async function send(
         paymentFailurePayload(context, locale),
         emailContext
       );
+
+    // N1.8 Slice 4 — the advance notice for the next charge.
+    case "billing.renewal_upcoming":
+      return emailService.sendRenewalUpcomingEmail(
+        to,
+        upcomingRenewalPayload(context, locale),
+        emailContext
+      );
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of
@@ -294,6 +304,45 @@ function paymentFailurePayload(
         ? null
         : formatDate({ value: failure.nextAttemptAt, locale, timeZone: failure.timeZone }),
     portalUrl: `${config.frontendUrl}/subscription`,
+  };
+}
+
+// N1.8 Slice 4 — the advance-notice payload.
+//
+// `timeZone` matters more here than anywhere else in this milestone: a receipt's
+// period is a bookkeeping detail a reader skims, whereas THIS message is exactly
+// one date.
+//
+// ⚠️ AND IT IS NOT FULLY SOLVED, which is worth saying plainly rather than
+// implying the zone handles it. Company.timezone is nullable with no default and
+// nothing auto-detects it at registration, so for most tenants this resolves to
+// UTC. A cycle anchor is the checkout instant, so a Budapest customer who
+// subscribed at 01:30 local has a period.start at 23:30 UTC the PREVIOUS
+// calendar day — and this email would name that previous day. The residual is
+// bounded (±1 day on an advance notice, and the receipt that follows states the
+// real date) but it is real, and it shrinks only when Company.timezone is
+// actually populated. Raised as a product item, not papered over here.
+//
+// Day precision, like the failure notice: the time of day Stripe happens to
+// charge is not something a customer can act on.
+function upcomingRenewalPayload(
+  context: DeliveryContext,
+  locale: NotificationLocale
+): UpcomingRenewalEmailPayload {
+  const renewal = parseUpcomingRenewalNotificationContext(context);
+
+  return {
+    companyName: renewal.companyName,
+    amountFormatted: formatMoney({
+      amountMinor: renewal.amountMinor,
+      currency: renewal.currency,
+      locale,
+    }),
+    renewalDateFormatted: formatDate({
+      value: renewal.renewsAt,
+      locale,
+      timeZone: renewal.timeZone,
+    }),
   };
 }
 
