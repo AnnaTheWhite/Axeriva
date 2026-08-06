@@ -65,6 +65,11 @@ const HANDLED_EVENTS = new Set([
   // this slice ships complete, fully green, and never sends one email. See
   // docs/notification-rollout.md.
   "invoice.upcoming",
+  // N1.8 Slice 5. The last new event type Phase 1 adds, so the last Dashboard
+  // subscription it needs. Unlike the four above it is NOT an invoice event: it
+  // fires on the CUSTOMER, which is why the handler resolves the company from
+  // paymentMethod.customer and has no invoice, no amount and no period to read.
+  "payment_method.attached",
 ]);
 
 // N1.8 K1 — `invoice.paid` produces AT MOST ONE customer-facing notification,
@@ -931,6 +936,203 @@ router.post("/", async (req, res) => {
           currency: invoice.currency,
           renewsAt,
           ...(company.timezone ? { timeZone: company.timezone } : {}),
+        },
+      });
+
+      break;
+    }
+
+    // N1.8 Slice 5 — the card on file changed.
+    //
+    // THE FIRST HANDLER IN THIS FILE THAT IS NOT ABOUT A SUBSCRIPTION OR AN
+    // INVOICE. `payment_method.attached` fires on the CUSTOMER, so there is no
+    // subscription id in the payload, no amount, no period and no billing_reason
+    // to route on — the company is resolved from paymentMethod.customer and
+    // every editorial decision below has to be made against the Company row
+    // instead of against the event.
+    //
+    // NO STALE GUARD, for the same reason the invoice branches have none: the
+    // payload states a fact about a moment ("this method was attached") and
+    // overwrites nothing. It does not decay either — unlike Slice 4's renewal
+    // date, "your card was changed to •••• 4242" stays true however late it
+    // arrives, so there is no elapsed-time refusal here.
+    case "payment_method.attached": {
+      const paymentMethod = event.data.object as Stripe.PaymentMethod;
+
+      // CARD ONLY, and this is a scope decision rather than a defensive check.
+      // PaymentMethod.type spans 55 values in the installed SDK
+      // (PaymentMethods.d.ts:673) and `card` is OPTIONAL, present only for the
+      // card type. The approved payload is brand + last4 and the copy names a
+      // card outright, so a SEPA mandate or a Link account has nothing honest to
+      // put in either — the generic-brand fallback would render "Card ••••" over
+      // an IBAN's last four, which reads as a card the customer does not have.
+      // Acknowledged and dropped; `billing.payment_method_updated` is a
+      // card-shaped message and N1.8 does not widen it.
+      if (paymentMethod.type !== "card" || !paymentMethod.card) {
+        // The two halves are reported separately on purpose: "is a card, not a
+        // card" is what one shared message produces for the second case, and an
+        // operator reading it learns nothing about which check refused.
+        console.warn(
+          `[stripe webhook] payment_method.attached for ${paymentMethod.id} — ` +
+            (paymentMethod.type !== "card"
+              ? `type is ${paymentMethod.type}, not card`
+              : "typed card but carries no card hash") +
+            ", acknowledged, not notified"
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      // The customer is the ONLY route to a company here — there is no
+      // metadata.companyId on a PaymentMethod, and nothing else in the payload
+      // identifies a tenant. The SDK types this nullable because a PaymentMethod
+      // need not be saved to a customer at all ("This will not be set when the
+      // PaymentMethod has not been saved to a Customer", PaymentMethods.d.ts:84);
+      // for THIS event it should always be set, and it is still checked, because
+      // without it there is no tenant and the alternative is a crash inside a
+      // webhook that owes Stripe a 2xx.
+      const paymentMethodCustomerId =
+        typeof paymentMethod.customer === "string"
+          ? paymentMethod.customer
+          : (paymentMethod.customer?.id ?? null);
+
+      const companyId = await resolveCompanyId(undefined, paymentMethodCustomerId);
+
+      // Not ours — acknowledged and dropped, as the invoice branches do.
+      if (!companyId) {
+        console.warn(
+          `[stripe webhook] payment_method.attached for unknown customer ` +
+            `${paymentMethodCustomerId ?? "none"}, dropping ${paymentMethod.id}`
+        );
+        await markEventProcessed(event.id, event.type);
+        break;
+      }
+
+      const company = await prisma.company.findUnique({ where: { id: companyId } });
+
+      await markEventProcessed(event.id, event.type);
+
+      if (!company) break;
+
+      // Manually managed (Founder/Enterprise): applySubscriptionUpdate refuses
+      // to write Company for these, so the two fields the gate below reads are
+      // frozen at whatever they last were and cannot answer the question it
+      // asks. Same reasoning as Slice 4, and it matters more here because that
+      // gate is the ONLY thing standing between this type and a duplicate email
+      // at every signup.
+      if (isManuallyManaged(company.plan)) {
+        console.warn(
+          `[stripe webhook] payment_method.attached for company ${companyId} on manually ` +
+            `managed plan ${company.plan} — not notifying`
+        );
+        break;
+      }
+
+      // ⚠️ THE CHECKOUT COLLISION — the one gate this slice exists around, and
+      // the K1 problem in a different costume.
+      //
+      // Stripe attaches the card DURING Checkout, so a first-ever subscription
+      // fires this event too. Un-gated, one signup produces two Axeriva emails
+      // about one action: "Your Professional subscription is active"
+      // (billing.subscription_created, from checkout.session.completed) and
+      // "Your payment method was updated" — for a card the customer has just
+      // deliberately entered and does not need telling about. K1 settled
+      // that shape for invoice.paid by routing subscription_create to nothing;
+      // this is the same decision on the same grounds.
+      //
+      // Nor is it an edge case: /subscription/checkout only relaxes
+      // payment_method_collection to "if_required" when trialDays > 0, and
+      // Design C's trialConsumedAt means that is in practice nobody
+      // (subscription.routes.ts). Every checkout collects a card.
+      //
+      // The discriminator is that a card CHANGE presupposes a billing
+      // relationship that already exists. So: a stored subscription id AND a
+      // live status. Both halves earn their place —
+      //
+      //   - stripeSubscriptionId is what actually catches signup. The
+      //     registration trial writes subscriptionStatus "trialing" with NO
+      //     Stripe objects at all (auth.routes.ts), so status alone would pass
+      //     for exactly the company that is subscribing for the first time.
+      //   - ACTIVE_SUBSCRIPTION_STATUSES, INCLUDING past_due, and that
+      //     inclusion is deliberate against Slice 4's narrower predicate. A
+      //     customer replacing a dead card mid-dunning is the single most
+      //     valuable instance of this message: it is the confirmation that the
+      //     fix landed, and it directly contradicts nothing — the mandatory
+      //     invoice_failed warning says "we could not collect", which stays
+      //     true. Slice 4 excludes past_due because a promised FUTURE charge
+      //     would contradict that warning; nothing here promises anything.
+      //   - A canceled or unpaid company re-subscribing goes through Checkout
+      //     (CLOSED_SUBSCRIPTION_STATUSES unblocks it), so its attach is a
+      //     checkout attach and subscription_created covers it. Silence there
+      //     is the same decision, not a second one.
+      //
+      // RESIDUAL, recorded rather than implied away (docs/post-launch-backlog.md
+      // N4): this reads state the checkout handler WRITES, so it depends on
+      // delivery order. Stripe attaches the method before the session completes,
+      // so in the ordinary case the fields are still empty here and signup is
+      // correctly silent — but the ordering is not guaranteed, and if
+      // checkout.session.completed is processed first the gate passes and the
+      // customer gets both emails. Closing it properly needs state this
+      // milestone may not add (§5: no schema change), so it is a known bound.
+      if (
+        !company.stripeSubscriptionId ||
+        !ACTIVE_SUBSCRIPTION_STATUSES.includes(company.subscriptionStatus)
+      ) {
+        console.warn(
+          `[stripe webhook] payment_method.attached for company ${companyId} with no live ` +
+            `subscription (${company.stripeSubscriptionId ?? "none"}, ` +
+            `${company.subscriptionStatus}) — first card at checkout, not notifying`
+        );
+        break;
+      }
+
+      // The two fields the message is made of. The SDK types both as required
+      // strings (PaymentMethods.d.ts:72, :100) and there is no evidence here of
+      // the kind of lie invoice.upcoming's `id` turned out to be — but they are
+      // checked anyway, because the alternative is a notification that dies in
+      // the email channel three worker retries later instead of at the trigger
+      // where there is a Stripe event id to search for. ERROR, not warn: a card
+      // with no brand or no last four contradicts the payload shape this handler
+      // was built against.
+      const { brand, last4 } = paymentMethod.card;
+
+      if (!brand || !last4) {
+        console.error(
+          `[stripe webhook] payment_method.attached for ${paymentMethod.id} has ` +
+            `brand ${JSON.stringify(brand)} and last4 ${JSON.stringify(last4)} — ` +
+            "nothing to name the card with, not notifying"
+        );
+        break;
+      }
+
+      await notify({
+        type: "billing.payment_method_updated",
+        companyId,
+        // Keyed on the PAYMENT METHOD, per the plan's §3 table.
+        //
+        // A Stripe redelivery carries the same method id and collides; a
+        // genuinely new card is a new PaymentMethod object with a new id and
+        // sends. Not the event id — two deliveries for one attach are two event
+        // ids, and the HANDLED_EVENTS ledger cannot catch a pair it never sees
+        // as duplicates. Not the company id either, which would announce the
+        // first card change a tenant ever makes and silently swallow every one
+        // after it. PaymentMethod ids are globally unique, so no two tenants can
+        // collide on this key.
+        dedupeKey: `billing.payment_method_updated/${paymentMethod.id}`,
+        // RAW brand token, exactly as Stripe reports it. The display name and
+        // the •••• masking are the template's job — see
+        // PaymentMethodUpdatedEmail, where the fallback for an unrecognised
+        // brand is a translated word and therefore needs a locale this handler
+        // does not have.
+        //
+        // Nothing else from the card object. No expiry, no country, no funding,
+        // no fingerprint: this context lands in a plain text column that N1.10
+        // plans a support viewer over, and brand + last4 are what the customer
+        // needs to recognise their own card.
+        context: {
+          companyName: company.name,
+          brand,
+          last4,
         },
       });
 

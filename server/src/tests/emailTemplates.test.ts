@@ -26,6 +26,11 @@ import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePai
 import { invoiceFailedEmailTemplate } from "../emails/templates/billing/InvoiceFailedEmail";
 import { upcomingRenewalEmailTemplate } from "../emails/templates/billing/UpcomingRenewalEmail";
 import {
+  cardBrandName,
+  cardLabel,
+  paymentMethodUpdatedEmailTemplate,
+} from "../emails/templates/billing/PaymentMethodUpdatedEmail";
+import {
   contrastTextColor,
   ctaColors,
   resolveAccentColor,
@@ -168,6 +173,31 @@ function everyTemplate(locale: NotificationLocale) {
           locale,
         }),
     },
+    // N1.8 Slice 5 — BOTH brand branches, as two entries. A mapped brand and an
+    // unmapped one take different paths through cardBrandName, and only the
+    // second reaches billing.common.cardGeneric — a key that would otherwise be
+    // rendered by nothing in this file, so a missing Hungarian translation of it
+    // would surface in a customer's inbox rather than here.
+    {
+      name: "paymentMethodUpdated(known brand)",
+      render: () =>
+        paymentMethodUpdatedEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          brand: "visa",
+          last4: "4242",
+          locale,
+        }),
+    },
+    {
+      name: "paymentMethodUpdated(unknown brand)",
+      render: () =>
+        paymentMethodUpdatedEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          brand: "unknown",
+          last4: "0042",
+          locale,
+        }),
+    },
   ];
 }
 
@@ -301,6 +331,28 @@ describe("the transport binds each method to the RIGHT template", () => {
     );
   });
 
+  it("sends the card notice from sendPaymentMethodUpdatedEmail", async () => {
+    const { ResendEmailService } = await import("../services/email/ResendEmailService");
+    const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
+
+    const card = { companyName: "Villanyszerelő Kft", brand: "visa", last4: "4242" };
+
+    mockSentSubjects.length = 0;
+    await service.sendPaymentMethodUpdatedEmail("owner@example.com", card, { locale: "en" });
+
+    const expected = await paymentMethodUpdatedEmailTemplate({ ...card, locale: "en" });
+    expect(mockSentSubjects).toHaveLength(1);
+    expect(mockSentSubjects[0]).toBe(expected.subject);
+    // Slice 5's payload is structurally unlike the others, so the compiler does
+    // catch a crossed template here — but only for THIS pair. The assertion
+    // stays because the four billing methods in this class are near-identical
+    // three-line bodies, and the next slice that shares a payload shape will
+    // remove that protection exactly as Slice 2 did for the two receipts.
+    expect(expected.subject).not.toBe(
+      (await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" })).subject
+    );
+  });
+
   it("sends the renewal receipt from sendSubscriptionRenewedEmail", async () => {
     const { ResendEmailService } = await import("../services/email/ResendEmailService");
     const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
@@ -409,6 +461,126 @@ describe("the advance notice's copy (N1.8 Slice 4)", () => {
         }
       }
     }
+  });
+});
+
+describe("the card notice's copy (N1.8 Slice 5)", () => {
+  const render = (
+    locale: NotificationLocale,
+    overrides: { brand?: string; last4?: string } = {}
+  ) =>
+    paymentMethodUpdatedEmailTemplate({
+      companyName: "Villanyszerelő Kft",
+      brand: overrides.brand ?? "visa",
+      last4: overrides.last4 ?? "4242",
+      locale,
+    });
+
+  it.each(NOTIFICATION_LOCALES)("names the card in the subject and the panel, in %s", async (locale) => {
+    const { subject, html } = await render(locale);
+
+    // The label is built once and used twice, so this is really asserting that
+    // both uses survived — a subject built from the raw brand token would read
+    // "… — visa •••• 4242" and pass every other test in this file.
+    expect(subject).toContain("Visa •••• 4242");
+    expect(html).toContain("Visa •••• 4242");
+    expect(html).toContain(t(locale, "billing.common.paymentMethod"));
+  });
+
+  it.each(NOTIFICATION_LOCALES)("falls back to a translated generic brand, in %s", async (locale) => {
+    // Stripe's own list ends with "unknown", and it adds brands over time. The
+    // fallback is a CATALOGUE key rather than the raw token precisely so a brand
+    // Stripe invents after this was written renders as a word rather than as
+    // "sunbit •••• 0042".
+    const { subject, html } = await render(locale, { brand: "unknown" });
+    const generic = t(locale, "billing.common.cardGeneric");
+
+    expect(subject).toContain(`${generic} •••• 4242`);
+    expect(html).toContain(`${generic} •••• 4242`);
+    expect(subject).not.toContain("unknown");
+  });
+
+  it("keeps a leading zero in last4", async () => {
+    // "0042" is a real card ending. Carrying last4 as a number anywhere on the
+    // path renders 42, and the customer looks at a card they do not recognise.
+    const { html } = await render("en", { last4: "0042" });
+    expect(html).toContain("•••• 0042");
+  });
+
+  it("maps every brand Stripe documents, and only to a proper name", () => {
+    // Asserted through the exported helper rather than by rendering eleven
+    // emails: the mapping is a lookup table, and the property worth pinning is
+    // that no entry leaks a lowercase token.
+    const documented = [
+      ["amex", "American Express"],
+      ["cartes_bancaires", "Cartes Bancaires"],
+      ["diners", "Diners Club"],
+      ["discover", "Discover"],
+      ["eftpos_au", "eftpos Australia"],
+      ["jcb", "JCB"],
+      ["link", "Link"],
+      ["mastercard", "Mastercard"],
+      ["unionpay", "UnionPay"],
+      ["visa", "Visa"],
+    ] as const;
+
+    for (const [token, name] of documented) {
+      expect(cardBrandName(token, "en"), token).toBe(name);
+      // Proper nouns, so identical in both catalogues — the reason they are not
+      // i18n keys at all.
+      expect(cardBrandName(token, "hu"), token).toBe(name);
+    }
+
+    // Casing and stray whitespace are normalised, because `brand` is passed
+    // through from Stripe untouched and a future API version capitalising it
+    // would otherwise silently demote every card to the generic label.
+    expect(cardBrandName("VISA", "en")).toBe("Visa");
+    expect(cardBrandName(" mastercard ", "en")).toBe("Mastercard");
+  });
+
+  it("masks with exactly four bullets, independent of last4", () => {
+    // The bullets are typography, not data: deriving them from last4.length
+    // would turn a short or long value into a differently-masked card.
+    expect(cardLabel("visa", "4242", "en")).toBe("Visa •••• 4242");
+    expect(cardLabel("visa", "7", "en")).toBe("Visa •••• 7");
+  });
+
+  it("never carries anything beyond the brand and the last four", async () => {
+    // The payload type cannot express an expiry, so this guards the COPY: a
+    // later edit adding "expires 04/28" would need a new payload field, and
+    // this is what makes that a deliberate act. `billing.card_expiring` is the
+    // type for that message and K3 left it out of N1.8 entirely.
+    for (const locale of NOTIFICATION_LOCALES) {
+      for (const key of ["subject", "intro", "body", "checkNote"]) {
+        const value = t(locale, `billing.paymentMethodUpdated.${key}`).toLowerCase();
+        for (const forbidden of ["expir", "lejár", "cvc", "{{brand}}", "{{last4}}"]) {
+          expect(value, `${locale}/${key} mentions ${forbidden}`).not.toContain(forbidden);
+        }
+      }
+    }
+  });
+
+  it("asserts a change, and never counts the cards on the account", async () => {
+    // "This is now the only card on file" is not provable from the payload —
+    // Stripe's Customer Portal can leave a previous method attached — so the
+    // copy stays forward-looking.
+    for (const locale of NOTIFICATION_LOCALES) {
+      for (const key of ["subject", "intro", "body", "checkNote"]) {
+        const value = t(locale, `billing.paymentMethodUpdated.${key}`).toLowerCase();
+        for (const forbidden of ["only card", "removed", "egyetlen", "töröltük"]) {
+          expect(value, `${locale}/${key} claims ${forbidden}`).not.toContain(forbidden);
+        }
+      }
+    }
+  });
+
+  it("has no CTA button at all", async () => {
+    // Deliberate, and the reason is not that the payload lacks a URL — that is
+    // the consequence. A one-click button in a mail announcing a billing change
+    // is the exact shape a phishing copy takes, so the closing line names the
+    // Subscription page in words instead.
+    const { html } = await render("en");
+    expect(html.match(/<a\s/g) ?? []).toHaveLength(0);
   });
 });
 
@@ -715,6 +887,18 @@ describe("escaping — the guarantee that replaced escapeHtml()", () => {
           companyName: MALICIOUS,
           amountFormatted: "€25.00",
           renewalDateFormatted: "1 November 2026",
+          locale: "en",
+        }),
+      // N1.8 Slice 5 — companyName again, plus the two card fields. Those two
+      // come from Stripe rather than from a tenant, so they are not the same
+      // threat — but they are interpolated into the SUBJECT, which no other
+      // template in this loop does with a non-constant, and a subject is the one
+      // place a template's own escaping does not apply.
+      () =>
+        paymentMethodUpdatedEmailTemplate({
+          companyName: MALICIOUS,
+          brand: MALICIOUS,
+          last4: MALICIOUS,
           locale: "en",
         }),
     ]) {

@@ -80,6 +80,7 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
     expect(byCategory).toContainEqual(["billing.invoice_failed", "billing"]);
     expect(byCategory).toContainEqual(["billing.subscription_renewed", "billing_receipts"]);
     expect(byCategory).toContainEqual(["billing.renewal_upcoming", "billing_receipts"]);
+    expect(byCategory).toContainEqual(["billing.payment_method_updated", "billing_receipts"]);
   });
 
   it("gives every EMAIL type a template branch in the channel", async () => {
@@ -94,14 +95,16 @@ describe("N1.7.3 — registry invariants the pipeline silently depends on", () =
 
     // The assertion exists so ADDING one is a deliberate act that updates this
     // list and the switch together — and it did its job on N1.8 Slice 1, which
-    // is why billing.subscription_renewed is here. Eight today; N1.8 takes it
-    // to sixteen, one slice at a time.
+    // is why billing.subscription_renewed is here. TEN today (the count went
+    // stale at Slice 4 and is corrected here rather than left to drift further);
+    // N1.8 takes it to sixteen, one slice at a time.
     expect(emailTypes.sort()).toEqual([
       "auth.password_reset",
       "auth.verify_email",
       "auth.welcome",
       "billing.invoice_failed",
       "billing.invoice_paid",
+      "billing.payment_method_updated",
       "billing.renewal_upcoming",
       "billing.subscription_created",
       "billing.subscription_renewed",

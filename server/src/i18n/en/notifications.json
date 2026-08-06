@@ -40,6 +40,8 @@
       "amount": "Amount",
       "viewInvoice": "View invoice",
       "chargeDate": "Payment date",
+      "paymentMethod": "Payment method",
+      "cardGeneric": "Card",
       "manage": "You can view past invoices or change your plan any time from the Subscription page in Axeriva."
     },
     "subscriptionRenewed": {
@@ -57,6 +59,12 @@
       "intro": "A heads-up about your next payment, so nothing catches you out.",
       "body": "We'll charge {{amount}} to the payment method on file for {{companyName}} on {{date}}.",
       "changeNote": "If you'd like to change or cancel before then, you can do it any time from the Subscription page in Axeriva."
+    },
+    "paymentMethodUpdated": {
+      "subject": "Your Axeriva payment method was updated — {{card}}",
+      "intro": "Your billing details have been updated.",
+      "body": "From now on, we'll charge {{companyName}}'s Axeriva subscription to this payment method:",
+      "checkNote": "If you didn't make this change, open the Subscription page in Axeriva and check your payment details straight away."
     },
     "invoiceFailed": {
       "subject": "We couldn't collect your Axeriva payment — {{amount}}",

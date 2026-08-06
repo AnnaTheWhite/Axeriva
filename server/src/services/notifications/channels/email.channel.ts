@@ -5,6 +5,7 @@ import type {
   EmailSendResult,
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  PaymentMethodEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "../../email/EmailService";
 import { config } from "../../../config";
@@ -13,6 +14,7 @@ import { INVITE_TTL_DAYS, VERIFICATION_TTL_HOURS } from "../../../constants/toke
 import {
   parseInvoiceNotificationContext,
   parsePaymentFailureNotificationContext,
+  parsePaymentMethodNotificationContext,
   parseUpcomingRenewalNotificationContext,
 } from "../../../emails/billingTypes";
 import { formatDate, formatMoney } from "../../../utils/billingFormat";
@@ -208,6 +210,16 @@ async function send(
         upcomingRenewalPayload(context, locale),
         emailContext
       );
+
+    // N1.8 Slice 5 — the card on file changed. The one billing case that does
+    // NOT take `locale`: there is nothing here to format, and passing it would
+    // suggest otherwise.
+    case "billing.payment_method_updated":
+      return emailService.sendPaymentMethodUpdatedEmail(
+        to,
+        paymentMethodPayload(context),
+        emailContext
+      );
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of
@@ -343,6 +355,31 @@ function upcomingRenewalPayload(
       locale,
       timeZone: renewal.timeZone,
     }),
+  };
+}
+
+// N1.8 Slice 5 — the card-change payload.
+//
+// THE ONLY ONE OF THE FIVE THAT FORMATS NOTHING, and it still exists rather
+// than the case inlining `context as PaymentMethodEmailPayload`. The parse is
+// the whole value: `context` is a JSON string column, so both fields arrive as
+// `unknown`, and an absent `last4` would otherwise reach the template as
+// undefined and render "Visa •••• undefined" in a message whose entire content
+// is those four digits. The trigger checks the same two fields — this is the
+// second half of that pair, at the boundary the compiler cannot see.
+//
+// No `locale` parameter, deliberately. Every sibling helper takes one because
+// money and dates must be rendered in the RECIPIENT's language; a brand token
+// and four digits are the same in both, and the one language-dependent string
+// (the fallback for an unrecognised brand) is resolved in the template, which
+// has the locale from its own props.
+function paymentMethodPayload(context: DeliveryContext): PaymentMethodEmailPayload {
+  const method = parsePaymentMethodNotificationContext(context);
+
+  return {
+    companyName: method.companyName,
+    brand: method.brand,
+    last4: method.last4,
   };
 }
 

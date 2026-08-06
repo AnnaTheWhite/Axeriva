@@ -312,6 +312,55 @@ export function parseUpcomingRenewalNotificationContext(
   };
 }
 
+// N1.8 Slice 5 — the raw context for a CHANGED payment method.
+//
+// THE ONLY BILLING CONTEXT WITH NOTHING TO FORMAT. There is no amount, no
+// timestamp and no timezone, so the channel's job for this type is validation
+// and nothing else. That is not an argument for skipping the parser: this
+// context reaches the channel through the same JSON string column as every
+// other, so `brand` and `last4` still arrive as `unknown`, and an absent one
+// renders as the literal "undefined" inside a sentence about the customer's
+// card.
+//
+// WHAT IS DELIBERATELY ABSENT is the point of this type. Stripe's card object
+// also carries exp_month, exp_year, country, fingerprint, funding and the full
+// checks hash — none of it is here. `NotificationEvent.context` is a plain text
+// column that N1.10 plans a support-facing viewer over, and every field beyond
+// brand + last4 would make that table worth reading for reasons unrelated to
+// support. Brand and last4 are the two the customer needs to recognise their own
+// card, and they are the two PCI treats as displayable.
+//
+// `brand` is Stripe's RAW token ("visa", "amex", "unknown") and stays raw here.
+// Turning it into "American Express" is presentation, and it happens in the
+// template — see PaymentMethodUpdatedEmail, where the unmapped fallback needs a
+// translator this layer does not have.
+export type PaymentMethodNotificationContext = {
+  companyName: string;
+  // Stripe's card.brand token, lowercase, exactly as reported.
+  brand: string;
+  // The last four digits, as a STRING. Never a number: "0042" is a real card
+  // ending and Number("0042") renders as 42.
+  last4: string;
+};
+
+export function parsePaymentMethodNotificationContext(
+  context: Record<string, unknown>
+): PaymentMethodNotificationContext {
+  const str = (key: string): string => {
+    const value = context[key];
+    if (typeof value !== "string" || value.length === 0) {
+      throw new BillingContractError(`payment method context is missing "${key}"`);
+    }
+    return value;
+  };
+
+  return {
+    companyName: str("companyName"),
+    brand: str("brand"),
+    last4: str("last4"),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Runtime validation
 // ---------------------------------------------------------------------------

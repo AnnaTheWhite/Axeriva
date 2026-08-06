@@ -40,6 +40,8 @@
       "amount": "Összeg",
       "viewInvoice": "Számla megtekintése",
       "chargeDate": "Fizetés dátuma",
+      "paymentMethod": "Fizetési mód",
+      "cardGeneric": "Kártya",
       "manage": "A korábbi számlákat megtekintheted, a csomagot bármikor módosíthatod az Axeriva Előfizetés oldalán."
     },
     "subscriptionRenewed": {
@@ -57,6 +59,12 @@
       "intro": "Előre szólunk a következő fizetésről, hogy semmi ne érjen váratlanul.",
       "body": "A(z) {{companyName}} fiókjában megadott fizetési módot {{amount}} összeggel terheljük meg. A terhelés napja: {{date}}",
       "changeNote": "Ha addig módosítanál vagy lemondanál, bármikor megteheted az Axeriva Előfizetés oldalán."
+    },
+    "paymentMethodUpdated": {
+      "subject": "Frissült az Axeriva fizetési módod — {{card}}",
+      "intro": "A számlázási adataid frissültek.",
+      "body": "A(z) {{companyName}} Axeriva-előfizetésének díját mostantól erről a fizetési módról vonjuk le:",
+      "checkNote": "Ha nem te végezted ezt a módosítást, nyisd meg az Axeriva Előfizetés oldalát, és ellenőrizd a fizetési adataidat."
     },
     "invoiceFailed": {
       "subject": "Nem sikerült levonnunk az Axeriva-díjat — {{amount}}",

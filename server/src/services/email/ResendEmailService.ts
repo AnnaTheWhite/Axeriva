@@ -5,6 +5,7 @@ import type {
   EmailService,
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  PaymentMethodEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
@@ -18,6 +19,7 @@ import { subscriptionRenewedEmailTemplate } from "../../emails/templates/billing
 import { invoicePaidEmailTemplate } from "../../emails/templates/billing/InvoicePaidEmail";
 import { invoiceFailedEmailTemplate } from "../../emails/templates/billing/InvoiceFailedEmail";
 import { upcomingRenewalEmailTemplate } from "../../emails/templates/billing/UpcomingRenewalEmail";
+import { paymentMethodUpdatedEmailTemplate } from "../../emails/templates/billing/PaymentMethodUpdatedEmail";
 
 // N1.3 — the templates moved to React Email (src/emails/), so the imports
 // changed and the template calls became async. The transport itself is
@@ -133,6 +135,19 @@ export class ResendEmailService implements EmailService {
     context?: EmailContext
   ): Promise<EmailSendResult> {
     const { subject, html, text } = await upcomingRenewalEmailTemplate({
+      ...data,
+      ...resolveContext(context),
+    });
+    return this.send(to, subject, html, text, context);
+  }
+
+  // N1.8 Slice 5 — the card on file changed.
+  async sendPaymentMethodUpdatedEmail(
+    to: string,
+    data: PaymentMethodEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    const { subject, html, text } = await paymentMethodUpdatedEmailTemplate({
       ...data,
       ...resolveContext(context),
     });

@@ -16,6 +16,7 @@ import {
   assertSubscriptionLifecycleEmailData,
   assertUpcomingRenewalEmailData,
   parseInvoiceNotificationContext,
+  parsePaymentMethodNotificationContext,
 } from "../emails/billingTypes";
 
 // N1.8 Fázis 0 — the billing formatting layer and the template data contracts.
@@ -287,6 +288,40 @@ describe("billing data contracts", () => {
     expect(() =>
       parseInvoiceNotificationContext({ ...base, amountMinor: undefined })
     ).toThrow(/amountMinor/);
+  });
+
+  it("parses a raw payment-method context, and refuses a card it cannot name", () => {
+    // N1.8 Slice 5. Tested directly for the same reason the invoice parser is:
+    // the webhook trigger checks brand and last4 itself, so no pipeline test can
+    // reach these branches — a sabotage run confirmed that relaxing this parser
+    // to String(... ?? "") left the entire suite green.
+    //
+    // It is not redundant with the trigger's check. The trigger guards the ONE
+    // path that exists today; this guards the JSON string column, which is what
+    // the channel actually reads, and which a sweep replaying an older row or a
+    // future trigger could populate differently.
+    const base = { companyName: "Acme", brand: "visa", last4: "4242" };
+
+    expect(parsePaymentMethodNotificationContext({ ...base })).toEqual(base);
+
+    // Every field is required and names itself when absent. An empty last4 is
+    // the one that matters most: it renders "Visa •••• " in a message whose
+    // entire content is those four digits.
+    expect(() => parsePaymentMethodNotificationContext({ ...base, last4: "" })).toThrow(/last4/);
+    expect(() =>
+      parsePaymentMethodNotificationContext({ ...base, brand: undefined })
+    ).toThrow(/brand/);
+    expect(() =>
+      parsePaymentMethodNotificationContext({ ...base, companyName: "" })
+    ).toThrow(/companyName/);
+
+    // A NUMERIC last4 is rejected rather than coerced. Stripe sends a string,
+    // but 42 is what a coercing parser would turn "0042" into somewhere
+    // upstream, and a card ending the customer does not recognise is worse
+    // than a dead-lettered job.
+    expect(() => parsePaymentMethodNotificationContext({ ...base, last4: 4242 })).toThrow(
+      /last4/
+    );
   });
 
   it("validates the remaining contracts", () => {

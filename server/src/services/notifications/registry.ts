@@ -104,6 +104,29 @@ export const NOTIFICATION_TYPES = {
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },
+  // N1.8 Slice 5 — the card on file changed (payment_method.attached).
+  "billing.payment_method_updated": {
+    // `billing_receipts` and NOT mandatory, per the plan's §4 table — and it is
+    // worth naming the tension rather than letting a later reader discover it.
+    // "A new payment method was added to your billing account" is the shape of
+    // a SECURITY alert, and the mandatory flag is what would make it
+    // unsuppressible. The approved decision treats it as a courtesy receipt
+    // instead, alongside the other `billing_receipts` types, and the trigger's
+    // gates follow from that: redundancy is the harm to avoid here, not silence.
+    // THE RESIDUAL, stated so it is a decision: an owner who has switched
+    // billing_receipts off learns nothing when the card on their account
+    // changes. Revisiting that means revisiting the category, not this entry.
+    category: "billing_receipts",
+    // Nothing is wrong and nothing is required of the reader — the message
+    // exists so an unexpected change is visible, not so anyone acts.
+    severity: "info",
+    mandatory: false,
+    recipients: "OWNER",
+    // EMAIL only. An in-app entry would reach the reader only after a login,
+    // which is precisely the wrong channel for "did you do this?" — and the
+    // bell already carries no other billing receipt.
+    channels: ["EMAIL"],
+  },
   // N1.8 Slice 4 — the advance notice for the next charge (invoice.upcoming).
   "billing.renewal_upcoming": {
     // `billing_receipts`: a courtesy heads-up, and Q2 lets a customer decline

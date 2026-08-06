@@ -117,6 +117,14 @@ export interface EmailService {
     data: UpcomingRenewalEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult>;
+
+  // N1.8 Slice 5 — the card on file changed. The narrowest payload in the
+  // milestone, and the only one carrying no formatted value at all.
+  sendPaymentMethodUpdatedEmail(
+    to: string,
+    data: PaymentMethodEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult>;
 }
 
 // What an invoice receipt needs, whatever the receipt is FOR.
@@ -173,4 +181,26 @@ export type UpcomingRenewalEmailPayload = {
   companyName: string;
   amountFormatted: string;
   renewalDateFormatted: string;
+};
+
+// N1.8 Slice 5. Satisfies PaymentMethodEmailData (emails/billingTypes.ts) plus
+// the company name.
+//
+// NOTHING HERE IS PRE-FORMATTED, which makes it the one billing payload that is
+// identical to its context. Every other type in this milestone exists in two
+// shapes — raw minor units and UNIX seconds on the wire, finished strings at the
+// template — because the recipient's locale is not known until fan-out. A card
+// brand and four digits are the same in every language, so there is no second
+// shape to maintain and the channel's only job is to check the two fields are
+// there.
+//
+// `brand` is Stripe's raw lowercase token. The template turns it into a display
+// name because the fallback for an unrecognised or "unknown" brand is a
+// TRANSLATED word, and this layer has no locale.
+//
+// `last4` is a string, never a number — leading zeros are real.
+export type PaymentMethodEmailPayload = {
+  companyName: string;
+  brand: string;
+  last4: string;
 };

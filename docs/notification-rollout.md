@@ -242,6 +242,55 @@ kapukon.
 ügyfélnek ígérnénk terhelést), és ilyenkor `warn`-t logol — tehát a naplóból egy
 cikluson belül kiderül, hogy a kapu élő-e vagy holt kód.
 
+### Slice 5 (`billing.payment_method_updated`) — ⚠️ **ÚJ esemény ÉS egy portál-függőség**
+
+**(1) Új eseménytípus a `HANDLED_EVENTS`-ben:**
+
+```
++ "payment_method.attached"
+```
+
+Ugyanaz a teendő és ugyanaz a sorrend-javaslat, mint a Slice 3–4-nél (deploy →
+feliratkozás → ellenőrzés). Ez a Fázis 1 **utolsó** új eseménye.
+
+**Ellenőrzés a deploy után:** *Send test event* → `payment_method.attached`, majd
+`SELECT COUNT(*) FROM "ProcessedStripeEvent" WHERE type='payment_method.attached';`
+nő eggyel.
+
+**(2) ⚠️ AZ ÜGYFÉL EGYÁLTALÁN TUD-E KÁRTYÁT CSERÉLNI.** Ez a szelet arról szól,
+hogy a fájlban lévő kártya megváltozott — az egyetlen út, amin ez egy ügyfélnél
+megtörténhet, a Customer Portal `payment_method_update` funkciója. Az app a
+`/subscription/portal` végponton **konfiguráció nélkül** nyit portál-sessiont
+(`subscription.routes.ts`), tehát a fiók **DEFAULT** portál-konfigurációja
+érvényes, ami a Dashboardon él (AC18: „payment method, invoices, cancel and
+resume only"). Ha ott a payment-method-frissítés ki van kapcsolva, a
+`payment_method.attached` a checkouton kívül **soha nem következik be**, és a
+Slice 5 készen, zölden és működésképtelenül áll élesben — pontosan a Slice 4 N1
+hibaosztálya.
+
+- Ellenőrizve a Dashboardon, a default konfiguráción: `payment_method_update`
+  bekapcsolva? `☐ igen  ☐ nem` (kitöltendő az ellenőrzéskor)
+
+> **Amit NEM kell hozzányúlni:** a `stripeSetup.ts`-ben kezelt **flow**
+> konfiguráció (`STRIPE_PORTAL_FLOW_CONFIG_ID`) kizárólag az
+> upgrade-megerősítő `subscription_update_confirm` sessionöket szolgálja ki, és
+> ott minden más funkció szándékosan ki van kapcsolva. A Slice 5-nek a DEFAULT
+> konfiguráció kell, nem ez.
+
+**Ellenőrzés az első valós kártyacsere után:**
+
+```
+SELECT COUNT(*) FROM "NotificationEvent" WHERE type='billing.payment_method_updated';
+```
+
+**(3) A checkout-ütközés — amit a naplóból lehet követni.** A Stripe a
+Checkout során is csatolja a kártyát, tehát minden előfizetés-indítás kivált egy
+`payment_method.attached`-et. A kezelő ezt elnémítja (nincs élő előfizetés a
+Company soron), és `warn`-t logol „first card at checkout" szöveggel. Ha ez a sor
+**nem** jelenik meg minden új előfizetőnél, a kapu nem működik úgy, ahogy hisszük
+— és az ügyfél két levelet kap egy regisztrációra. Lásd a post-launch-backlog N4
+tételét.
+
 ---
 
 ## 1c. N1.7 — nincs ops-teendő

@@ -10,11 +10,13 @@ import { emailService } from "../services/email";
 import type {
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  PaymentMethodEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "../services/email/EmailService";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
 import { invoiceFailedEmailTemplate } from "../emails/templates/billing/InvoiceFailedEmail";
+import { paymentMethodUpdatedEmailTemplate } from "../emails/templates/billing/PaymentMethodUpdatedEmail";
 import { registerNotificationWorkers } from "../services/notifications/workers";
 import { createCompany, createUser } from "./helpers/factories";
 import { priceIdFor } from "../config/stripePricing";
@@ -375,8 +377,54 @@ function upcomingInvoiceFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// N1.8 Slice 5 — a CARD attached to a customer.
+//
+// Not an invoice, and shaped from PaymentMethods.d.ts rather than from the
+// invoice fixtures above: this is the one event in the milestone that fires on
+// the CUSTOMER, so it has no lines, no amounts and no periods, and reusing an
+// invoice fixture would quietly hand the handler fields the real payload never
+// carries.
+//
+// The card hash deliberately carries the fields the handler must NOT read —
+// exp_month, exp_year, country, funding, fingerprint. Without them present, a
+// handler that copied them into the context would look identical to one that
+// did not, and the "nothing beyond brand and last4" assertion would be testing
+// the fixture rather than the code.
+function paymentMethodFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "pm_test_card_1",
+    object: "payment_method",
+    type: "card",
+    customer: "cus_test_billing",
+    created: Math.floor(Date.now() / 1000),
+    billing_details: { name: "Teszt Elek" },
+    card: {
+      brand: "visa",
+      last4: "4242",
+      exp_month: 4,
+      exp_year: 2030,
+      country: "HU",
+      funding: "credit",
+      fingerprint: "fp_test_should_never_be_sent",
+      checks: null,
+      networks: null,
+      three_d_secure_usage: null,
+      wallet: null,
+      display_brand: "visa",
+      generated_from: null,
+      regulated_status: null,
+    },
+    ...overrides,
+  };
+}
+
 // The company shape Slice 4's gates require: on THIS subscription, active, not
 // cancelling. Every gate test starts from here and breaks exactly one thing.
+//
+// Slice 5 reuses it deliberately rather than declaring a near-twin: its gate is
+// "is there a live billing relationship", which is the same two Company fields
+// this helper sets, so a second helper would give the two slices independent
+// definitions of the same state.
 async function renewingTenant(overrides: { language?: string | null; timezone?: string | null } = {}) {
   const tenant = await billingTenant(overrides);
   await prisma.company.update({
@@ -623,6 +671,7 @@ const RECEIPT_METHOD = {
   "billing.invoice_paid": "sendInvoicePaidEmail",
   "billing.invoice_failed": "sendInvoiceFailedEmail",
   "billing.renewal_upcoming": "sendRenewalUpcomingEmail",
+  "billing.payment_method_updated": "sendPaymentMethodUpdatedEmail",
 } as const;
 
 // Captures the payload the email channel hands the transport — i.e. what the
@@ -634,7 +683,9 @@ type PayloadFor<T extends keyof typeof RECEIPT_METHOD> = T extends "billing.invo
   ? PaymentFailureEmailPayload
   : T extends "billing.renewal_upcoming"
     ? UpcomingRenewalEmailPayload
-    : InvoiceReceiptEmailPayload;
+    : T extends "billing.payment_method_updated"
+      ? PaymentMethodEmailPayload
+      : InvoiceReceiptEmailPayload;
 
 async function deliveredPayload<
   T extends keyof typeof RECEIPT_METHOD = "billing.subscription_renewed"
@@ -2083,6 +2134,389 @@ describe("Slice 4 — previews this handler must not act on", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("Slice 5 — the card notice, end to end", () => {
+  it("turns a signed payment_method.attached into a sent card notice", async () => {
+    const { company, owner, employee } = await renewingTenant();
+
+    const res = await postWebhook(
+      stripeEvent("payment_method.attached", paymentMethodFixture())
+    );
+    expect(res.status).toBe(200);
+
+    const event = await prisma.notificationEvent.findFirst({
+      where: { type: "billing.payment_method_updated" },
+    });
+    expect(event).not.toBeNull();
+    expect(event!.dedupeKey).toBe("billing.payment_method_updated/pm_test_card_1");
+    expect(event!.companyId).toBe(company.id);
+
+    await dispatchEvent(event!.id);
+    const deliveries = await prisma.notificationDelivery.findMany({
+      where: { eventId: event!.id },
+    });
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].channel).toBe("EMAIL");
+    expect(deliveries[0].recipientAddress).toBe(owner.email);
+    // Q5 again — an employee learning that the company's card changed is a
+    // data-exposure bug, not a preference.
+    expect(deliveries.map((d) => d.recipientAddress)).not.toContain(employee.email);
+
+    await deliverEmail(deliveries[0].id);
+    const sent = await prisma.notificationDelivery.findUnique({
+      where: { id: deliveries[0].id },
+    });
+    expect(sent!.status).toBe("sent");
+    expect(sent!.providerMessageId).toMatch(/^mock_/);
+  });
+
+  it("suppresses a redelivery at BOTH layers", async () => {
+    await renewingTenant();
+    const event = stripeEvent("payment_method.attached", paymentMethodFixture());
+
+    const first = await postWebhook(event);
+    const second = await postWebhook(event);
+
+    expect(first.body.duplicate).toBeUndefined();
+    // Layer 1 — the HANDLED_EVENTS ledger. This is what the Set membership buys,
+    // and it is the assertion that fails if payment_method.attached is added to
+    // the switch without being added to the Set.
+    expect(second.body.duplicate).toBe(true);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.payment_method_updated" } })
+    ).toBe(1);
+  });
+
+  it("suppresses a DIFFERENT event about the SAME card — the dedupeKey layer", async () => {
+    // Layer 2, and the reason the key is the payment method id rather than the
+    // event id. Two Stripe deliveries for one attach are two event ids, so the
+    // ledger above cannot see them as duplicates and only the key can.
+    await renewingTenant();
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture(), "evt_pm_a"));
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture(), "evt_pm_b"));
+
+    expect(await prisma.processedStripeEvent.count()).toBe(2);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.payment_method_updated" } })
+    ).toBe(1);
+  });
+
+  it("sends again when the customer attaches a DIFFERENT card", async () => {
+    // The other half of the dedupe contract. A key on the COMPANY would
+    // announce the first card change a tenant ever makes and silently swallow
+    // every one after it — the exact failure the notify() P2002 log exists to
+    // make diagnosable.
+    await renewingTenant();
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture(), "evt_pm_1"));
+    await postWebhook(
+      stripeEvent(
+        "payment_method.attached",
+        paymentMethodFixture({
+          id: "pm_test_card_2",
+          card: { brand: "mastercard", last4: "5100" },
+        }),
+        "evt_pm_2"
+      )
+    );
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.payment_method_updated" } })
+    ).toBe(2);
+  });
+});
+
+describe("Slice 5 — the checkout collision (K1's shape, on a different event)", () => {
+  it("says nothing for the first card, attached during checkout", async () => {
+    // THE GATE THIS SLICE EXISTS AROUND. Stripe attaches the card during
+    // Checkout, so a first-ever subscription fires this event too — and the
+    // customer would receive both "your subscription is active" and "your
+    // payment method was updated" for one deliberate action.
+    //
+    // billingTenant() is the pre-checkout shape: a stripeCustomerId (the
+    // checkout route creates the Customer before the session) but no
+    // subscription id.
+    await billingTenant();
+
+    const res = await postWebhook(
+      stripeEvent("payment_method.attached", paymentMethodFixture())
+    );
+
+    expect(res.status).toBe(200);
+    // Asserted on the WHOLE table, not on this type alone: "did not send the
+    // card notice" would pass against a handler that sent something else.
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    // Still ledgered, so a redelivery is not re-evaluated.
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("says nothing while the registration trial is running", async () => {
+    // The half of the gate that does the real work. auth.routes.ts writes
+    // subscriptionStatus "trialing" at registration with NO Stripe objects at
+    // all, so a status-only gate would pass for precisely the company that is
+    // subscribing for the first time — the case this whole block is about.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "trialing", stripeSubscriptionId: null },
+    });
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing when a cancelled company re-subscribes", async () => {
+    // Recovery from a closed subscription runs through Checkout
+    // (CLOSED_SUBSCRIPTION_STATUSES unblocks it), so this attach is a checkout
+    // attach too and billing.subscription_created covers it.
+    const { company } = await renewingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "canceled" },
+    });
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("DOES send in past_due — the customer just fixed their card", async () => {
+    // The highest-value instance of this message, and the deliberate divergence
+    // from Slice 4's narrower status predicate. Slice 4 excludes past_due
+    // because a promised FUTURE charge would contradict the mandatory dunning
+    // warning; this message promises nothing and confirms that the fix landed.
+    const { company } = await renewingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { subscriptionStatus: "past_due" },
+    });
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.payment_method_updated" } })
+    ).toBe(1);
+  });
+
+  it("says nothing for a manually managed plan", async () => {
+    // applySubscriptionUpdate refuses to write Company for Founder/Enterprise,
+    // so the two fields the gate above reads are frozen and cannot answer it.
+    const { company } = await renewingTenant();
+    await prisma.company.update({ where: { id: company.id }, data: { plan: "founder" } });
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+});
+
+describe("Slice 5 — attachments this handler must not act on", () => {
+  it.each([
+    ["a SEPA direct debit", { type: "sepa_debit", card: undefined, sepa_debit: { last4: "3000" } }],
+    ["a Link account", { type: "link", card: undefined, link: { email: "x@example.invalid" } }],
+    ["a PayPal agreement", { type: "paypal", card: undefined, paypal: {} }],
+  ])("ignores %s", async (_label, override) => {
+    // The payload is brand + last4 and the copy names a card outright. A SEPA
+    // mandate would render the generic fallback over an IBAN's last four —
+    // "Card •••• 3000" — which is a card the customer does not have.
+    await renewingTenant();
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture(override)));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("ignores a method typed `card` that carries no card hash", async () => {
+    // The second half of the scope check: `card` is OPTIONAL on the SDK type, so
+    // reading it after checking only `type` is an unchecked property access
+    // inside a webhook that owes Stripe a 2xx.
+    await renewingTenant();
+    const res = await postWebhook(
+      stripeEvent("payment_method.attached", paymentMethodFixture({ card: undefined }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("ignores a NON-card method that happens to carry a card hash", async () => {
+    // THE FIRST HALF OF THE SCOPE CHECK, and this test exists because a
+    // sabotage run proved nothing else could see it: every fixture above omits
+    // the `card` hash along with the type, so deleting `type !== "card"` left
+    // the whole block green. The two halves looked redundant and are not.
+    //
+    // The payload is deliberately artificial — Stripe is not expected to send
+    // this — because the property being pinned is which field DECIDES. The SDK
+    // is explicit that the type is the authority: "The type of the
+    // PaymentMethod. An additional hash is included on the PaymentMethod with a
+    // name matching this value" (PaymentMethods.d.ts:136-137). A handler that
+    // reads `card` without asking `type` is trusting a hash the API says is not
+    // the one in effect, which is the same class of assumption that
+    // invoice.upcoming's supposedly-required `id` already broke once.
+    await renewingTenant();
+    const res = await postWebhook(
+      stripeEvent(
+        "payment_method.attached",
+        paymentMethodFixture({
+          type: "sepa_debit",
+          sepa_debit: { last4: "3000", country: "HU" },
+          card: { brand: "visa", last4: "4242" },
+        })
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("acknowledges and drops an unknown Stripe customer", async () => {
+    await renewingTenant();
+    const res = await postWebhook(
+      stripeEvent("payment_method.attached", paymentMethodFixture({ customer: "cus_someone_else" }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("acknowledges and drops a method attached to nobody", async () => {
+    await renewingTenant();
+    const res = await postWebhook(
+      stripeEvent("payment_method.attached", paymentMethodFixture({ customer: null }))
+    );
+
+    expect(res.status).toBe(200);
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+  });
+
+  it("refuses, and logs usably, when the card has no last four", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await renewingTenant();
+      await postWebhook(
+        stripeEvent(
+          "payment_method.attached",
+          paymentMethodFixture({ card: { brand: "visa", last4: "" } })
+        )
+      );
+
+      expect(await prisma.notificationEvent.count()).toBe(0);
+      expect(await prisma.processedStripeEvent.count()).toBe(1);
+
+      // Refused at the TRIGGER, where there is a Stripe event id to search for
+      // — not three worker retries later inside the email channel.
+      const logged = error.mock.calls.map((c) => String(c[0])).join(" ");
+      expect(logged).toContain("pm_test_card_1");
+    } finally {
+      error.mockRestore();
+    }
+  });
+});
+
+describe("Slice 5 — what the customer is actually told", () => {
+  it("carries the RAW brand token and nothing else from the card", async () => {
+    await renewingTenant();
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.payment_method_updated" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    expect(context.brand).toBe("visa");
+    expect(context.last4).toBe("4242");
+    // NotificationEvent.context is a plain text column that N1.10 plans a
+    // support viewer over. The fixture carries all five of these, so their
+    // absence here is a statement about the handler and not about the fixture.
+    expect(context.exp_month).toBeUndefined();
+    expect(context.exp_year).toBeUndefined();
+    expect(context.country).toBeUndefined();
+    expect(context.funding).toBeUndefined();
+    expect(context.fingerprint).toBeUndefined();
+    // And not the whole card hash under some other name.
+    expect(JSON.stringify(context)).not.toContain("fp_test_should_never_be_sent");
+    expect(Object.keys(context).sort()).toEqual(["brand", "companyName", "last4"]);
+  });
+
+  it("keeps a leading zero in last4 through the whole path", async () => {
+    await renewingTenant();
+    await postWebhook(
+      stripeEvent(
+        "payment_method.attached",
+        paymentMethodFixture({ card: { brand: "visa", last4: "0042" } })
+      )
+    );
+
+    const payload = await deliveredPayload("billing.payment_method_updated");
+    expect(payload.last4).toBe("0042");
+  });
+
+  it("reaches the card template, and renders the brand as a proper name", async () => {
+    await renewingTenant({ language: "en" });
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+
+    const payload = await deliveredPayload("billing.payment_method_updated");
+    // The channel hands over the RAW token — the display name is the template's
+    // job, and this is the seam where the two are proved to agree.
+    expect(payload.brand).toBe("visa");
+
+    const rendered = await paymentMethodUpdatedEmailTemplate({ ...payload, locale: "en" });
+    expect(rendered.html).toContain("Visa •••• 4242");
+    expect(rendered.subject).toContain("Visa •••• 4242");
+  });
+
+  it("renders in the RECIPIENT's language, not the company's", async () => {
+    // Nothing here is formatted, so this is the one billing type where the
+    // locale reaches only the COPY — which makes it the one where a channel
+    // that dropped the locale would still produce a plausible email.
+    const { owner } = await renewingTenant({ language: "en" });
+    await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.payment_method_updated" },
+    }))!;
+    await dispatchEvent(event.id);
+    const delivery = (await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id, channel: "EMAIL" },
+    }))!;
+
+    expect(delivery.locale).toBe("hu");
+  });
+
+  it("is a message the customer may switch off", async () => {
+    // The registry's `billing_receipts` + `mandatory: false` pair, proved where
+    // it takes effect rather than by reading the literals back. Getting it wrong
+    // in the other direction — `category: "billing"` — would put this type in a
+    // MANDATORY_CATEGORY the preference API refuses to configure at all.
+    const { company, owner } = await renewingTenant();
+    await prisma.notificationPreference.create({
+      data: {
+        companyId: company.id,
+        userId: owner.id,
+        category: "billing_receipts",
+        channel: "EMAIL",
+        enabled: false,
+      },
+    });
+
+    await postWebhook(stripeEvent("payment_method.attached", paymentMethodFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.payment_method_updated" },
+    }))!;
+    await dispatchEvent(event.id);
+
+    const delivery = (await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id },
+    }))!;
+    expect(delivery.status).toBe("suppressed");
+    expect(delivery.suppressionReason).toBe("user_preference");
   });
 });
 

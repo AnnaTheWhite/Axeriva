@@ -5,6 +5,7 @@ import type {
   EmailService,
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
+  PaymentMethodEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
@@ -140,6 +141,21 @@ export class MockEmailService implements EmailService {
     // cycle reads as a plausible date and is invisible anywhere else.
     console.log(
       `[MockEmailService] Renewal upcoming for ${to} ("${data.companyName}", ${data.amountFormatted} on ${data.renewalDateFormatted}) [${locale(context)}]`
+    );
+    return result(context);
+  }
+
+  async sendPaymentMethodUpdatedEmail(
+    to: string,
+    data: PaymentMethodEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    // Brand and last4 are logged as the RAW pair the context carries, not as
+    // the template's "Visa •••• 4242": a dev run is where an unmapped brand
+    // token has to be visible, and the display form hides exactly that by
+    // rendering the generic fallback instead.
+    console.log(
+      `[MockEmailService] Payment method updated for ${to} ("${data.companyName}", brand ${data.brand}, last4 ${data.last4}) [${locale(context)}]`
     );
     return result(context);
   }
