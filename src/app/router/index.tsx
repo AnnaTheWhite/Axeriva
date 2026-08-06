@@ -18,6 +18,7 @@ import EmployeesPage from "../../pages/EmployeesPage";
 import ProjectsPage from "../../pages/ProjectsPage";
 import ProjectDetailsPage from "../../pages/ProjectDetailsPage";
 import SchedulePage from "../../pages/SchedulePage";
+import CalendarPage from "../../pages/CalendarPage";
 import CustomersPage from "../../pages/CustomersPage";
 import SubscriptionPage from "../../pages/SubscriptionPage";
 import TimeTrackingPage from "../../pages/TimeTrackingPage";
@@ -159,6 +160,21 @@ export default function AppRouter() {
             <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.EMPLOYEE]}>
               <DashboardLayout>
                 <SettingsPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* CAL1.6 — all three roles. The route guard is only a coarse filter:
+            the calendar is PERMISSION-based, not role-based, and the real
+            decision is the server's (plan §10.1). A user with no visible
+            calendar simply sees an empty one. */}
+        <Route
+          path="/calendar"
+          element={
+            <ProtectedRoute roles={[ROLES.BUSINESS_OWNER, ROLES.EMPLOYEE, ROLES.DEVELOPER]}>
+              <DashboardLayout>
+                <CalendarPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

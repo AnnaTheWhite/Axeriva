@@ -13,6 +13,9 @@ const menusByRole: Record<Role, { labelKey: string; path: string }[]> = {
     { labelKey: "nav.billing", path: "/admin/billing" },
     { labelKey: "nav.logs", path: "/admin/logs" },
     { labelKey: "nav.commandCenter", path: "/command-center" },
+    // CAL1.6 — a platform operator reaches every tenant's business calendars
+    // for support, and no tenant's personal ones (D12/R2).
+    { labelKey: "nav.calendar", path: "/calendar" },
   ],
   [ROLES.BUSINESS_OWNER]: [
     { labelKey: "nav.dashboard", path: "/" },
@@ -20,6 +23,7 @@ const menusByRole: Record<Role, { labelKey: string; path: string }[]> = {
     { labelKey: "nav.projects", path: "/projects" },
     { labelKey: "nav.customers", path: "/customers" },
     { labelKey: "nav.schedule", path: "/schedule" },
+    { labelKey: "nav.calendar", path: "/calendar" },
     { labelKey: "nav.timeTracking", path: "/time-tracking" },
     { labelKey: "nav.commandCenter", path: "/command-center" },
     { labelKey: "nav.subscription", path: "/subscription" },
@@ -27,6 +31,7 @@ const menusByRole: Record<Role, { labelKey: string; path: string }[]> = {
   ],
   [ROLES.EMPLOYEE]: [
     { labelKey: "nav.mySchedule", path: "/my-schedule" },
+    { labelKey: "nav.calendar", path: "/calendar" },
     { labelKey: "nav.myTime", path: "/my-time" },
     { labelKey: "nav.myProjects", path: "/my-projects" },
     { labelKey: "nav.profile", path: "/profile" },

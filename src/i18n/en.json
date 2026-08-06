@@ -5,6 +5,7 @@
     "projects": "Projects",
     "customers": "Customers",
     "schedule": "Schedule",
+    "calendar": "Calendar",
     "timeTracking": "Time Tracking",
     "commandCenter": "Command Center",
     "subscription": "Subscription",
@@ -482,6 +483,165 @@
       "archiveBlockedSubscription": "Your subscription is still active. Cancel it on the Subscription page and wait for the current period to end before archiving the company."
     }
   },
+    "calendar": {
+      "title": "Calendar",
+      "subtitle": "Everything on the calendars you can see",
+      "newEvent": "New event",
+      "busy": "Busy",
+      "truncated": "This period holds more entries than can be shown at once. Narrow the range or switch off some calendars to see the rest.",
+      "type": {
+        "PERSONAL": "Personal",
+        "COMPANY": "Company",
+        "PROJECT": "Project",
+        "EMPLOYEE": "Employee"
+      },
+      "toolbar": {
+        "previous": "Previous period",
+        "next": "Next period",
+        "today": "Today",
+        "loading": "Loading…",
+        "view": {
+          "month": "Month",
+          "week": "Week",
+          "day": "Day"
+        }
+      },
+      "rbc": {
+        "date": "Date",
+        "time": "Time",
+        "event": "Event",
+        "allDay": "All day",
+        "workWeek": "Work week",
+        "agenda": "Agenda",
+        "noEventsInRange": "Nothing in this period.",
+        "showMore": "+{{count}} more"
+      },
+      "filter": {
+        "title": "Calendars",
+        "empty": "You do not have a calendar yet."
+      },
+      "share": {
+        "title": "Sharing your personal calendar",
+        "subtitle": "You decide what your company sees. Nothing is shared by default.",
+        "failed": "Failed to change the sharing level",
+        "other": "Your company currently holds a custom permission on this calendar, which is none of the three levels above.",
+        "level": {
+          "PRIVATE": "Private",
+          "FREE_BUSY": "Free/busy only",
+          "DETAILS": "Full details"
+        },
+        "levelHint": {
+          "PRIVATE": "Nobody at your company can see this calendar — not even that it exists.",
+          "FREE_BUSY": "Colleagues see when you are busy, never what you are doing.",
+          "DETAILS": "Colleagues can read the full contents."
+        }
+      },
+      "status": {
+        "confirmed": "Confirmed",
+        "tentative": "Tentative",
+        "cancelled": "Cancelled"
+      },
+      "visibility": {
+        "default": "Calendar default",
+        "private": "Private",
+        "confidential": "Confidential"
+      },
+      "recurrence": {
+        "repeats": "Repeats",
+        "frequency": "Frequency",
+        "interval": "Every",
+        "onDays": "On these days",
+        "onDaysHint": "Leave empty to repeat on the weekday the event starts.",
+        "ends": "Ends",
+        "freq": {
+          "DAILY": "Daily",
+          "WEEKLY": "Weekly",
+          "MONTHLY": "Monthly",
+          "YEARLY": "Yearly"
+        },
+        "day": {
+          "MO": "Mon",
+          "TU": "Tue",
+          "WE": "Wed",
+          "TH": "Thu",
+          "FR": "Fri",
+          "SA": "Sat",
+          "SU": "Sun"
+        },
+        "end": {
+          "never": "Never",
+          "count": "After",
+          "until": "On"
+        }
+      },
+      "scope": {
+        "editTitle": "Change which occurrences?",
+        "editMessage": "This event repeats. Choose what your change should apply to.",
+        "deleteTitle": "Delete which occurrences?",
+        "deleteMessage": "This event repeats. Choose what should be deleted.",
+        "this": "This occurrence only",
+        "thisHint": "The rest of the series stays as it is.",
+        "following": "This and all following",
+        "followingHint": "The series is cut here and continues as a new one.",
+        "series": "The whole series",
+        "seriesHint": "Every occurrence, past and future."
+      },
+      "form": {
+        "createTitle": "New event",
+        "editTitle": "Edit event",
+        "editOccurrenceTitle": "Edit this occurrence",
+        "occurrenceNotice": "You are editing one occurrence, so only its time, title and location can change.",
+        "calendar": "Calendar",
+        "title": "Title",
+        "description": "Description",
+        "allDay": "All-day event",
+        "starts": "Starts",
+        "ends": "Ends",
+        "location": "Location",
+        "locationPlaceholder": "Leave empty to use the project or customer address",
+        "locationHint": "Fill this in only when the event happens somewhere other than the linked project or customer. Left empty, the address follows them when they move.",
+        "status": "Status",
+        "visibility": "Visibility",
+        "project": "Project",
+        "customer": "Customer",
+        "employee": "Employee",
+        "none": "None",
+        "titleRequired": "A title is required.",
+        "startRequired": "A start date is required.",
+        "timeRequired": "A start and an end time are required.",
+        "rangeError": "The end cannot be before the start.",
+        "calendarRequired": "Choose a calendar.",
+        "saveFailed": "Failed to save the event"
+      },
+      "details": {
+        "when": "When",
+        "description": "Description",
+        "location": "Location",
+        "busyExplanation": "You can see that this time is taken, but not what it is for.",
+        "recurring": "Repeating",
+        "overridden": "Changed for this occurrence",
+        "locationFrom": {
+          "project": "From the linked project",
+          "customer": "From the linked customer"
+        }
+      },
+      "delete": {
+        "title": "Delete event",
+        "message": {
+          "this": "This occurrence will be removed. The rest of the series stays.",
+          "following": "This occurrence and every following one will be removed.",
+          "series": "The whole event will be removed. This cannot be undone."
+        }
+      },
+      "toast": {
+        "created": "Event created",
+        "updated": "Event updated",
+        "deleted": "Event deleted",
+        "deleteFailed": "Failed to delete the event",
+        "loadFailed": "Failed to load the event",
+        "notEditable": "You can only see that this time is taken, so there is nothing to edit."
+      }
+    },
   "readOnly": {
     "bannerTitle": "Your company is in read-only mode.",
     "bannerBody": "Your trial or subscription has ended. Upgrade or resume your subscription to continue editing.",

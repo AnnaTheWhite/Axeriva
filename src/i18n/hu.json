@@ -5,6 +5,7 @@
     "projects": "Projektek",
     "customers": "Ügyfelek",
     "schedule": "Beosztás",
+    "calendar": "Naptár",
     "timeTracking": "Munkaidő",
     "commandCenter": "Vezérlőközpont",
     "subscription": "Előfizetés",
@@ -482,6 +483,165 @@
       "archiveBlockedSubscription": "Az előfizetése még aktív. Mondja le az Előfizetés oldalon, és a cég a folyó időszak lejárta után archiválható."
     }
   },
+    "calendar": {
+      "title": "Naptár",
+      "subtitle": "Minden esemény azokon a naptárakon, amelyeket látsz",
+      "newEvent": "Új esemény",
+      "busy": "Foglalt",
+      "truncated": "Ebben az időszakban több bejegyzés van, mint amennyi egyszerre megjeleníthető. Szűkítsd az időszakot, vagy kapcsolj ki néhány naptárat.",
+      "type": {
+        "PERSONAL": "Személyes",
+        "COMPANY": "Céges",
+        "PROJECT": "Projekt",
+        "EMPLOYEE": "Munkavállalói"
+      },
+      "toolbar": {
+        "previous": "Előző időszak",
+        "next": "Következő időszak",
+        "today": "Ma",
+        "loading": "Betöltés…",
+        "view": {
+          "month": "Hónap",
+          "week": "Hét",
+          "day": "Nap"
+        }
+      },
+      "rbc": {
+        "date": "Dátum",
+        "time": "Idő",
+        "event": "Esemény",
+        "allDay": "Egész nap",
+        "workWeek": "Munkahét",
+        "agenda": "Lista",
+        "noEventsInRange": "Ebben az időszakban nincs bejegyzés.",
+        "showMore": "+{{count}} további"
+      },
+      "filter": {
+        "title": "Naptárak",
+        "empty": "Még nincs naptárad."
+      },
+      "share": {
+        "title": "A személyes naptárad megosztása",
+        "subtitle": "Te döntöd el, mit lát a cég. Alapból semmit nem osztunk meg.",
+        "failed": "A megosztási szint módosítása nem sikerült",
+        "other": "A cég jelenleg egyedi jogosultságot kapott erre a naptárra, ami egyik fenti szintnek sem felel meg.",
+        "level": {
+          "PRIVATE": "Privát",
+          "FREE_BUSY": "Csak szabad/foglalt",
+          "DETAILS": "Teljes tartalom"
+        },
+        "levelHint": {
+          "PRIVATE": "A cégnél senki nem látja ezt a naptárat — még azt sem, hogy létezik.",
+          "FREE_BUSY": "A kollégák látják, mikor vagy elfoglalt, azt soha nem, hogy mivel.",
+          "DETAILS": "A kollégák a teljes tartalmat olvashatják."
+        }
+      },
+      "status": {
+        "confirmed": "Megerősítve",
+        "tentative": "Előzetes",
+        "cancelled": "Lemondva"
+      },
+      "visibility": {
+        "default": "Naptár szerint",
+        "private": "Privát",
+        "confidential": "Bizalmas"
+      },
+      "recurrence": {
+        "repeats": "Ismétlődik",
+        "frequency": "Gyakoriság",
+        "interval": "Minden",
+        "onDays": "Ezeken a napokon",
+        "onDaysHint": "Hagyd üresen, ha az esemény kezdőnapján ismétlődjön.",
+        "ends": "Vége",
+        "freq": {
+          "DAILY": "Naponta",
+          "WEEKLY": "Hetente",
+          "MONTHLY": "Havonta",
+          "YEARLY": "Évente"
+        },
+        "day": {
+          "MO": "H",
+          "TU": "K",
+          "WE": "Sze",
+          "TH": "Cs",
+          "FR": "P",
+          "SA": "Szo",
+          "SU": "V"
+        },
+        "end": {
+          "never": "Soha",
+          "count": "Ennyi alkalom után",
+          "until": "Eddig a napig"
+        }
+      },
+      "scope": {
+        "editTitle": "Melyik alkalmakra vonatkozzon?",
+        "editMessage": "Ez az esemény ismétlődik. Válaszd ki, mire vonatkozzon a módosítás.",
+        "deleteTitle": "Melyik alkalmakat töröljük?",
+        "deleteMessage": "Ez az esemény ismétlődik. Válaszd ki, mit törüljünk.",
+        "this": "Csak ez az alkalom",
+        "thisHint": "A sorozat többi része változatlan marad.",
+        "following": "Ez és a további alkalmak",
+        "followingHint": "A sorozat itt kettévágódik, és innen új sorozatként folytatódik.",
+        "series": "A teljes sorozat",
+        "seriesHint": "Minden alkalom, a korábbiak is."
+      },
+      "form": {
+        "createTitle": "Új esemény",
+        "editTitle": "Esemény szerkesztése",
+        "editOccurrenceTitle": "Ennek az alkalomnak a szerkesztése",
+        "occurrenceNotice": "Egyetlen alkalmat szerkesztesz, ezért csak az időpontja, a címe és a helyszíne módosítható.",
+        "calendar": "Naptár",
+        "title": "Cím",
+        "description": "Leírás",
+        "allDay": "Egész napos esemény",
+        "starts": "Kezdés",
+        "ends": "Befejezés",
+        "location": "Helyszín",
+        "locationPlaceholder": "Hagyd üresen a projekt vagy az ügyfél címéhez",
+        "locationHint": "Csak akkor töltsd ki, ha az esemény máshol van, mint a hozzárendelt projekt vagy ügyfél. Üresen hagyva a cím automatikusan követi őket, ha megváltoznak.",
+        "status": "Állapot",
+        "visibility": "Láthatóság",
+        "project": "Projekt",
+        "customer": "Ügyfél",
+        "employee": "Munkavállaló",
+        "none": "Nincs",
+        "titleRequired": "A cím megadása kötelező.",
+        "startRequired": "A kezdő dátum megadása kötelező.",
+        "timeRequired": "A kezdő és a befejező időpont megadása kötelező.",
+        "rangeError": "A befejezés nem lehet korábbi a kezdésnél.",
+        "calendarRequired": "Válassz naptárat.",
+        "saveFailed": "Az esemény mentése nem sikerült"
+      },
+      "details": {
+        "when": "Mikor",
+        "description": "Leírás",
+        "location": "Helyszín",
+        "busyExplanation": "Csak azt látod, hogy ez az idősáv foglalt, azt nem, hogy mivel.",
+        "recurring": "Ismétlődő",
+        "overridden": "Ennél az alkalomnál módosítva",
+        "locationFrom": {
+          "project": "A hozzárendelt projektből",
+          "customer": "A hozzárendelt ügyféltől"
+        }
+      },
+      "delete": {
+        "title": "Esemény törlése",
+        "message": {
+          "this": "Ez az alkalom törlődik. A sorozat többi része megmarad.",
+          "following": "Ez és minden további alkalom törlődik.",
+          "series": "A teljes esemény törlődik. Ez nem vonható vissza."
+        }
+      },
+      "toast": {
+        "created": "Esemény létrehozva",
+        "updated": "Esemény módosítva",
+        "deleted": "Esemény törölve",
+        "deleteFailed": "Az esemény törlése nem sikerült",
+        "loadFailed": "Az esemény betöltése nem sikerült",
+        "notEditable": "Csak azt látod, hogy ez az idősáv foglalt, így nincs mit szerkeszteni."
+      }
+    },
   "readOnly": {
     "bannerTitle": "A céged csak olvasható módban van.",
     "bannerBody": "A próbaidőszakod vagy előfizetésed lejárt. Válts magasabb csomagra vagy folytasd az előfizetést a szerkesztés folytatásához.",
