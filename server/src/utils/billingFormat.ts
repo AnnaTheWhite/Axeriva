@@ -16,10 +16,17 @@ import { DEFAULT_NOTIFICATION_LOCALE, type NotificationLocale } from "../constan
 //
 // Intl needs no polyfill here — Node 22.12 (the pinned floor, Q1) ships
 // full-icu. Verified on the target runtime rather than assumed:
-//   HUF / hu-HU  →  "12 346 Ft"        (zero decimals, chosen by ICU)
+//   HUF / hu-HU  →  "12 346 Ft"        (zero decimals, pinned — see below)
 //   EUR / en-GB  →  "€12,345.60"
 //   date / hu-HU →  "2026. szeptember 1."
 //   date / en-GB →  "1 September 2026"
+//
+// ⚠️ ICU SHIPS WITH THE RUNTIME, AND ITS DATA IS NOT FROZEN. Anything ICU
+// decides from CLDR *data* rather than from our options is a value that can
+// differ between Node versions, and therefore between local, CI and Render.
+// Currency precision is exactly such a value and it bit us — see
+// CURRENCY_DECIMALS. Locale conventions (grouping, symbol, ordering) are the
+// point of using Intl at all and stay ICU's call; precision is not.
 
 // The BCP 47 tag each notification locale maps to. NotificationLocale is
 // "en" | "hu"; bare "en" would give US conventions (MM/DD/YYYY, $), which is
@@ -54,9 +61,37 @@ const MINOR_UNITS_PER_MAJOR = 100;
 // it were fine.
 const SUPPORTED_CURRENCIES = new Set(["EUR", "HUF"]);
 
-// The decimal digits ICU uses per currency, needed only for the fallback path
-// where Intl itself is unavailable to tell us.
-const FALLBACK_DECIMALS: Record<string, number> = { EUR: 2, HUF: 0 };
+// How many decimal digits each currency is written with. THE single place
+// precision is decided — both the Intl path and the fallback path read it, so
+// the two can never drift apart.
+//
+// ⚠️ IT IS NOT A CONVENIENCE, IT IS THE FIX. ICU derives currency precision
+// from CLDR supplemental data, and HUF's entry changed: the ICU bundled with
+// Node 22.12 (CI and Render) reports 2 fraction digits for HUF, the one in
+// Node 24 (local dev) reports 0. Asking Intl therefore produced a different
+// invoice on every tier —
+//     Node 24  →  "12 346 Ft"        Node 22.12  →  "12 345,60 Ft"
+// — which surfaced as three green-locally / red-in-CI tests, and would have
+// shipped fillér amounts to Hungarian customers for a currency that has had no
+// subunit in circulation since 1999. Stating the precision removes the
+// runtime's data from the answer entirely.
+//
+// Deliberately NOT merged with SUPPORTED_CURRENCIES below: that guard is about
+// Stripe's minor-unit assumption, not about precision. Deriving one from the
+// other would mean adding a currency here silently opts it into the ÷100, which
+// is the exact 100x error that guard exists to make loud.
+const CURRENCY_DECIMALS: Record<string, number> = { EUR: 2, HUF: 0 };
+
+// What a currency outside the mapping gets. Unchanged from the pre-fix
+// fallback path (`?? 2`), so an unlisted currency — USD, GBP — renders exactly
+// as it did before, with the two decimals almost every currency uses.
+const DEFAULT_DECIMALS = 2;
+
+// Exported so precision has one answer for every caller, and so it can be
+// asserted without going through Intl at all.
+export function currencyDecimals(currency: string): number {
+  return CURRENCY_DECIMALS[currency.trim().toUpperCase()] ?? DEFAULT_DECIMALS;
+}
 
 export type MoneyInput = {
   // Amount in the currency's minor unit, exactly as Stripe reports it
@@ -82,6 +117,7 @@ export function formatMoney({ amountMinor, currency, locale }: MoneyInput): stri
   }
 
   const major = amountMinor / MINOR_UNITS_PER_MAJOR;
+  const decimals = currencyDecimals(code);
 
   if (!SUPPORTED_CURRENCIES.has(code)) {
     // Loud on purpose: reaching this means either a new currency was configured
@@ -90,17 +126,26 @@ export function formatMoney({ amountMinor, currency, locale }: MoneyInput): stri
     console.error(
       `[billingFormat] unsupported currency ${code} — the minor-unit assumption may not hold`
     );
-    return `${major.toFixed(FALLBACK_DECIMALS[code] ?? 2)} ${code}`;
+    return `${major.toFixed(decimals)} ${code}`;
   }
 
   try {
     return new Intl.NumberFormat(intlLocale(locale), {
       style: "currency",
       currency: code,
+      // The whole point of this commit. Both ends are set explicitly so ICU
+      // never consults its own CLDR currency data — the one input that differs
+      // between the Node on a laptop, the Node in CI, and the Node on Render.
+      //
+      // NOTHING ELSE ABOUT THE RENDERING IS TOUCHED. The locale, the grouping
+      // separators, the symbol lookup, whether the symbol leads or trails —
+      // all still ICU's, and all still whatever they were before.
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     }).format(major);
   } catch (error) {
     console.error(`[billingFormat] Intl failed for ${code}/${locale}`, error);
-    return `${major.toFixed(FALLBACK_DECIMALS[code] ?? 2)} ${code}`;
+    return `${major.toFixed(decimals)} ${code}`;
   }
 }
 

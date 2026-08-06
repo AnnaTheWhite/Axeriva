@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BILLING_TIME_ZONE,
+  currencyDecimals,
   formatDate,
   formatDateTime,
   formatMoney,
@@ -30,9 +31,9 @@ import {
 
 describe("formatMoney — HUF", () => {
   it("renders Hungarian forint with no decimals, in Hungarian", () => {
-    // ICU knows HUF is a zero-decimal currency; we never tell it so. The
-    // narrow no-break spaces are what hu-HU actually emits for group and
-    // currency separators.
+    // WE tell ICU that HUF has no decimals — asking it was the bug (see the
+    // ICU-independence block below). The no-break spaces are what hu-HU emits
+    // for group and currency separators, and those are still ICU's call.
     expect(formatMoney({ amountMinor: 1234560, currency: "HUF", locale: "hu" })).toBe(
       "12\u00A0346\u00A0Ft"
     );
@@ -51,6 +52,74 @@ describe("formatMoney — HUF", () => {
     // billing email.
     expect(formatMoney({ amountMinor: 100000, currency: "HUF", locale: "hu" })).toBe(
       "1000\u00A0Ft"
+    );
+  });
+});
+
+describe("formatMoney — precision does not depend on the runtime's ICU", () => {
+  // THE REGRESSION THIS BLOCK EXISTS FOR. ICU ships inside Node and its CLDR
+  // data is versioned with it, so anything ICU decides from *data* rather than
+  // from our options can differ per machine. HUF's fraction digits are such a
+  // value: the ICU in Node 22.12 (CI, Render) answers 2, the one in Node 24
+  // (local dev) answers 0. formatMoney used to just ask, so the same invoice
+  // rendered "12 345,60 Ft" on one tier and "12 346 Ft" on another.
+  //
+  // These tests must therefore never assert what this runtime's ICU believes —
+  // that would rebuild the version dependency inside the suite. They assert
+  // that our output is the same either way.
+
+  it("uses the project's precision mapping, which needs no Intl to answer", () => {
+    // Pure data, no ICU involved: this is where precision is decided now.
+    expect(currencyDecimals("HUF")).toBe(0);
+    expect(currencyDecimals("EUR")).toBe(2);
+    // Not a currency this product sells in, so it falls to the project's
+    // pre-existing default of two — unchanged by this fix.
+    expect(currencyDecimals("USD")).toBe(2);
+    // Stripe sends lowercase; the mapping must not care.
+    expect(currencyDecimals("huf")).toBe(0);
+  });
+
+  it("renders HUF the zero-decimal way on ANY ICU, not the way this one would", () => {
+    // Both possible ICU answers are constructed explicitly here, on whatever
+    // Node is running, and our output is pinned to one of them. This assertion
+    // holds identically on Node 22.12 and Node 24 — which is the definition of
+    // the fix working.
+    const asZeroDecimalIcu = new Intl.NumberFormat("hu-HU", {
+      style: "currency",
+      currency: "HUF",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(12345.6);
+    const asTwoDecimalIcu = new Intl.NumberFormat("hu-HU", {
+      style: "currency",
+      currency: "HUF",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(12345.6);
+
+    const actual = formatMoney({ amountMinor: 1234560, currency: "HUF", locale: "hu" });
+
+    expect(actual).toBe(asZeroDecimalIcu);
+    expect(actual).not.toBe(asTwoDecimalIcu);
+  });
+
+  it("leaves EUR at two decimals, so pinning changed nothing where ICU agreed", () => {
+    // The other half of "do not change the formatting". EUR was never the
+    // unstable one; stating its precision must be a no-op, not a new rendering.
+    expect(formatMoney({ amountMinor: 1234560, currency: "EUR", locale: "en" })).toBe(
+      new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(12345.6)
+    );
+  });
+
+  it("keeps ICU in charge of everything that is NOT precision", () => {
+    // Grouping, symbol and symbol position still come from CLDR — the fix
+    // narrowed what we override to fraction digits and nothing else. hu-HU
+    // trails the currency, en-GB leads it, and both still do.
+    expect(formatMoney({ amountMinor: 1234560, currency: "EUR", locale: "hu" })).toMatch(
+      /EUR$/
+    );
+    expect(formatMoney({ amountMinor: 1234560, currency: "EUR", locale: "en" })).toMatch(
+      /^€/
     );
   });
 });
