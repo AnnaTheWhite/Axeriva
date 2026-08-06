@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import Stripe from "stripe";
 import app from "../app";
@@ -11,12 +11,15 @@ import type {
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
   PaymentMethodEmailPayload,
+  PlanChangeEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "../services/email/EmailService";
 import { subscriptionRenewedEmailTemplate } from "../emails/templates/billing/SubscriptionRenewedEmail";
 import { invoicePaidEmailTemplate } from "../emails/templates/billing/InvoicePaidEmail";
 import { invoiceFailedEmailTemplate } from "../emails/templates/billing/InvoiceFailedEmail";
 import { paymentMethodUpdatedEmailTemplate } from "../emails/templates/billing/PaymentMethodUpdatedEmail";
+import { planUpgradedEmailTemplate } from "../emails/templates/billing/PlanUpgradedEmail";
+import { stripe } from "../services/stripe/stripeClient";
 import { registerNotificationWorkers } from "../services/notifications/workers";
 import { createCompany, createUser } from "./helpers/factories";
 import { priceIdFor } from "../config/stripePricing";
@@ -438,11 +441,32 @@ async function renewingTenant(overrides: { language?: string | null; timezone?: 
   return tenant;
 }
 
-function stripeEvent(type: string, object: Record<string, unknown>, id?: string) {
+// N1.8 Slice 6 — THE EVENT'S OWN TIMESTAMP, and the reason it is a distinct
+// constant rather than reusing any fixture instant above. It is what
+// billing.plan_upgraded reports as "effective from", so a handler reading the
+// subscription's period end, or the send time, must produce a different value
+// and be caught.
+//
+// 03:00 UTC on purpose: that is still the PREVIOUS day in Los Angeles (UTC-7 in
+// October), which is what lets the timezone test prove the company zone reaches
+// the formatter. At midday both zones agree and the test would pass against
+// code that ignored Company.timezone entirely.
+const EVENT_CREATED_AT = Math.floor(new Date("2026-10-05T03:00:00Z").getTime() / 1000);
+
+// `created` is now always present. Every real Stripe event carries it
+// (EventBase.created), Slice 6 reads it, and a helper that omitted it would let
+// a missing-timestamp bug pass here while failing in production.
+function stripeEvent(
+  type: string,
+  object: Record<string, unknown>,
+  id?: string,
+  created: number = EVENT_CREATED_AT
+) {
   return {
     id: id ?? `evt_${type}_1`,
     object: "event",
     type,
+    created,
     data: { object },
   };
 }
@@ -487,10 +511,75 @@ async function billingTenant(overrides: { language?: string | null; timezone?: s
   return { company, owner, employee };
 }
 
+// N1.8 Slice 6 — a SUBSCRIPTION, not an invoice. The customer.subscription
+// .updated handler re-retrieves the subscription's current state from Stripe
+// rather than trusting the event snapshot (the ordering guard), so every test
+// below mocks that retrieve with what Stripe should report "now". The event's
+// own object only ever drives company resolution.
+const UPGRADE_PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+
+function subscriptionFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "sub_test_billing",
+    object: "subscription",
+    status: "active",
+    customer: "cus_test_billing",
+    cancel_at_period_end: false,
+    schedule: null,
+    metadata: {},
+    items: {
+      object: "list",
+      data: [
+        {
+          id: "si_test",
+          // A REAL catalogue price, because applySubscriptionUpdate resolves the
+          // plan from it (planForPriceId). With an unrecognised price the plan
+          // falls back to the company's current one, before == after, and every
+          // upgrade assertion below would be vacuously green.
+          price: { id: priceIdFor("professional", "eur") },
+          current_period_end: UPGRADE_PERIOD_END,
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+function mockFreshSubscription(fixture: Record<string, unknown>) {
+  return vi.spyOn(stripe.subscriptions, "retrieve").mockResolvedValue(fixture as never);
+}
+
+// A company ALREADY on the subscription the event is about, sitting a tier BELOW
+// where the fixture takes it. billingTenant() puts everyone on professional,
+// which is this fixture's destination — starting there would make before ==
+// after and every assertion below vacuous.
+async function upgradingTenant(
+  overrides: { language?: string | null; timezone?: string | null; plan?: string } = {}
+) {
+  const tenant = await billingTenant(overrides);
+  await prisma.company.update({
+    where: { id: tenant.company.id },
+    data: {
+      plan: overrides.plan ?? "starter",
+      stripeSubscriptionId: "sub_test_billing",
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: false,
+    },
+  });
+  return tenant;
+}
+
 beforeAll(async () => {
   await startQueue();
   await registerNotificationWorkers();
 }, 60_000);
+
+// Slice 6 spies on stripe.subscriptions.retrieve. Restoring globally rather
+// than per test: a leaked subscription mock would silently change what every
+// later customer.subscription.updated test believes Stripe reported.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 afterAll(async () => {
   await stopQueue();
@@ -672,6 +761,7 @@ const RECEIPT_METHOD = {
   "billing.invoice_failed": "sendInvoiceFailedEmail",
   "billing.renewal_upcoming": "sendRenewalUpcomingEmail",
   "billing.payment_method_updated": "sendPaymentMethodUpdatedEmail",
+  "billing.plan_upgraded": "sendPlanUpgradedEmail",
 } as const;
 
 // Captures the payload the email channel hands the transport — i.e. what the
@@ -685,7 +775,9 @@ type PayloadFor<T extends keyof typeof RECEIPT_METHOD> = T extends "billing.invo
     ? UpcomingRenewalEmailPayload
     : T extends "billing.payment_method_updated"
       ? PaymentMethodEmailPayload
-      : InvoiceReceiptEmailPayload;
+      : T extends "billing.plan_upgraded"
+        ? PlanChangeEmailPayload
+        : InvoiceReceiptEmailPayload;
 
 async function deliveredPayload<
   T extends keyof typeof RECEIPT_METHOD = "billing.subscription_renewed"
@@ -2517,6 +2609,459 @@ describe("Slice 5 — what the customer is actually told", () => {
     }))!;
     expect(delivery.status).toBe("suppressed");
     expect(delivery.suppressionReason).toBe("user_preference");
+  });
+});
+
+describe("Slice 6 — the upgrade confirmation, end to end", () => {
+  it("turns a signed customer.subscription.updated into a sent upgrade notice", async () => {
+    const { company, owner, employee } = await upgradingTenant();
+    mockFreshSubscription(subscriptionFixture());
+
+    const res = await postWebhook(
+      stripeEvent("customer.subscription.updated", subscriptionFixture())
+    );
+    expect(res.status).toBe(200);
+
+    const event = await prisma.notificationEvent.findFirst({
+      where: { type: "billing.plan_upgraded" },
+    });
+    expect(event).not.toBeNull();
+    expect(event!.dedupeKey).toBe("billing.plan_upgraded/evt_customer.subscription.updated_1");
+    expect(event!.companyId).toBe(company.id);
+
+    await dispatchEvent(event!.id);
+    const deliveries = await prisma.notificationDelivery.findMany({
+      where: { eventId: event!.id },
+    });
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].channel).toBe("EMAIL");
+    expect(deliveries[0].recipientAddress).toBe(owner.email);
+    expect(deliveries.map((d) => d.recipientAddress)).not.toContain(employee.email);
+
+    await deliverEmail(deliveries[0].id);
+    const sent = await prisma.notificationDelivery.findUnique({
+      where: { id: deliveries[0].id },
+    });
+    expect(sent!.status).toBe("sent");
+    expect(sent!.providerMessageId).toMatch(/^mock_/);
+  });
+
+  it("writes the company's new plan as well as sending", async () => {
+    // The state write is the pre-existing behaviour of this branch, and Slice 6
+    // is bolted onto it. If adding the notification ever broke the sync, the
+    // customer would get a correct email about a plan the app does not think
+    // they are on.
+    const { company } = await upgradingTenant();
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("professional");
+  });
+
+  it("suppresses a redelivery of the same event", async () => {
+    await upgradingTenant();
+    mockFreshSubscription(subscriptionFixture());
+    const event = stripeEvent("customer.subscription.updated", subscriptionFixture());
+
+    const first = await postWebhook(event);
+    const second = await postWebhook(event);
+
+    expect(first.body.duplicate).toBeUndefined();
+    expect(second.body.duplicate).toBe(true);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.plan_upgraded" } })
+    ).toBe(1);
+  });
+
+  it("sends ONCE even when Stripe emits two events for one upgrade", async () => {
+    // The dedupeKey is the EVENT id (plan §3 Fázis 2), so two event ids for one
+    // upgrade would not collide on it — and the ledger cannot pair them either.
+    // What makes this safe is the before/after comparison itself: after the
+    // first event the company is already on professional, so the second finds
+    // no tier movement. Worth pinning, because it is the property that lets an
+    // event-keyed dedupeKey be correct here at all.
+    await upgradingTenant();
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture(), "evt_up_1"));
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture(), "evt_up_2"));
+
+    expect(await prisma.processedStripeEvent.count()).toBe(2);
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.plan_upgraded" } })
+    ).toBe(1);
+  });
+
+  it("sends again for a SECOND, genuine upgrade", async () => {
+    // starter -> professional -> business. The other half of the contract: a
+    // real second upgrade must not be suppressed.
+    await upgradingTenant();
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture(), "evt_a"));
+
+    vi.restoreAllMocks();
+    const toBusiness = subscriptionFixture({
+      items: {
+        object: "list",
+        data: [
+          {
+            id: "si_test",
+            price: { id: priceIdFor("business", "eur") },
+            current_period_end: UPGRADE_PERIOD_END,
+          },
+        ],
+      },
+    });
+    mockFreshSubscription(toBusiness);
+    await postWebhook(stripeEvent("customer.subscription.updated", toBusiness, "evt_b"));
+
+    expect(
+      await prisma.notificationEvent.count({ where: { type: "billing.plan_upgraded" } })
+    ).toBe(2);
+  });
+});
+
+describe("Slice 6 — the updates that are NOT an upgrade", () => {
+  it("says nothing when the plan did not change", async () => {
+    // customer.subscription.updated fires on cycle advance, payment-method
+    // changes, schedule attach/release and metadata edits. None of them is a
+    // plan change, and this is the commonest shape by far — a handler that
+    // notified on every updated event would mail the customer monthly.
+    const { company } = await upgradingTenant({ plan: "professional" });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    expect(await prisma.processedStripeEvent.count()).toBe(1);
+    // ...and the branch still did its real job.
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("professional");
+  });
+
+  it("says nothing for a cancel_at_period_end toggle", async () => {
+    const { company } = await upgradingTenant({ plan: "professional" });
+    mockFreshSubscription(subscriptionFixture({ cancel_at_period_end: true }));
+
+    await postWebhook(
+      stripeEvent("customer.subscription.updated", subscriptionFixture({ cancel_at_period_end: true }))
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.cancelAtPeriodEnd).toBe(true);
+  });
+
+  it("says nothing when the subscription goes past_due on the same plan", async () => {
+    // past_due is plan-carrying (syncSubscription PLAN_CARRYING_STATUSES), so
+    // the plan survives the transition and there is no tier movement. The
+    // dunning warning is billing.invoice_failed's job.
+    await upgradingTenant({ plan: "professional" });
+    mockFreshSubscription(subscriptionFixture({ status: "past_due" }));
+
+    await postWebhook(
+      stripeEvent("customer.subscription.updated", subscriptionFixture({ status: "past_due" }))
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing for a DOWNGRADE", async () => {
+    // Slice 7's message, and it must not arrive dressed as an upgrade. Asserted
+    // on the whole table: "no plan_upgraded" would pass against a handler that
+    // sent plan_downgraded, which does not exist yet.
+    await upgradingTenant({ plan: "business" });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing when the subscription died", async () => {
+    // A non-plan-carrying status makes applySubscriptionUpdate write "free",
+    // which is a tier DOWN. No gate of its own — canUpgrade answers it.
+    await upgradingTenant({ plan: "professional" });
+    mockFreshSubscription(subscriptionFixture({ status: "unpaid" }));
+
+    await postWebhook(
+      stripeEvent("customer.subscription.updated", subscriptionFixture({ status: "unpaid" }))
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing when the price is not in the catalogue", async () => {
+    // planForPriceId returns null, applySubscriptionUpdate keeps the stored
+    // plan, before == after. A legacy or misconfigured price must not be able
+    // to manufacture a plan change in either direction.
+    await upgradingTenant();
+    const unknownPrice = subscriptionFixture({
+      items: {
+        object: "list",
+        data: [
+          {
+            id: "si_test",
+            price: { id: "price_not_in_the_catalogue" },
+            current_period_end: UPGRADE_PERIOD_END,
+          },
+        ],
+      },
+    });
+    mockFreshSubscription(unknownPrice);
+
+    await postWebhook(stripeEvent("customer.subscription.updated", unknownPrice));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+
+  it("says nothing for a manually managed plan", async () => {
+    // applySubscriptionUpdate refuses to write Company for Founder/Enterprise,
+    // so before == after and canUpgrade answers this too — no separate gate.
+    const { company } = await upgradingTenant({ plan: "founder" });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("founder");
+  });
+
+  it("says nothing when the stale guard skipped the update entirely", async () => {
+    // isForeign && !isLive — a dead foreign subscription's late event. The
+    // update never runs, so there is no after-state at all, and the captured
+    // upgrade must stay null rather than be built from a half-read row.
+    const { company } = await upgradingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: { stripeSubscriptionId: "sub_current_live" },
+    });
+    mockFreshSubscription(subscriptionFixture({ status: "canceled" }));
+
+    await postWebhook(
+      stripeEvent("customer.subscription.updated", subscriptionFixture({ status: "canceled" }))
+    );
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    // The company's own plan is untouched, which is what the guard exists for.
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("starter");
+  });
+});
+
+describe("Slice 6 — the checkout collision (Slice 5's problem, on this event)", () => {
+  it("says nothing when the company was not yet on this subscription", async () => {
+    // customer.subscription.updated also fires while a BRAND NEW subscription
+    // is being set up, and Stripe guarantees no ordering against
+    // checkout.session.completed. Reached first, this branch sees the
+    // registration trial's plan, writes professional, and a tier comparison
+    // ALONE would announce "upgraded from Starter to Professional" for a FIRST
+    // subscription that billing.subscription_created already announces.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      // The registration trial's shape: a plan and a status, no Stripe
+      // subscription (auth.routes.ts).
+      data: { plan: "starter", subscriptionStatus: "trialing", stripeSubscriptionId: null },
+    });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+    // The state write still happened — silence here is about the EMAIL only.
+    const after = await prisma.company.findUnique({ where: { id: company.id } });
+    expect(after!.plan).toBe("professional");
+    expect(after!.stripeSubscriptionId).toBe("sub_test_billing");
+  });
+
+  it("says nothing when a cancelled company re-subscribes on a NEW subscription", async () => {
+    // The old subscription is closed, the customer checked out again. The
+    // incoming id differs from the stored one, so this is an arrival rather
+    // than an upgrade, even though free -> professional is a tier increase.
+    const { company } = await billingTenant();
+    await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        plan: "free",
+        subscriptionStatus: "canceled",
+        stripeSubscriptionId: "sub_old_cancelled",
+      },
+    });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    expect(await prisma.notificationEvent.count()).toBe(0);
+  });
+});
+
+describe("Slice 6 — what the customer is actually told", () => {
+  it("names BOTH ends of the transition, as display names", async () => {
+    await upgradingTenant({ language: "en" });
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const payload = await deliveredPayload("billing.plan_upgraded");
+
+    // Display names, not plan ids — "Starter", never "starter".
+    expect(payload.fromPlanName).toBe("Starter");
+    expect(payload.toPlanName).toBe("Professional");
+  });
+
+  it("captures the PREVIOUS plan before the sync overwrites it", async () => {
+    // THE CENTRAL HAZARD OF THIS SLICE. applySubscriptionUpdate rewrites
+    // Company.plan, so a "from" read after it is the same string as the "to" —
+    // and "upgraded from Professional to Professional" renders perfectly, sends
+    // perfectly, and is nonsense. Asserted as an inequality so it cannot be
+    // satisfied by both fields happening to hold the destination.
+    await upgradingTenant({ language: "en" });
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.plan_upgraded" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    expect(context.fromPlanName).not.toBe(context.toPlanName);
+    expect(context.fromPlanName).toBe("Starter");
+  });
+
+  it("reports the EVENT's timestamp as the effective date", async () => {
+    // Not the subscription's current_period_end (30 days out), not the send
+    // time. The event's own `created` is the moment Stripe recorded the change,
+    // and it is the only timestamp the roadmap gives this field.
+    await upgradingTenant({ language: "en" });
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.plan_upgraded" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    expect(context.effectiveAt).toBe(EVENT_CREATED_AT);
+    // Named explicitly, so a change to the field says which value it regressed
+    // to rather than just going red.
+    expect(context.effectiveAt).not.toBe(UPGRADE_PERIOD_END);
+
+    const payload = await deliveredPayload("billing.plan_upgraded");
+    const expected = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    }).format(new Date(EVENT_CREATED_AT * 1000));
+    expect(payload.effectiveAtFormatted).toBe(expected);
+  });
+
+  it("renders the effective date in the company's timezone, which can change the DAY", async () => {
+    await upgradingTenant({ language: "en", timezone: "America/Los_Angeles" });
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const payload = await deliveredPayload("billing.plan_upgraded");
+    const inLosAngeles = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeZone: "America/Los_Angeles",
+    }).format(new Date(EVENT_CREATED_AT * 1000));
+    const inUtc = new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    }).format(new Date(EVENT_CREATED_AT * 1000));
+
+    // The fixture is chosen so the two genuinely differ — otherwise this would
+    // pass against code that ignored the zone entirely.
+    expect(inLosAngeles).not.toBe(inUtc);
+    expect(payload.effectiveAtFormatted).toBe(inLosAngeles);
+  });
+
+  it("formats the date in the RECIPIENT's language", async () => {
+    const { owner } = await upgradingTenant({ language: "en" });
+    await prisma.user.update({ where: { id: owner.id }, data: { language: "hu" } });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const payload = await deliveredPayload("billing.plan_upgraded");
+    const expected = new Intl.DateTimeFormat("hu-HU", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    }).format(new Date(EVENT_CREATED_AT * 1000));
+    expect(payload.effectiveAtFormatted).toBe(expected);
+    // The plan names do NOT move with the locale — they are proper nouns, which
+    // is why the trigger may resolve them.
+    expect(payload.toPlanName).toBe("Professional");
+  });
+
+  it("stores RAW values in the context, never rendered text", async () => {
+    await upgradingTenant({ language: "en" });
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.plan_upgraded" },
+    }))!;
+    const context = JSON.parse(event.context!);
+
+    expect(typeof context.effectiveAt).toBe("number");
+    expect(Object.keys(context).sort()).toEqual([
+      "companyName",
+      "effectiveAt",
+      "fromPlanName",
+      "toPlanName",
+    ]);
+    // No amount, in any spelling. The money for an upgrade is
+    // billing.invoice_paid's to report; a figure here would either duplicate it
+    // or contradict it (proration today vs full price next cycle).
+    expect(context.amountMinor).toBeUndefined();
+    expect(context.currency).toBeUndefined();
+  });
+
+  it("reaches the card template's sibling, not a receipt", async () => {
+    await upgradingTenant({ language: "en" });
+    mockFreshSubscription(subscriptionFixture());
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const payload = await deliveredPayload("billing.plan_upgraded");
+    const rendered = await planUpgradedEmailTemplate({ ...payload, locale: "en" });
+
+    expect(rendered.html).toContain("Starter");
+    expect(rendered.html).toContain("Professional");
+    expect(rendered.subject).toContain("Professional");
+  });
+
+  it("reaches the owner even with the category switched off", async () => {
+    // mandatory: true. `billing` is a MANDATORY_CATEGORY, so the preference API
+    // refuses to write this row at all — it is inserted directly, which is the
+    // only way to prove the GATE ignores it rather than the API refusing it.
+    const { company, owner } = await upgradingTenant();
+    await prisma.notificationPreference.create({
+      data: {
+        companyId: company.id,
+        userId: owner.id,
+        category: "billing",
+        channel: "EMAIL",
+        enabled: false,
+      },
+    });
+    mockFreshSubscription(subscriptionFixture());
+
+    await postWebhook(stripeEvent("customer.subscription.updated", subscriptionFixture()));
+
+    const event = (await prisma.notificationEvent.findFirst({
+      where: { type: "billing.plan_upgraded" },
+    }))!;
+    await dispatchEvent(event.id);
+
+    const delivery = (await prisma.notificationDelivery.findFirst({
+      where: { eventId: event.id },
+    }))!;
+    expect(delivery.status).toBe("pending");
+    expect(delivery.recipientAddress).toBe(owner.email);
   });
 });
 

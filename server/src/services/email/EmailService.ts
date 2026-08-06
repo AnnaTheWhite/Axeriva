@@ -125,6 +125,16 @@ export interface EmailService {
     data: PaymentMethodEmailPayload,
     context?: EmailContext
   ): Promise<EmailSendResult>;
+
+  // N1.8 Slice 6 — the plan moved up a tier. Carries NO amount, deliberately:
+  // the money for an upgrade is `billing.invoice_paid`'s to report, and a second
+  // figure here would either duplicate it or contradict it (the proration a
+  // customer pays today is not the price they will pay next cycle).
+  sendPlanUpgradedEmail(
+    to: string,
+    data: PlanChangeEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult>;
 }
 
 // What an invoice receipt needs, whatever the receipt is FOR.
@@ -203,4 +213,24 @@ export type PaymentMethodEmailPayload = {
   companyName: string;
   brand: string;
   last4: string;
+};
+
+// N1.8 Slice 6. Satisfies PlanChangeEmailData (emails/billingTypes.ts) plus the
+// company name.
+//
+// Named for the CHANGE rather than for the upgrade, and shared on purpose: the
+// two remaining plan-change types (`billing.plan_downgraded`,
+// `billing.plan_downgrade_scheduled`) state the same three facts and differ only
+// in copy and in which direction the tiers moved. Slice 2 established that
+// pattern for the two receipts; the risk it carries — a transport method
+// reaching the wrong template, which the compiler can no longer catch once a
+// payload is shared — is covered in emailTemplates.test.ts.
+//
+// `effectiveAtFormatted` has been through utils/billingFormat in the channel,
+// in the RECIPIENT's locale and the company's timezone.
+export type PlanChangeEmailPayload = {
+  companyName: string;
+  fromPlanName: string;
+  toPlanName: string;
+  effectiveAtFormatted: string;
 };

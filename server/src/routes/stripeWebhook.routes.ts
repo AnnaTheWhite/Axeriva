@@ -13,7 +13,7 @@ import type { NotificationTypeKey } from "../services/notifications/registry";
 import { planDisplayName } from "../constants/plans";
 import { planForPriceId } from "../config/stripePricing";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../constants/subscriptionStatuses";
-import { isManuallyManaged } from "../services/planAccess";
+import { canUpgrade, isManuallyManaged } from "../services/planAccess";
 import { config } from "../config";
 
 const router = Router();
@@ -354,12 +354,25 @@ router.post("/", async (req, res) => {
       break;
     }
 
+    // N1.8 Slice 6 builds into this branch — see the block after
+    // applySubscriptionUpdate below, and the notify() after the ledger write.
     case "customer.subscription.updated": {
       const eventSubscription = event.data.object as Stripe.Subscription;
       const companyId = await resolveCompanyId(
         eventSubscription.metadata?.companyId,
         typeof eventSubscription.customer === "string" ? eventSubscription.customer : null
       );
+
+      // N1.8 Slice 6 — captured inside the block below, consumed after the
+      // ledger write. It has to be hoisted here because the plan §3 requires
+      // notify() to run AFTER markEventProcessed, while the only place the
+      // before/after plans both exist is inside the update block.
+      let upgrade: {
+        companyName: string;
+        fromPlan: string;
+        toPlan: string;
+        timezone: string | null;
+      } | null = null;
 
       if (companyId) {
         // Ordering guard (Design C): the event payload is a SNAPSHOT — Stripe
@@ -379,9 +392,14 @@ router.post("/", async (req, res) => {
         // subscription that IS (freshly verified) live is allowed through:
         // that is the legitimate "new subscription's events arrived before
         // the checkout handler wrote its id" ordering.
+        // N1.8 Slice 6 widened this select. `plan` is the load-bearing
+        // addition: applySubscriptionUpdate below OVERWRITES Company.plan
+        // (syncSubscription.ts), so this read is the ONLY moment the plan the
+        // customer is leaving still exists. Read it after the update and the
+        // "from" and the "to" are the same string, every time, silently.
         const company = await prisma.company.findUnique({
           where: { id: companyId },
-          select: { stripeSubscriptionId: true },
+          select: { name: true, plan: true, timezone: true, stripeSubscriptionId: true },
         });
         const isForeign =
           Boolean(company?.stripeSubscriptionId) &&
@@ -396,10 +414,107 @@ router.post("/", async (req, res) => {
           );
         } else {
           await applySubscriptionUpdate(companyId, subscription);
+
+          // N1.8 Slice 6 — did that write move the company UP a tier?
+          //
+          // THE PLAN IS RE-READ RATHER THAN RE-DERIVED, and the reason is not
+          // laziness. applySubscriptionUpdate decides the next plan through
+          // logic worth several branches — plan-carrying statuses, a fallback
+          // to the stored plan when the price is unrecognised, an early return
+          // for manually managed plans, pendingPlan self-healing. Recomputing
+          // any of that here would create a second, drift-capable answer to
+          // "what plan is this company on", and it would drift in exactly the
+          // cases that matter: an unknown price, a Founder company, a
+          // non-plan-carrying status. Reading the row back measures what
+          // ACTUALLY happened, for the cost of one query.
+          //
+          // It also makes three of this slice's gates disappear rather than be
+          // written: a manually managed plan returns early above, so before ==
+          // after; an unrecognised price falls back to the stored plan, so
+          // before == after; a cancelled subscription writes "free", which is a
+          // tier DOWN and fails canUpgrade. None needs its own condition.
+          const updated = await prisma.company.findUnique({
+            where: { id: companyId },
+            select: { plan: true },
+          });
+
+          // THE SCOPE GATE, and it is the one thing here that is not implied by
+          // the tier comparison.
+          //
+          // `customer.subscription.updated` also fires while a BRAND NEW
+          // subscription is being set up, and Stripe guarantees no ordering
+          // against checkout.session.completed. Reached first, this branch sees
+          // a company whose stored plan is still the registration trial's
+          // "starter" (auth.routes.ts) or "free", writes "professional", and
+          // the tier comparison alone would happily announce "upgraded from
+          // Starter to Professional" for what is a FIRST subscription —
+          // something billing.subscription_created already announces. Slice 5
+          // met the same collision on payment_method.attached.
+          //
+          // An upgrade presupposes the company was ALREADY on this
+          // subscription. That is exactly what the stored id says, it is read
+          // BEFORE the update like the plan is, and it costs nothing extra.
+          const wasAlreadyOnThisSubscription =
+            company?.stripeSubscriptionId === subscription.id;
+
+          if (
+            company &&
+            updated &&
+            wasAlreadyOnThisSubscription &&
+            canUpgrade(company.plan, updated.plan)
+          ) {
+            upgrade = {
+              companyName: company.name,
+              // DISPLAY names, resolved here — the contract in
+              // emails/billingTypes.ts states them as such, and they are
+              // locale-independent proper nouns, so resolving them at the
+              // trigger does not reintroduce the locale split-brain that moved
+              // money and date formatting into the channel.
+              fromPlan: planDisplayName(company.plan),
+              toPlan: planDisplayName(updated.plan),
+              timezone: company.timezone,
+            };
+          } else if (company && updated && company.plan !== updated.plan) {
+            // Every OTHER plan movement, logged rather than silently dropped.
+            // Downgrades and phase flips are Slice 7's, and a subscription
+            // arriving for the first time is the checkout case above — but an
+            // unexplained plan change reaching here with no email is worth
+            // being able to see in a log while Phase 2 is only half built.
+            console.warn(
+              `[stripe webhook] company ${companyId} moved ${company.plan} -> ${updated.plan} ` +
+                `on ${subscription.id} (stored ${company.stripeSubscriptionId ?? "none"}) — ` +
+                "not an upgrade of an existing subscription, no plan_upgraded sent"
+            );
+          }
         }
       }
 
       await markEventProcessed(event.id, event.type);
+
+      // N1.8 Slice 6 — AFTER the ledger write, per the plan's §3 Fázis 2, and
+      // the checkout branch's precedent. The at-most-once property does not
+      // depend on that ordering: the dedupeKey carries the Stripe event id, so
+      // a redelivery collides on the unique index even if the ledger write and
+      // this call ever drift apart. The ledger simply short-circuits it first.
+      if (companyId && upgrade) {
+        await notify({
+          type: "billing.plan_upgraded",
+          companyId,
+          dedupeKey: `billing.plan_upgraded/${event.id}`,
+          context: {
+            companyName: upgrade.companyName,
+            fromPlanName: upgrade.fromPlan,
+            toPlanName: upgrade.toPlan,
+            // The EVENT's own timestamp, carried raw. Not the subscription's
+            // period start, which names the cycle rather than the change, and
+            // not the send time, which would drift by however long the job sat
+            // in the queue. UNIX seconds; the channel formats it.
+            effectiveAt: event.created,
+            ...(upgrade.timezone ? { timeZone: upgrade.timezone } : {}),
+          },
+        });
+      }
+
       break;
     }
 

@@ -291,6 +291,45 @@ Company soron), és `warn`-t logol „first card at checkout" szöveggel. Ha ez 
 — és az ügyfél két levelet kap egy regisztrációra. Lásd a post-launch-backlog N4
 tételét.
 
+### Slice 6 (`billing.plan_upgraded`) — **nincs új Dashboard-teendő**
+
+Ezt kifejezetten leírjuk, mert a Slice 3–5 mindegyike igényelt egy blokkoló
+feliratkozást, és egy üzemeltető joggal keresné a Slice 6-ét is.
+
+A `customer.subscription.updated` **a Design C óta él** és a `HANDLED_EVENTS`
+halmaznak kezdettől tagja (`stripeWebhook.routes.ts`) — a Slice 6 nem új
+eseményt vesz fel, hanem a **meglévő ág** mellé tesz egy értesítést. Ha a
+webhook eddig működött, a Slice 6 minden további nélkül él. Ez a Slice 2
+mintája.
+
+**Ellenőrzés az első valós csomagemelés után:**
+
+```
+SELECT COUNT(*) FROM "NotificationEvent" WHERE type='billing.plan_upgraded';
+```
+
+⚠️ **EGY UPGRADE KÉT LEVELET KÜLD, és ez a jóváhagyott terv.** A hosztolt
+upgrade-megerősítés `invoice.paid`-et (`subscription_update` ok) **és**
+`customer.subscription.updated`-et is kivált:
+
+| Levél | Mit mond | Kikapcsolható? |
+|---|---|---|
+| `billing.invoice_paid` (Slice 2) | a **pénzről**: mennyit vontunk le most | ✅ `billing_receipts` |
+| `billing.plan_upgraded` (Slice 6) | a **képességváltozásról**: melyik csomagra váltott | ❌ `billing`, kötelező |
+
+Nem K1-sértés: két különböző állítás, két különböző kapcsolóval. A levél
+záró sora ezért mondja ki, hogy a fizetési visszaigazolást külön küldtük — enélkül
+az ügyfél joggal hinné, hogy kétszer írtunk neki ugyanarról. Ha ügyfélpanasz
+érkezik „duplán kaptam levelet" tárggyal, ez a magyarázat, nem hiba.
+
+**Amit a naplóból érdemes figyelni.** A kezelő minden olyan csomagmozgást
+`warn`-nal naplóz, ami NEM upgrade egy meglévő előfizetésen belül
+(„not an upgrade of an existing subscription"). Két várt eset van rá: a
+lefelé váltás (a Slice 7 tárgya, még nincs levele), és a **checkout-ütközés** —
+egy vadonatúj előfizetés `customer.subscription.updated`-je, amit a
+`billing.subscription_created` már bejelentett. Ha ez a sor **soha** nem jelenik
+meg új előfizetőknél, a hatókör-kapu nem úgy működik, ahogy hisszük.
+
 ---
 
 ## 1c. N1.7 — nincs ops-teendő

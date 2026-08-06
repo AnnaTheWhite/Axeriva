@@ -104,6 +104,28 @@ export const NOTIFICATION_TYPES = {
     recipients: "EMAIL",
     channels: ["EMAIL"],
   },
+  // N1.8 Slice 6 — the plan moved UP a tier (customer.subscription.updated).
+  "billing.plan_upgraded": {
+    // `billing` and MANDATORY, which is the opposite of its sibling receipt and
+    // is the whole distinction Q2 draws. `billing.invoice_paid` reports the
+    // MONEY taken for an upgrade and a customer may switch it off; this reports
+    // the CAPABILITY change — new limits, new features, a new recurring price
+    // from the next cycle — and someone who silenced it would be unaware of what
+    // their company can now do and what it will now cost.
+    category: "billing",
+    severity: "success",
+    mandatory: true,
+    // NOT bypassesComplaintSuppression. That flag is reserved for messages whose
+    // loss is an account lockout the recipient asked for seconds ago
+    // (auth.password_reset). An upgrade confirmation is not that.
+    recipients: "OWNER",
+    // EMAIL only, like every Phase 1 type. An in-app entry is defensible for a
+    // capability change — it is the one billing message about something the
+    // reader will actually go and use — but the roadmap specifies no in-app copy
+    // for it, and inventing a bell entry here would be scope this slice does not
+    // have. Left as a deliberate omission rather than an oversight.
+    channels: ["EMAIL"],
+  },
   // N1.8 Slice 5 — the card on file changed (payment_method.attached).
   "billing.payment_method_updated": {
     // `billing_receipts` and NOT mandatory, per the plan's §4 table — and it is

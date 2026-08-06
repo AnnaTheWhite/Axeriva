@@ -60,6 +60,15 @@
       "body": "We'll charge {{amount}} to the payment method on file for {{companyName}} on {{date}}.",
       "changeNote": "If you'd like to change or cancel before then, you can do it any time from the Subscription page in Axeriva."
     },
+    "planUpgraded": {
+      "subject": "You're now on Axeriva {{toPlanName}}",
+      "intro": "Your upgrade is live.",
+      "body": "{{companyName}} is now on the {{toPlanName}} plan, with everything it includes available straight away.",
+      "previousPlan": "Previous plan",
+      "newPlan": "New plan",
+      "effectiveFrom": "Effective from",
+      "billingNote": "We've sent the payment receipt for this change separately. You can see your invoices and manage the plan any time from the Subscription page in Axeriva."
+    },
     "paymentMethodUpdated": {
       "subject": "Your Axeriva payment method was updated — {{card}}",
       "intro": "Your billing details have been updated.",

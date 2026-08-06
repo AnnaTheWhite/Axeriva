@@ -30,6 +30,7 @@ import {
   cardLabel,
   paymentMethodUpdatedEmailTemplate,
 } from "../emails/templates/billing/PaymentMethodUpdatedEmail";
+import { planUpgradedEmailTemplate } from "../emails/templates/billing/PlanUpgradedEmail";
 import {
   contrastTextColor,
   ctaColors,
@@ -198,6 +199,18 @@ function everyTemplate(locale: NotificationLocale) {
           locale,
         }),
     },
+    // N1.8 Slice 6.
+    {
+      name: "planUpgraded",
+      render: () =>
+        planUpgradedEmailTemplate({
+          companyName: "Villanyszerelő Kft",
+          fromPlanName: "Starter",
+          toPlanName: "Professional",
+          effectiveAtFormatted: "5 October 2026",
+          locale,
+        }),
+    },
   ];
 }
 
@@ -353,6 +366,33 @@ describe("the transport binds each method to the RIGHT template", () => {
     );
   });
 
+  it("sends the upgrade notice from sendPlanUpgradedEmail", async () => {
+    const { ResendEmailService } = await import("../services/email/ResendEmailService");
+    const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
+
+    const change = {
+      companyName: "Villanyszerelő Kft",
+      fromPlanName: "Starter",
+      toPlanName: "Professional",
+      effectiveAtFormatted: "5 October 2026",
+    };
+
+    mockSentSubjects.length = 0;
+    await service.sendPlanUpgradedEmail("owner@example.com", change, { locale: "en" });
+
+    const expected = await planUpgradedEmailTemplate({ ...change, locale: "en" });
+    expect(mockSentSubjects).toHaveLength(1);
+    expect(mockSentSubjects[0]).toBe(expected.subject);
+    // PlanChangeEmailPayload is SHARED with the two plan-change types Phase 2-3
+    // still owe (plan_downgraded, plan_downgrade_scheduled), so the compiler
+    // will stop distinguishing these methods the moment either lands — exactly
+    // as it stopped distinguishing the two receipts at Slice 2. This assertion
+    // is the replacement for that lost protection.
+    expect(expected.subject).not.toBe(
+      (await subscriptionRenewedEmailTemplate({ ...payload, locale: "en" })).subject
+    );
+  });
+
   it("sends the renewal receipt from sendSubscriptionRenewedEmail", async () => {
     const { ResendEmailService } = await import("../services/email/ResendEmailService");
     const service = new ResendEmailService("re_test_key", "Axeriva <test@example.invalid>");
@@ -461,6 +501,101 @@ describe("the advance notice's copy (N1.8 Slice 4)", () => {
         }
       }
     }
+  });
+});
+
+describe("the upgrade notice's copy (N1.8 Slice 6)", () => {
+  const FROM = "Starter";
+  const TO = "Professional";
+  const EFFECTIVE = "5 October 2026";
+  const render = (locale: NotificationLocale) =>
+    planUpgradedEmailTemplate({
+      companyName: "Villanyszerelő Kft",
+      fromPlanName: FROM,
+      toPlanName: TO,
+      effectiveAtFormatted: EFFECTIVE,
+      locale,
+    });
+
+  it.each(NOTIFICATION_LOCALES)(
+    "puts the previous and the new plan in the right rows, in %s",
+    async (locale) => {
+      // Both are plain strings, so transposing them compiles, renders, and
+      // passes every other test in this file — the well-formedness block only
+      // looks for leftover "{{", and the transport-binding test compares the
+      // service's subject against this same template, so it moves in lockstep
+      // with any swap. Only asserting WHICH value landed WHERE can see it, and
+      // an upgrade rendered backwards reads as a downgrade.
+      const { html } = await render(locale);
+
+      const fromLabel = t(locale, "billing.planUpgraded.previousPlan");
+      const toLabel = t(locale, "billing.planUpgraded.newPlan");
+      const effectiveLabel = t(locale, "billing.planUpgraded.effectiveFrom");
+
+      const fromAt = html.indexOf(fromLabel);
+      const toAt = html.indexOf(toLabel, fromAt);
+      const effectiveAt = html.indexOf(effectiveLabel, toAt);
+
+      expect(fromAt, `${locale}: no ${fromLabel} row`).toBeGreaterThan(-1);
+      expect(toAt, `${locale}: no ${toLabel} row after it`).toBeGreaterThan(fromAt);
+      expect(effectiveAt, `${locale}: no ${effectiveLabel} row after it`).toBeGreaterThan(toAt);
+
+      const fromRow = html.slice(fromAt, toAt);
+      const toRow = html.slice(toAt, effectiveAt);
+      const effectiveRow = html.slice(effectiveAt);
+
+      expect(fromRow).toContain(FROM);
+      expect(fromRow).not.toContain(TO);
+      expect(toRow).toContain(TO);
+      expect(toRow).not.toContain(FROM);
+      expect(effectiveRow).toContain(EFFECTIVE);
+    }
+  );
+
+  it.each(NOTIFICATION_LOCALES)("names the DESTINATION plan in the subject, in %s", async (locale) => {
+    const { subject } = await render(locale);
+    expect(subject).toContain(TO);
+    // Never the plan they left — a subject line reading "You're now on Axeriva
+    // Starter" after an upgrade to Professional is the transposition this
+    // catches at the one place a reader sees first.
+    expect(subject).not.toContain(FROM);
+  });
+
+  it("quotes no amount anywhere in the copy", async () => {
+    // The money for an upgrade is billing.invoice_paid's to report. There is no
+    // honest figure here: what the customer paid today is a proration for the
+    // rest of the cycle, and what they will pay next cycle is the full new
+    // price. Asserted on the catalogue rather than the rendered page, because
+    // the layout carries hex colours and font sizes full of digits.
+    for (const locale of NOTIFICATION_LOCALES) {
+      for (const key of ["subject", "intro", "body", "billingNote"]) {
+        const value = t(locale, `billing.planUpgraded.${key}`);
+        for (const forbidden of ["{{amount}}", "€", "Ft", "EUR", "HUF"]) {
+          expect(value, `${locale}/${key} quotes ${forbidden}`).not.toContain(forbidden);
+        }
+      }
+    }
+  });
+
+  it("tells the reader the receipt is a separate email", async () => {
+    // The two-email pair is deliberate (invoice_paid = money, plan_upgraded =
+    // capability). Without this line the customer sees two Axeriva emails about
+    // one upgrade and reasonably concludes we sent it twice.
+    for (const locale of NOTIFICATION_LOCALES) {
+      const note = t(locale, "billing.planUpgraded.billingNote");
+      expect(note.length, `${locale} billingNote`).toBeGreaterThan(0);
+      expect(note).not.toBe("billing.planUpgraded.billingNote");
+    }
+    const { html } = await render("en");
+    expect(html).toContain("separately");
+  });
+
+  it("has no CTA button", async () => {
+    // PlanChangeEmailData carries no URL — the roadmap gives a link only to the
+    // messages whose template data lists one. Adding a button here would mean
+    // widening a contract the plan fixed.
+    const { html } = await render("en");
+    expect(html.match(/<a\s/g) ?? []).toHaveLength(0);
   });
 });
 
@@ -899,6 +1034,19 @@ describe("escaping — the guarantee that replaced escapeHtml()", () => {
           companyName: MALICIOUS,
           brand: MALICIOUS,
           last4: MALICIOUS,
+          locale: "en",
+        }),
+      // N1.8 Slice 6 — companyName in the body, and the plan names in both the
+      // panel and the SUBJECT. The plan names come from our own display table
+      // rather than from a tenant, so they are not the same threat; they are
+      // named here because a subject is the one place a template's own escaping
+      // does not apply.
+      () =>
+        planUpgradedEmailTemplate({
+          companyName: MALICIOUS,
+          fromPlanName: MALICIOUS,
+          toPlanName: MALICIOUS,
+          effectiveAtFormatted: "5 October 2026",
           locale: "en",
         }),
     ]) {

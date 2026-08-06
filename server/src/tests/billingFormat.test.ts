@@ -17,6 +17,7 @@ import {
   assertUpcomingRenewalEmailData,
   parseInvoiceNotificationContext,
   parsePaymentMethodNotificationContext,
+  parsePlanChangeNotificationContext,
 } from "../emails/billingTypes";
 
 // N1.8 Fázis 0 — the billing formatting layer and the template data contracts.
@@ -322,6 +323,50 @@ describe("billing data contracts", () => {
     expect(() => parsePaymentMethodNotificationContext({ ...base, last4: 4242 })).toThrow(
       /last4/
     );
+  });
+
+  it("parses a raw plan-change context, and refuses a transition it cannot state", () => {
+    // N1.8 Slice 6. Direct coverage for the same reason as the two parsers
+    // above: the trigger builds this context itself, so no pipeline test can
+    // reach the failure branches.
+    const base = {
+      companyName: "Acme",
+      fromPlanName: "Starter",
+      toPlanName: "Professional",
+      effectiveAt: 1_760_000_000,
+    };
+
+    expect(parsePlanChangeNotificationContext({ ...base })).toEqual({
+      ...base,
+      timeZone: null,
+    });
+
+    // Both ends are required. A message that names only its destination is the
+    // shape a "from" read AFTER applySubscriptionUpdate produces, and it must
+    // not be renderable.
+    expect(() => parsePlanChangeNotificationContext({ ...base, fromPlanName: "" })).toThrow(
+      /fromPlanName/
+    );
+    expect(() =>
+      parsePlanChangeNotificationContext({ ...base, toPlanName: undefined })
+    ).toThrow(/toPlanName/);
+
+    // effectiveAt goes through the NUMBER check, so a missing one fails loudly
+    // rather than reaching formatDate — where undefined becomes an Invalid Date
+    // and renders the "—" fallback in the middle of a confirmation.
+    expect(() =>
+      parsePlanChangeNotificationContext({ ...base, effectiveAt: undefined })
+    ).toThrow(/effectiveAt/);
+    expect(() =>
+      parsePlanChangeNotificationContext({ ...base, effectiveAt: "1760000000" })
+    ).toThrow(/effectiveAt/);
+
+    // Timezone is optional and a non-string is ignored rather than reaching
+    // Intl, which would throw on a billing path.
+    expect(parsePlanChangeNotificationContext({ ...base, timeZone: 42 }).timeZone).toBeNull();
+    expect(
+      parsePlanChangeNotificationContext({ ...base, timeZone: "Europe/Budapest" }).timeZone
+    ).toBe("Europe/Budapest");
   });
 
   it("validates the remaining contracts", () => {

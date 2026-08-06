@@ -6,6 +6,7 @@ import type {
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
   PaymentMethodEmailPayload,
+  PlanChangeEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "../../email/EmailService";
 import { config } from "../../../config";
@@ -15,6 +16,7 @@ import {
   parseInvoiceNotificationContext,
   parsePaymentFailureNotificationContext,
   parsePaymentMethodNotificationContext,
+  parsePlanChangeNotificationContext,
   parseUpcomingRenewalNotificationContext,
 } from "../../../emails/billingTypes";
 import { formatDate, formatMoney } from "../../../utils/billingFormat";
@@ -220,6 +222,14 @@ async function send(
         paymentMethodPayload(context),
         emailContext
       );
+
+    // N1.8 Slice 6 — the upgrade confirmation.
+    case "billing.plan_upgraded":
+      return emailService.sendPlanUpgradedEmail(
+        to,
+        planChangePayload(context, locale),
+        emailContext
+      );
   }
 
   // N1.7.1 — exhaustiveness guard. The switch above returns for every member of
@@ -380,6 +390,38 @@ function paymentMethodPayload(context: DeliveryContext): PaymentMethodEmailPaylo
     companyName: method.companyName,
     brand: method.brand,
     last4: method.last4,
+  };
+}
+
+// N1.8 Slice 6 — the plan-change payload.
+//
+// ONE FORMATTED VALUE, and the two plan names passed through untouched. That
+// asymmetry is the contract, not an omission: money and dates depend on the
+// recipient's locale and are formatted here, whereas a plan DISPLAY name is a
+// proper noun the trigger already resolved through planDisplayName() and which
+// reads identically in both catalogues. Re-resolving it here would need the raw
+// plan id, which the context deliberately does not carry — the trigger is the
+// only place that knows which plan the company actually moved between.
+//
+// Day precision, like the failure and renewal notices. The minute Stripe
+// happened to process an upgrade is not something a customer can act on, and
+// printing it invites them to compare it against a receipt timestamp that will
+// differ by seconds for reasons that mean nothing.
+function planChangePayload(
+  context: DeliveryContext,
+  locale: NotificationLocale
+): PlanChangeEmailPayload {
+  const change = parsePlanChangeNotificationContext(context);
+
+  return {
+    companyName: change.companyName,
+    fromPlanName: change.fromPlanName,
+    toPlanName: change.toPlanName,
+    effectiveAtFormatted: formatDate({
+      value: change.effectiveAt,
+      locale,
+      timeZone: change.timeZone,
+    }),
   };
 }
 

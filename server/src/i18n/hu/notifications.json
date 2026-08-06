@@ -60,6 +60,15 @@
       "body": "A(z) {{companyName}} fiókjában megadott fizetési módot {{amount}} összeggel terheljük meg. A terhelés napja: {{date}}",
       "changeNote": "Ha addig módosítanál vagy lemondanál, bármikor megteheted az Axeriva Előfizetés oldalán."
     },
+    "planUpgraded": {
+      "subject": "Mostantól az Axeriva {{toPlanName}} csomagot használod",
+      "intro": "A csomagváltás megtörtént.",
+      "body": "A(z) {{companyName}} mostantól a(z) {{toPlanName}} csomagon van, és minden benne foglalt funkció azonnal elérhető.",
+      "previousPlan": "Korábbi csomag",
+      "newPlan": "Új csomag",
+      "effectiveFrom": "Érvénybe lépett",
+      "billingNote": "A fizetésről szóló visszaigazolást külön levélben küldtük el. A számláidat megtekintheted, a csomagot bármikor kezelheted az Axeriva Előfizetés oldalán."
+    },
     "paymentMethodUpdated": {
       "subject": "Frissült az Axeriva fizetési módod — {{card}}",
       "intro": "A számlázási adataid frissültek.",

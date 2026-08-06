@@ -91,10 +91,16 @@ export function isWithinLimit(
 }
 
 // --- Plan comparison helpers ---------------------------------------------
-// Future-proofing for the upgrade/downgrade flows (S2.6). Not consumed yet;
-// pure tier comparisons that accept any raw plan string (legacy/founder
-// tolerant). Business rules about which transitions are *offered* (e.g. no
-// self-serve to founder/enterprise) live in the flow layer, not here.
+// Written for the upgrade/downgrade flows (S2.6). Pure tier comparisons that
+// accept any raw plan string (legacy/founder tolerant). Business rules about
+// which transitions are *offered* (e.g. no self-serve to founder/enterprise)
+// live in the flow layer, not here.
+//
+// N1.8 Slice 6 is the first production consumer: the Stripe webhook asks
+// canUpgrade(previousPlan, newPlan) to decide whether a
+// customer.subscription.updated actually moved the company UP a tier and so
+// warrants `billing.plan_upgraded`. (The "not consumed yet" this comment used
+// to claim stopped being true there.)
 
 // Numeric tier for any plan: Founder is above every public plan; legacy
 // values normalize first.

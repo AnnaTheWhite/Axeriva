@@ -6,6 +6,7 @@ import type {
   InvoiceReceiptEmailPayload,
   PaymentFailureEmailPayload,
   PaymentMethodEmailPayload,
+  PlanChangeEmailPayload,
   UpcomingRenewalEmailPayload,
 } from "./EmailService";
 import { DEFAULT_NOTIFICATION_LOCALE } from "../../constants/notifications";
@@ -156,6 +157,21 @@ export class MockEmailService implements EmailService {
     // rendering the generic fallback instead.
     console.log(
       `[MockEmailService] Payment method updated for ${to} ("${data.companyName}", brand ${data.brand}, last4 ${data.last4}) [${locale(context)}]`
+    );
+    return result(context);
+  }
+
+  async sendPlanUpgradedEmail(
+    to: string,
+    data: PlanChangeEmailPayload,
+    context?: EmailContext
+  ): Promise<EmailSendResult> {
+    // BOTH plan names, in order. The whole message is a transition, and a dev
+    // run showing only the destination cannot tell a correct upgrade from one
+    // whose "from" was read after applySubscriptionUpdate had already
+    // overwritten it — which is this slice's central hazard.
+    console.log(
+      `[MockEmailService] Plan upgraded for ${to} ("${data.companyName}", ${data.fromPlanName} -> ${data.toPlanName}, effective ${data.effectiveAtFormatted}) [${locale(context)}]`
     );
     return result(context);
   }

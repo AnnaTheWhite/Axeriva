@@ -361,6 +361,69 @@ export function parsePaymentMethodNotificationContext(
   };
 }
 
+// N1.8 Slice 6 — the raw context for a PLAN CHANGE.
+//
+// Its own type and parser, for the reason Slices 3-5 each have one: reusing
+// parseInvoiceNotificationContext would hard-require amountMinor, currency and
+// a service period, none of which a plan change has. There is no money in this
+// message at all — the money for an upgrade is `billing.invoice_paid`'s, and
+// keeping the two contexts disjoint is what stops one message drifting into
+// making the other's claim.
+//
+// THE PLAN NAMES ARE DISPLAY NAMES, resolved by the trigger — "Professional",
+// not "professional". That is the contract PlanChangeEmailData states above, and
+// it does not violate the raw-values rule this file otherwise insists on:
+// planDisplayName() is a lookup of proper nouns that read identically in both
+// catalogues (constants/plans.ts), so nothing about it depends on the
+// recipient's locale. Money and dates are the locale-dependent values, and both
+// are still formatted in the channel.
+//
+// `effectiveAt` is the STRIPE EVENT's own `created` timestamp, carried through
+// unchanged. Not derived from the subscription's period, not `Date.now()` at
+// send time: the first would be inventing a meaning the roadmap does not give
+// this field, and the second would drift by however long the job sat in the
+// queue. The event's timestamp is the moment Stripe recorded the change, which
+// is exactly what "effective at" names for a change that takes effect
+// immediately.
+export type PlanChangeNotificationContext = {
+  companyName: string;
+  fromPlanName: string;
+  toPlanName: string;
+  // UNIX SECONDS — Stripe's event.created.
+  effectiveAt: number;
+  timeZone?: string | null;
+};
+
+export function parsePlanChangeNotificationContext(
+  context: Record<string, unknown>
+): PlanChangeNotificationContext {
+  const str = (key: string): string => {
+    const value = context[key];
+    if (typeof value !== "string" || value.length === 0) {
+      throw new BillingContractError(`plan change context is missing "${key}"`);
+    }
+    return value;
+  };
+
+  const num = (key: string): number => {
+    const value = context[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new BillingContractError(
+        `plan change context "${key}" must be a finite number, got ${String(value)}`
+      );
+    }
+    return value;
+  };
+
+  return {
+    companyName: str("companyName"),
+    fromPlanName: str("fromPlanName"),
+    toPlanName: str("toPlanName"),
+    effectiveAt: num("effectiveAt"),
+    timeZone: typeof context.timeZone === "string" ? context.timeZone : null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Runtime validation
 // ---------------------------------------------------------------------------
